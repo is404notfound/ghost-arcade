@@ -1,0 +1,285 @@
+// 결정론 시뮬레이션 코어 (D1/D6/D10).
+//
+//   입력(탭) ──queueTap()──► [GameSim] ──step()──► state (렌더는 읽기만)
+//                              │
+//                              └─ 시드 RNG + 고정 dt + 사칙연산만
+//                                 → 같은 (시드, 입력로그)면 어느 엔진에서나 같은 결과
+//
+// 제약 (PLAN.md 설계 제약):
+// - step() 내 객체 할당 금지 — 모든 상태는 생성자에서 만들고 재사용 (D6)
+// - Math는 sqrt/floor/min/max만 — 초월함수·random 금지, ESLint가 강제 (D10)
+// - 시간은 frame 인덱스로만 — 벽시계 금지
+import { Rng } from './rng';
+import * as C from './constants';
+import type { InputLog } from './inputLog';
+
+export interface PlayerState {
+  y: number; // 바닥 기준 높이 (지면 = 0, 위가 양수)
+  vy: number;
+  jumpsUsed: number;
+}
+
+export interface ObstacleState {
+  active: boolean;
+  x: number; // 중심 x
+  h: number; // 높이 (바닥에서 윗면까지)
+  scored: boolean; // 니어미스 평가 완료 여부
+}
+
+export interface PotionState {
+  active: boolean;
+  x: number; // 중심 x
+  y: number; // 중심 높이
+}
+
+export interface SimState {
+  frame: number;
+  gameOver: boolean;
+  hp: number;
+  distance: number; // 미터
+  speed: number; // 현재 스크롤 속도 (렌더 참조용 캐시)
+  nearMissCombo: number;
+  invincibleFrames: number; // 남은 무적 프레임 (렌더 깜빡임 참조용)
+  player: PlayerState;
+  obstacles: ObstacleState[]; // 고정 크기 풀 — 배열/원소 재할당 금지
+  potions: PotionState[]; // 고정 크기 풀
+  events: number; // 직전 step에서 발생한 이벤트 비트마스크
+}
+
+/** 현재 시각(초)의 스크롤 속도 — 에스컬레이션 + 상한 */
+export function speedAtSec(t: number): number {
+  return Math.min(C.SPEED_MAX, C.SPEED_BASE + t * C.SPEED_RAMP);
+}
+
+/** 현재 시각(초)의 장애물 스폰 간격(ms) — 단축 + 하한 */
+export function intervalMsAtSec(t: number): number {
+  return Math.max(C.INTERVAL_MIN_MS, C.INTERVAL_BASE_MS - t * C.INTERVAL_RAMP_MS);
+}
+
+function intervalFramesAtSec(t: number): number {
+  return Math.max(1, Math.round((intervalMsAtSec(t) / 1000) * C.SIM_FPS));
+}
+
+export class GameSim {
+  readonly state: SimState;
+  private readonly rng: Rng;
+  private pendingTaps = 0;
+  private framesUntilSpawn: number;
+  // 다음 포션 스폰 예약 (-1 = 없음). 높이는 장애물 스폰 시점에 미리 굴려둔다 —
+  // RNG 소비 순서를 스폰 스텝에 고정해야 어떤 인터리빙에서도 결정론이 유지된다.
+  private potionInFrames = -1;
+  private potionPendingY = 0;
+
+  constructor(seed: number) {
+    this.rng = new Rng(seed);
+    // 풀은 여기서 단 한 번 할당 — step()은 이 객체들만 재사용한다 (D6)
+    const obstacles: ObstacleState[] = [];
+    for (let i = 0; i < C.MAX_OBSTACLES; i++) {
+      obstacles.push({ active: false, x: 0, h: 0, scored: false });
+    }
+    const potions: PotionState[] = [];
+    for (let i = 0; i < C.MAX_POTIONS; i++) {
+      potions.push({ active: false, x: 0, y: 0 });
+    }
+    this.state = {
+      frame: 0,
+      gameOver: false,
+      hp: C.HP_MAX,
+      distance: 0,
+      speed: speedAtSec(0),
+      nearMissCombo: 0,
+      invincibleFrames: 0,
+      player: { y: 0, vy: 0, jumpsUsed: 0 },
+      obstacles,
+      potions,
+      events: 0,
+    };
+    this.framesUntilSpawn = intervalFramesAtSec(0);
+  }
+
+  /** 다음 step에서 처리할 탭 입력을 큐잉한다. 기록 시 state.frame을 함께 적는다. */
+  queueTap(): void {
+    this.pendingTaps++;
+  }
+
+  step(): void {
+    const s = this.state;
+    if (s.gameOver) {
+      this.pendingTaps = 0;
+      s.events = 0; // 죽은 스텝의 이벤트(EV_GAME_OVER 등)가 다음 스텝에 반복 발화하지 않도록
+      return;
+    }
+    s.events = 0;
+
+    const t = s.frame * C.DT;
+    s.speed = speedAtSec(t);
+
+    // 1) 입력 소비 — 점프 (지상 1단 + 공중 1단)
+    while (this.pendingTaps > 0) {
+      this.pendingTaps--;
+      if (s.player.jumpsUsed < C.MAX_JUMPS) {
+        s.player.vy = C.JUMP_VEL;
+        s.player.jumpsUsed++;
+        s.events |= C.EV_JUMP;
+      }
+    }
+
+    // 2) 플레이어 적분 + 착지
+    s.player.vy -= C.GRAVITY * C.DT;
+    s.player.y += s.player.vy * C.DT;
+    if (s.player.y <= 0 && s.player.vy <= 0) {
+      // 프로토 3단 점프 버그의 교훈: 리셋은 '실제 착지' 판정에서만
+      s.player.y = 0;
+      s.player.vy = 0;
+      s.player.jumpsUsed = 0;
+    }
+
+    // 3) 장애물 스폰 (간격은 매번 현재 난이도로 재계산)
+    this.framesUntilSpawn--;
+    if (this.framesUntilSpawn <= 0) {
+      this.spawnObstacle(t);
+      this.framesUntilSpawn = intervalFramesAtSec(t);
+    }
+
+    // 4) 포션 스폰 예약 소화 (장애물과 장애물 사이 시점)
+    if (this.potionInFrames > 0) {
+      this.potionInFrames--;
+      if (this.potionInFrames === 0) {
+        this.spawnPotion();
+        this.potionInFrames = -1;
+      }
+    }
+
+    // 5) 장애물/포션 이동 + 화면 밖 반환
+    for (let i = 0; i < C.MAX_OBSTACLES; i++) {
+      const o = s.obstacles[i]!;
+      if (!o.active) continue;
+      o.x -= s.speed * C.DT;
+      if (o.x < C.DESPAWN_X) o.active = false;
+    }
+    for (let i = 0; i < C.MAX_POTIONS; i++) {
+      const p = s.potions[i]!;
+      if (!p.active) continue;
+      p.x -= s.speed * C.DT;
+      if (p.x < C.DESPAWN_X) p.active = false;
+    }
+
+    // 6) 니어미스 평가 — 장애물이 플레이어를 '완전히 통과'한 첫 스텝에 1회
+    const playerLeft = C.PLAYER_X - C.PLAYER_W / 2;
+    const airborne = s.player.y > 0;
+    for (let i = 0; i < C.MAX_OBSTACLES; i++) {
+      const o = s.obstacles[i]!;
+      if (!o.active || o.scored) continue;
+      if (o.x + C.OBS_W / 2 < playerLeft) {
+        o.scored = true;
+        if (airborne) {
+          const gap = s.player.y - o.h; // 발끝과 윗면 간격
+          if (gap >= 0 && gap <= C.NEAR_MISS_UNITS) {
+            s.nearMissCombo++;
+            this.heal(C.NEAR_MISS_HEAL);
+            s.events |= C.EV_NEAR_MISS;
+          } else {
+            // 넉넉히 넘으면 콤보 끊김 — 아슬아슬해야 유지된다
+            s.nearMissCombo = 0;
+          }
+        }
+      }
+    }
+
+    // 7) 장애물 충돌 (무적 중이면 무시)
+    if (s.invincibleFrames > 0) s.invincibleFrames--;
+    if (s.invincibleFrames === 0) {
+      for (let i = 0; i < C.MAX_OBSTACLES; i++) {
+        const o = s.obstacles[i]!;
+        if (!o.active) continue;
+        const overlapX = Math.abs(o.x - C.PLAYER_X) < (C.PLAYER_W + C.OBS_W) / 2;
+        if (overlapX && s.player.y < o.h) {
+          s.hp -= C.HIT_DAMAGE;
+          s.invincibleFrames = Math.round((C.INVINCIBLE_MS / 1000) * C.SIM_FPS);
+          s.events |= C.EV_HIT;
+          break; // 한 스텝에 한 번만
+        }
+      }
+    }
+
+    // 8) 포션 수집
+    for (let i = 0; i < C.MAX_POTIONS; i++) {
+      const p = s.potions[i]!;
+      if (!p.active) continue;
+      const overlapX = Math.abs(p.x - C.PLAYER_X) < C.PLAYER_W / 2 + C.POTION_R;
+      const overlapY = s.player.y < p.y + C.POTION_R && s.player.y + C.PLAYER_H > p.y - C.POTION_R;
+      if (overlapX && overlapY) {
+        p.active = false;
+        this.heal(C.POTION_HEAL);
+        s.events |= C.EV_POTION;
+      }
+    }
+
+    // 9) 체력 자연 감소 + 사망 판정 (충돌 데미지 포함 일괄)
+    s.hp -= C.HP_DRAIN_PER_SEC * C.DT;
+    if (s.hp <= 0) {
+      s.hp = 0;
+      s.gameOver = true;
+      s.events |= C.EV_GAME_OVER;
+      s.frame++;
+      return;
+    }
+
+    // 10) 거리 누적
+    s.distance += (s.speed * C.DT) / C.UNITS_PER_METER;
+
+    s.frame++;
+  }
+
+  private heal(amount: number): void {
+    this.state.hp = Math.min(C.HP_MAX, this.state.hp + amount);
+  }
+
+  private spawnObstacle(t: number): void {
+    // 포션 동반 여부는 장애물 스폰 시점에 전부 굴린다 (RNG 순서 고정)
+    const h = this.rng.nextInt(C.OBS_H_MIN, C.OBS_H_MAX);
+    if (this.rng.next() < C.POTION_CHANCE) {
+      this.potionPendingY = this.rng.nextInt(C.POTION_Y_MIN, C.POTION_Y_MAX);
+      this.potionInFrames = Math.max(1, Math.floor(intervalFramesAtSec(t) / 2));
+    }
+    // 빈 슬롯 탐색 — 없으면 이번 스폰은 건너뜀 (풀 한도가 동시 활성 상한)
+    for (let i = 0; i < C.MAX_OBSTACLES; i++) {
+      const o = this.state.obstacles[i]!;
+      if (o.active) continue;
+      o.active = true;
+      o.x = C.SPAWN_X;
+      o.h = h;
+      o.scored = false;
+      return;
+    }
+  }
+
+  private spawnPotion(): void {
+    for (let i = 0; i < C.MAX_POTIONS; i++) {
+      const p = this.state.potions[i]!;
+      if (p.active) continue;
+      p.active = true;
+      p.x = C.SPAWN_X;
+      p.y = this.potionPendingY;
+      return;
+    }
+  }
+}
+
+/**
+ * 입력 로그를 처음부터 재생해 시뮬을 복원한다.
+ * 기록과 같은 모듈 계약(frame 인덱스 = queueTap 시점의 state.frame)을 공유 —
+ * 골든 리플레이(T4)와 고스트 재생(Phase 2)의 공통 기반.
+ */
+export function replay(log: InputLog, frames: number): GameSim {
+  const sim = new GameSim(log.seed);
+  let cursor = 0;
+  for (let f = 0; f < frames; f++) {
+    while (cursor < log.events.length && log.events[cursor]!.frame === sim.state.frame) {
+      sim.queueTap();
+      cursor++;
+    }
+    sim.step();
+  }
+  return sim;
+}

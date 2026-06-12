@@ -1,0 +1,63 @@
+// 시뮬 튜닝 상수 — 전부 여기서만 조정한다.
+// 단위: 거리 = 시뮬 유닛(px 상당), 시간 = 초, 속도 = 유닛/초. y축은 위가 양수, 지면 = 0.
+
+// 타임스텝
+export const SIM_FPS = 60;
+export const DT = 1 / SIM_FPS; // 고정 스텝 (초)
+
+// 플레이어 (x 고정 — 월드가 왼쪽으로 흐른다)
+export const PLAYER_X = 144;
+export const PLAYER_W = 40;
+export const PLAYER_H = 48;
+export const JUMP_VEL = 680;
+export const GRAVITY = 1400;
+export const MAX_JUMPS = 2;
+
+// 월드
+export const WORLD_WIDTH = 800;
+export const SPAWN_X = WORLD_WIDTH + 30; // 화면 오른쪽 바깥
+export const DESPAWN_X = -60; // 이보다 왼쪽이면 풀로 반환
+
+// 장애물 + 에스컬레이션
+export const OBS_W = 28;
+export const OBS_H_MIN = 40;
+export const OBS_H_MAX = 90;
+export const SPEED_BASE = 290; // 유닛/초
+export const SPEED_RAMP = 13; // 초당 증가량
+// Phase 0 학습 #2: 속도+간격 이중 가속은 어느 순간 벽이 된다 → 상한 필수
+export const SPEED_MAX = 560;
+export const INTERVAL_BASE_MS = 1500;
+export const INTERVAL_MIN_MS = 620;
+export const INTERVAL_RAMP_MS = 28; // 초당 단축량(ms)
+
+// 체력
+export const HP_MAX = 100;
+export const HP_DRAIN_PER_SEC = 4;
+export const HIT_DAMAGE = 35;
+// Phase 0 학습 #4: 무적 확대(600→900ms)로 죽음의 소용돌이 완화 (감속은 인센티브 역전이라 기각됨)
+export const INVINCIBLE_MS = 900;
+
+// 포션
+export const POTION_HEAL = 30;
+export const POTION_CHANCE = 0.35;
+export const POTION_R = 13;
+export const POTION_Y_MIN = 70; // 포션 중심 높이 범위
+export const POTION_Y_MAX = 230;
+
+// 니어미스
+export const NEAR_MISS_UNITS = 52; // 발끝-장애물 윗면 간격 허용치
+export const NEAR_MISS_HEAL = 5;
+
+// 거리 점수
+export const UNITS_PER_METER = 30;
+
+// 오브젝트 풀 크기 (제로 할당 — D6)
+export const MAX_OBSTACLES = 16;
+export const MAX_POTIONS = 8;
+
+// step() 이벤트 비트마스크 — 렌더/사운드 트리거용 (할당 없는 신호 전달)
+export const EV_JUMP = 1;
+export const EV_HIT = 2;
+export const EV_NEAR_MISS = 4;
+export const EV_POTION = 8;
+export const EV_GAME_OVER = 16;
