@@ -25,9 +25,9 @@ describe('GameSim — 플레이어 물리', () => {
     expect(sim.state.player.y).toBeGreaterThan(0);
   });
 
-  test('공중에서 두 번 더 점프할 수 있다 (총 3단)', () => {
+  test('MAX_JUMPS번 점프가 가능하다 (지상 포함)', () => {
     const sim = new GameSim(1);
-    for (let j = 0; j < 3; j++) {
+    for (let j = 0; j < C.MAX_JUMPS; j++) {
       sim.queueTap();
       sim.step();
       // 점프 직후 속도가 점프 초속으로 재설정됨 (한 스텝 중력 적분 포함)

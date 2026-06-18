@@ -17,3 +17,28 @@ canvas {
   touch-action: none;
   display: block; /* inline 기본값이 만드는 하단 여백 제거 */
 }
+
+/* 전체화면 토글 버튼 — 우상단 고정 오버레이 */
+#fs-btn {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 1000;
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 7px;
+  color: #ffffff;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 탭 하이라이트·텍스트 선택 제거 */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+}

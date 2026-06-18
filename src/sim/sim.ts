@@ -308,7 +308,17 @@ export class GameSim {
   private spawnObstacle(t: number): void {
     // RNG 소비 순서 고정 (패턴 종류에 무관하게 항상 동일):
     // (1) 패턴 ID, (2) 랜덤 높이, (3) 포션 여부, (4) 포션 Y (조건부)
-    const patIdx = this.rng.nextInt(0, OBS_PATTERNS.length - 1);
+    let patIdx = this.rng.nextInt(0, OBS_PATTERNS.length - 1);
+
+    // 온보딩 램프: RNG는 이미 소비됨 — 리맵은 추가 RNG 호출 없음
+    if (t < C.PATTERN_RAMP_SEC) {
+      // 초반: SINGLE(0)·WIDE_LOW(2)만. roll 0,1,4→0(SINGLE), roll 2,3→2(WIDE_LOW)
+      patIdx = (patIdx === 2 || patIdx === 3) ? 2 : 0;
+    } else if (t < C.PATTERN_FULL_SEC) {
+      // 중반: STAIRCASE(4) 미포함 → SINGLE(0)으로 대체
+      if (patIdx === 4) patIdx = 0;
+    }
+
     const heightRoll = this.rng.nextInt(C.OBS_H_MIN, C.OBS_H_MAX);
     if (this.rng.next() < C.POTION_CHANCE) {
       this.potionPendingY = this.rng.nextInt(C.POTION_Y_MIN, C.POTION_Y_MAX);

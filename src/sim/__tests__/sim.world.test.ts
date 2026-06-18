@@ -30,15 +30,18 @@ describe('GameSim — 에스컬레이션 곡선', () => {
 });
 
 describe('GameSim — 장애물', () => {
+  // 첫 스폰 프레임: INTERVAL_BASE_MS 상수에서 동적으로 계산 — 하드코딩 방지
+  const firstInterval = Math.round((C.INTERVAL_BASE_MS / 1000) * C.SIM_FPS);
+
   test('처음에는 활성 장애물이 없다', () => {
     const sim = immortal(new GameSim(1));
-    stepN(sim, 30); // 첫 스폰 간격(1500ms=90프레임) 전
+    stepN(sim, Math.floor(firstInterval / 3)); // 첫 스폰 간격의 1/3 — 확실히 스폰 전
     expect(sim.state.obstacles.filter((o) => o.active)).toHaveLength(0);
   });
 
   test('첫 스폰 간격이 지나면 장애물이 화면 오른쪽 바깥에 등장한다', () => {
     const sim = immortal(new GameSim(1));
-    stepN(sim, 91); // 첫 간격(1500ms = 90프레임) 직후
+    stepN(sim, firstInterval + 1); // 첫 간격 직후
     const active = sim.state.obstacles.filter((o) => o.active);
     // 패턴 라이브러리 도입 후 첫 스폰이 1~3개일 수 있음 (BURST=2, STAIRCASE=3)
     expect(active.length).toBeGreaterThanOrEqual(1);
@@ -50,7 +53,7 @@ describe('GameSim — 장애물', () => {
 
   test('장애물 높이는 OBS_H_MIN..OBS_H_MAX 범위의 정수다', () => {
     const sim = immortal(new GameSim(7));
-    stepN(sim, 95);
+    stepN(sim, firstInterval + 5);
     const obs = sim.state.obstacles.find((o) => o.active)!;
     expect(Number.isInteger(obs.h)).toBe(true);
     expect(obs.h).toBeGreaterThanOrEqual(C.OBS_H_MIN);
@@ -59,7 +62,7 @@ describe('GameSim — 장애물', () => {
 
   test('장애물은 매 스텝 현재 속도 × DT만큼 왼쪽으로 이동한다', () => {
     const sim = immortal(new GameSim(1));
-    stepN(sim, 95);
+    stepN(sim, firstInterval + 5);
     const obs = sim.state.obstacles.find((o) => o.active)!;
     const x0 = obs.x;
     const t = sim.state.frame * C.DT;

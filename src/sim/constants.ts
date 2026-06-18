@@ -11,7 +11,7 @@ export const PLAYER_W = 30; // 날렵한 히트박스 (위→30)
 export const PLAYER_H = 42; // (위→42)
 export const JUMP_VEL = 680;
 export const GRAVITY = 1400;
-export const MAX_JUMPS = 3; // 지상 1단 + 공중 2단 (v0.2.0에서 2→3)
+export const MAX_JUMPS = 2; // 지상 1단 + 공중 1단 (1.4.0에서 3→2: 타이트한 컨트롤)
 
 // 월드 (19.5:9 비율 — DESIGN_H=480 기준 WORLD_WIDTH=1040 → 폰 가로를 채움)
 export const WORLD_WIDTH = 1040;
@@ -26,9 +26,9 @@ export const SPEED_BASE = 340; // 유닛/초
 export const SPEED_RAMP = 15; // 초당 증가량
 // Phase 0 학습 #2: 속도+간격 이중 가속은 어느 순간 벽이 된다 → 상한 필수
 export const SPEED_MAX = 660;
-export const INTERVAL_BASE_MS = 1500;
+export const INTERVAL_BASE_MS = 1700; // 초기 간격 넓힘 (온보딩 진입 완화)
 export const INTERVAL_MIN_MS = 620;
-export const INTERVAL_RAMP_MS = 28; // 초당 단축량(ms)
+export const INTERVAL_RAMP_MS = 22; // 초당 단축량(ms) — 낮춰서 최소 간격 도달을 ~49초로 지연
 
 // 체력
 export const HP_MAX = 100;
@@ -70,8 +70,7 @@ export const FEVER_COMBO = 10; // 이 콤보에 도달하면 피버 발동
 export const FEVER_SEC = 2.5; // 피버 지속 시간 (초)
 export const FEVER_SPEED_MULT = 2.5; // 피버 중 스크롤 배속
 
-// 플레이어 y 천장 — GROUND_Y_PX(432) - PLAYER_H(48) = 384에서 8px 여백 적용
-// 화면 상단 HUD 아래까지만 올라갈 수 있도록 제한
+// 플레이어 y 천장 — 화면 상단에서 14px 여백 (GROUND_Y_PX(432) - PLAYER_Y_MAX(376) - PLAYER_H(42) = 14)
 export const PLAYER_Y_MAX = 376;
 
 // 피버 탭 회복 — 피버 중 탭(점프)할 때마다 회복되는 HP량
@@ -82,3 +81,7 @@ export const FEVER_GRACE_SEC = 2;
 
 // 피버 시간 기반 발동 — 콤보가 이 시간(초) 이상 끊기지 않으면 피버 발동
 export const FEVER_INTERVAL_SEC = 10;
+
+// 온보딩 난이도 램프 — 경과 시간에 따라 어려운 패턴을 점진적으로 해금
+export const PATTERN_RAMP_SEC = 12; // 이 시간 전: SINGLE/WIDE_LOW만 (낮고 단순)
+export const PATTERN_FULL_SEC = 28; // 이 시간 이후: 전체 패턴 (STAIRCASE 포함)

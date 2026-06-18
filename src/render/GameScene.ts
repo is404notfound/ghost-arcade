@@ -52,6 +52,7 @@ export class GameScene extends Phaser.Scene {
   private comboDisplay!: Phaser.GameObjects.Text; // 화면 중앙 큰 콤보 숫자 (combo >= 2)
   private prevCombo = 0; // 이전 프레임 combo 값 — 증가 감지용
   private crashed = false; // 렌더 루프 예외 발생 시 1회만 보고하고 정지 (이벤트 폭주 방지)
+  private _windowTapHandler!: () => void;
   private feverOverlay!: Phaser.GameObjects.Rectangle; // 피버 중 warm tint 레이어
   private infiniteJumpText!: Phaser.GameObjects.Text; // 피버 중 "클릭시 무한 회복!" 안내
   private spectateHintText!: Phaser.GameObjects.Text; // 구경 중 "탭하여 건너뛰기" 안내
@@ -217,7 +218,14 @@ export class GameScene extends Phaser.Scene {
       ])
       .setVisible(false);
 
-    this.input.on('pointerdown', this.onTap, this);
+    // 화면 어디를 탭해도 점프 — 캔버스 밖 빈 공간(좌우 기둥)도 포함
+    // #fs-btn은 pointerdown에서 stopPropagation → 이 핸들러까지 버블되지 않음
+    this._windowTapHandler = () => { this.onTap(); };
+    window.addEventListener('pointerdown', this._windowTapHandler, { passive: true });
+    this.events.once('shutdown', () => {
+      window.removeEventListener('pointerdown', this._windowTapHandler);
+    });
+
     // Space·ArrowUp도 같은 onTap 경로 — e.repeat는 꾹 누름 자동반복이라 한 번만 처리
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
       if (event.repeat) return;

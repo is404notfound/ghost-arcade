@@ -6,6 +6,7 @@ import * as Sentry from '@sentry/browser';
 import { GameScene } from './render/GameScene';
 import { DESIGN_W, DESIGN_H } from './render/viewport';
 import { dailySeed } from './dailySeed';
+import { initFullscreenButton } from './fullscreen';
 
 // 파이프라인 검증용 의도적 에러 — ?boom 진입 시 전역 핸들러 + 소스맵 + Seer Autofix를
 // 확인하기 위한 실제 이슈를 만든다. (검증 후 제거 가능)
@@ -32,6 +33,8 @@ if (import.meta.env.DEV) {
     })
     .catch((e: unknown) => Sentry.captureException(e));
 }
+
+initFullscreenButton();
 
 try {
   new Phaser.Game({
