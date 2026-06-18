@@ -15,7 +15,7 @@ import * as C from '../sim/constants';
 import { createInputLog, recordTap, serializeLog, type InputLog } from '../sim/inputLog';
 import { dailySeed } from '../dailySeed';
 import { saveRun, loadTopRuns, GHOST_TOP_N } from '../ghostStore';
-import { compareGhosts, livePace, type GhostComparison } from './ghostCompare';
+import { compareGhosts, type GhostComparison } from './ghostCompare';
 import { DESIGN_W, DESIGN_H, GROUND_Y_PX, toScreenX, toScreenY, boxCenterScreenY } from './viewport';
 import { registerPauseToggle, setPauseButtonState } from '../controls';
 
@@ -46,10 +46,11 @@ export class GameScene extends Phaser.Scene {
   private pendingCmp: GhostComparison | null = null; // 보류된 결과 패널 데이터
   private pendingMyDist = 0;
 
-  private paceText!: Phaser.GameObjects.Text; // "최고 −NM" / "신기록 +NM"
+  private paceText!: Phaser.GameObjects.Text; // 현재 등수 "N / M등"
   private overtakeHudText!: Phaser.GameObjects.Text; // "제침 X/N"
   private comboDisplay!: Phaser.GameObjects.Text; // 화면 중앙 큰 콤보 숫자 (combo >= 2)
   private prevCombo = 0; // 이전 프레임 combo 값 — 증가 감지용
+  private prevRank = 0;  // 이전 프레임 등수 — 상승 감지용
   private crashed = false; // 렌더 루프 예외 발생 시 1회만 보고하고 정지 (이벤트 폭주 방지)
   private gamePaused = false;
   private pauseOverlay!: Phaser.GameObjects.Container;
@@ -162,7 +163,7 @@ export class GameScene extends Phaser.Scene {
     // 플레이어 머리 위를 따라다니는 격차 텍스트 (고스트 없으면 숨김).
     // 어두운 배경/장애물 위에서도 읽히도록 외곽선을 깐다
     this.paceText = this.add
-      .text(toScreenX(C.PLAYER_X), 0, '', { fontSize: '14px', color: '#ff6b6b', fontStyle: 'bold' })
+      .text(toScreenX(C.PLAYER_X), 0, '', { fontSize: '14px', color: '#ffffff', fontStyle: 'bold' })
       .setOrigin(0.5, 1)
       .setStroke('#1a1a2e', 4)
       .setVisible(false);
@@ -260,6 +261,7 @@ export class GameScene extends Phaser.Scene {
     this.spectating = false;
     this.pendingCmp = null;
     this.prevCombo = 0;
+    this.prevRank = this.ghosts.length + 1;
     console.log(`[ghost-arcade] 시드 ${this.seed}, 유령 ${this.ghosts.length}기 로드`);
 
     this.gamePaused = false;
@@ -433,13 +435,15 @@ export class GameScene extends Phaser.Scene {
       this.hintText.setText('탭하여 재시작');
     } else if (cmp.isRecord) {
       this.comparisonText.setText(`🏆 신기록! 이전 최고 +${cmp.diffM}M`).setColor('#ffd166');
-      this.overtakeText.setText(`고스트 ${cmp.overtaken}/${cmp.total} 제침`);
+      const finalRank1 = cmp.total - cmp.overtaken + 1;
+      this.overtakeText.setText(`최종 ${finalRank1}/${cmp.total + 1}등  ·  제침 ${cmp.overtaken}/${cmp.total}`);
       this.hintText.setText('탭하여 재시작');
     } else {
       this.comparisonText
         .setText(`고스트에게 ${cmp.diffM}M 뒤짐`)
         .setColor(cmp.isClose ? '#ff8787' : '#aaaaaa');
-      this.overtakeText.setText(`고스트 ${cmp.overtaken}/${cmp.total} 제침`);
+      const finalRank2 = cmp.total - cmp.overtaken + 1;
+      this.overtakeText.setText(`최종 ${finalRank2}/${cmp.total + 1}등  ·  제침 ${cmp.overtaken}/${cmp.total}`);
       // 박빙이면 재시도를 직접 꼬신다
       this.hintText.setText(cmp.isClose ? '한 판 더?' : '탭하여 재시작');
     }
@@ -531,25 +535,29 @@ export class GameScene extends Phaser.Scene {
     // 피버 중 무한 점프 안내 — 게임 진행 중 피버 활성 시에만 표시
     this.infiniteJumpText.setVisible(s.feverFramesLeft > 0 && !s.gameOver);
 
-    // 실시간 경쟁 HUD — 고스트 없는 첫 판이거나 사망 이후엔 숨김
-    const best = this.ghostDistances[0]; // loadTopRuns가 내림차순 정렬 보장
-    const showRace = best !== undefined && !s.gameOver;
-    this.paceText.setVisible(showRace);
-    this.overtakeHudText.setVisible(showRace);
-    if (this.spectating) {
-      this.distText.setColor('#b39ddb'); // 유령의 거리임을 색으로 표시
-    } else if (best === undefined) {
-      this.distText.setColor('#ffffff');
-    } else {
-      const p = livePace(s.distance, best);
-      // 카운트다운 → 신기록 전환: 색과 문구가 같이 뒤집힌다
-      this.distText.setColor(p.ahead ? '#2ecc71' : '#ff6b6b');
-      this.paceText.setText(p.ahead ? `신기록 +${p.diffM}M` : `최고 −${p.diffM}M`);
-      this.paceText.setColor(p.ahead ? '#2ecc71' : '#ff6b6b');
-      // 플레이어 머리 위에 붙어 점프를 따라간다
+    // 등수 HUD — 고스트 없는 첫 판이면 숨김, 게임오버 후엔 최종 등수를 유지
+    const hasGhosts = this.ghosts.length > 0;
+    const aliveGhosts = this.ghosts.length - this.overtakenLive;
+    const currentRank = aliveGhosts + 1;
+    const totalRunners = this.ghosts.length + 1;
+    this.paceText.setVisible(hasGhosts);
+    this.overtakeHudText.setVisible(hasGhosts && !s.gameOver);
+    this.distText.setColor(this.spectating ? '#b39ddb' : '#ffffff');
+    if (hasGhosts) {
+      const is1st = currentRank === 1;
+      this.paceText.setColor(is1st ? '#ffd700' : '#ffffff');
+      this.paceText.setText(`${currentRank} / ${totalRunners}등`);
       this.paceText.setY(toScreenY(s.player.y + C.PLAYER_H) - 6);
-      this.overtakeHudText.setText(`제침 ${this.overtakenLive}/${this.ghosts.length}`);
+      if (!s.gameOver) {
+        this.overtakeHudText.setText(`제침 ${this.overtakenLive}/${this.ghosts.length}`);
+        if (currentRank < this.prevRank) {
+          this.tweens.killTweensOf(this.paceText);
+          this.paceText.setScale(1.4);
+          this.tweens.add({ targets: this.paceText, scaleX: 1, scaleY: 1, duration: 250, ease: 'Back.out' });
+        }
+      }
     }
+    this.prevRank = currentRank;
   }
 
   /** 위로 떠오르며 사라지는 팝업 — 이벤트 발생 시에만 생성 (프레임당 아님) */
