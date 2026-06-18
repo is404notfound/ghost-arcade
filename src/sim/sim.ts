@@ -39,6 +39,10 @@ export interface SimState {
   distance: number; // 미터
   speed: number; // 현재 스크롤 속도 (렌더 참조용 캐시)
   nearMissCombo: number;
+  combo: number; // 장애물 통과 콤보 — 표시 전용, HP·거리·RNG에 영향 없음
+  feverFramesLeft: number; // 피버 잔여 프레임 (0 = 피버 없음)
+  feverGraceFramesLeft: number; // 피버 종료 후 충돌 유예 잔여 프레임 (0 = 유예 없음)
+  feverTimerFrames: number; // 콤보 유지 프레임 누적 — FEVER_INTERVAL_SEC*SIM_FPS 도달 시 발동
   invincibleFrames: number; // 남은 무적 프레임 (렌더 깜빡임 참조용)
   player: PlayerState;
   obstacles: ObstacleState[]; // 고정 크기 풀 — 배열/원소 재할당 금지
@@ -88,6 +92,10 @@ export class GameSim {
       distance: 0,
       speed: speedAtSec(0),
       nearMissCombo: 0,
+      combo: 0,
+      feverFramesLeft: 0,
+      feverGraceFramesLeft: 0,
+      feverTimerFrames: 0,
       invincibleFrames: 0,
       player: { y: 0, vy: 0, jumpsUsed: 0 },
       obstacles,
@@ -112,19 +120,33 @@ export class GameSim {
     s.events = 0;
 
     const t = s.frame * C.DT;
-    s.speed = speedAtSec(t);
+    // 피버 중: 기본 속도에 배속 적용 (장애물 이동·거리 누적이 자동으로 배속됨)
+    s.speed = speedAtSec(t) * (s.feverFramesLeft > 0 ? C.FEVER_SPEED_MULT : 1);
 
-    // 1) 입력 소비 — 점프 (지상 1단 + 공중 1단)
-    while (this.pendingTaps > 0) {
-      this.pendingTaps--;
-      if (s.player.jumpsUsed < C.MAX_JUMPS) {
-        s.player.vy = C.JUMP_VEL;
-        s.player.jumpsUsed++;
-        s.events |= C.EV_JUMP;
+    // 1) 피버/유예 카운트다운
+    // 유예를 먼저 감소시켜 피버 종료 시 설정한 값이 이번 스텝에 바로 반영되게 한다
+    if (s.feverGraceFramesLeft > 0) s.feverGraceFramesLeft--;
+    if (s.feverFramesLeft > 0) {
+      s.feverFramesLeft--;
+      if (s.feverFramesLeft === 0) {
+        s.events |= C.EV_FEVER_END;
+        s.feverGraceFramesLeft = Math.round(C.FEVER_GRACE_SEC * C.SIM_FPS);
       }
     }
 
-    // 2) 플레이어 적분 + 착지
+    // 2) 입력 소비 — 점프 (피버 중: 무한 점프 + 탭마다 HP 회복, 평시: 지상 1단 + 공중 2단)
+    while (this.pendingTaps > 0) {
+      this.pendingTaps--;
+      const canJump = s.feverFramesLeft > 0 || s.player.jumpsUsed < C.MAX_JUMPS;
+      if (canJump) {
+        s.player.vy = C.JUMP_VEL;
+        s.player.jumpsUsed++;
+        s.events |= C.EV_JUMP;
+        if (s.feverFramesLeft > 0) this.heal(C.FEVER_TAP_HEAL);
+      }
+    }
+
+    // 3) 플레이어 적분 + 착지 + 천장 클램프
     s.player.vy -= C.GRAVITY * C.DT;
     s.player.y += s.player.vy * C.DT;
     if (s.player.y <= 0 && s.player.vy <= 0) {
@@ -133,15 +155,19 @@ export class GameSim {
       s.player.vy = 0;
       s.player.jumpsUsed = 0;
     }
+    if (s.player.y > C.PLAYER_Y_MAX) {
+      s.player.y = C.PLAYER_Y_MAX;
+      if (s.player.vy > 0) s.player.vy = 0;
+    }
 
-    // 3) 장애물 스폰 (간격은 매번 현재 난이도로 재계산)
+    // 4) 장애물 스폰 (간격은 매번 현재 난이도로 재계산)
     this.framesUntilSpawn--;
     if (this.framesUntilSpawn <= 0) {
       this.spawnObstacle(t);
       this.framesUntilSpawn = intervalFramesAtSec(t);
     }
 
-    // 4) 포션 스폰 예약 소화 (장애물과 장애물 사이 시점)
+    // 5) 포션 스폰 예약 소화 (장애물과 장애물 사이 시점)
     if (this.potionInFrames > 0) {
       this.potionInFrames--;
       if (this.potionInFrames === 0) {
@@ -150,7 +176,7 @@ export class GameSim {
       }
     }
 
-    // 5) 장애물/포션 이동 + 화면 밖 반환
+    // 6) 장애물/포션 이동 + 화면 밖 반환
     for (let i = 0; i < C.MAX_OBSTACLES; i++) {
       const o = s.obstacles[i]!;
       if (!o.active) continue;
@@ -164,7 +190,7 @@ export class GameSim {
       if (p.x < C.DESPAWN_X) p.active = false;
     }
 
-    // 6) 니어미스 평가 — 장애물이 플레이어를 '완전히 통과'한 첫 스텝에 1회
+    // 7) 니어미스 평가 — 장애물이 플레이어를 '완전히 통과'한 첫 스텝에 1회
     const playerLeft = C.PLAYER_X - C.PLAYER_W / 2;
     const airborne = s.player.y > 0;
     for (let i = 0; i < C.MAX_OBSTACLES; i++) {
@@ -172,6 +198,7 @@ export class GameSim {
       if (!o.active || o.scored) continue;
       if (o.x + C.OBS_W / 2 < playerLeft) {
         o.scored = true;
+        s.combo++; // 맞든 안 맞든 통과하면 콤보 축적 (HP·거리 영향 없음)
         if (airborne) {
           const gap = s.player.y - o.h; // 발끝과 윗면 간격
           if (gap >= 0 && gap <= C.NEAR_MISS_UNITS) {
@@ -186,9 +213,20 @@ export class GameSim {
       }
     }
 
-    // 7) 장애물 충돌 (무적 중이면 무시)
+    // 7b) 피버 타이머 — 피버 아님 + 콤보 살아있음 → 매 step 1씩 누적
+    // FEVER_INTERVAL_SEC 초 연속 유지 시 발동, 발동 후 타이머 0 리셋
+    if (s.feverFramesLeft <= 0 && s.combo > 0) {
+      s.feverTimerFrames++;
+      if (s.feverTimerFrames >= Math.round(C.FEVER_INTERVAL_SEC * C.SIM_FPS)) {
+        s.feverFramesLeft = Math.round(C.FEVER_SEC * C.SIM_FPS);
+        s.feverTimerFrames = 0;
+        s.events |= C.EV_FEVER_START;
+      }
+    }
+
+    // 8) 장애물 충돌 (무적 중 / 피버 중 / 유예 중이면 무시)
     if (s.invincibleFrames > 0) s.invincibleFrames--;
-    if (s.invincibleFrames === 0) {
+    if (s.invincibleFrames === 0 && s.feverFramesLeft <= 0 && s.feverGraceFramesLeft <= 0) {
       for (let i = 0; i < C.MAX_OBSTACLES; i++) {
         const o = s.obstacles[i]!;
         if (!o.active) continue;
@@ -197,12 +235,15 @@ export class GameSim {
           s.hp -= C.HIT_DAMAGE;
           s.invincibleFrames = Math.round((C.INVINCIBLE_MS / 1000) * C.SIM_FPS);
           s.events |= C.EV_HIT;
+          if (s.combo > 0) s.events |= C.EV_COMBO_BREAK; // 콤보가 있었을 때만
+          s.combo = 0;
+          s.feverTimerFrames = 0;
           break; // 한 스텝에 한 번만
         }
       }
     }
 
-    // 8) 포션 수집
+    // 9) 포션 수집
     for (let i = 0; i < C.MAX_POTIONS; i++) {
       const p = s.potions[i]!;
       if (!p.active) continue;
@@ -215,8 +256,8 @@ export class GameSim {
       }
     }
 
-    // 9) 체력 자연 감소 + 사망 판정 (충돌 데미지 포함 일괄)
-    s.hp -= C.HP_DRAIN_PER_SEC * C.DT;
+    // 10) 체력 자연 감소 + 사망 판정 (충돌 데미지 포함 일괄) — 피버 중엔 드레인 정지
+    if (s.feverFramesLeft <= 0) s.hp -= C.HP_DRAIN_PER_SEC * C.DT;
     if (s.hp <= 0) {
       s.hp = 0;
       s.gameOver = true;
@@ -225,7 +266,7 @@ export class GameSim {
       return;
     }
 
-    // 10) 거리 누적
+    // 11) 거리 누적
     s.distance += (s.speed * C.DT) / C.UNITS_PER_METER;
 
     s.frame++;

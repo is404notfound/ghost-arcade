@@ -52,6 +52,37 @@ describe('GhostDriver — lockstep 재생', () => {
     expect(JSON.stringify(ghost.sim.state)).toBe(frozen);
   });
 
+  test('멀티 고스트: 서로 다른 로그 N개를 한 루프에서 lockstep 재생해도 각각 replay()와 일치', () => {
+    const seed = 20260613;
+    // 같은 시드(같은 코스), 다른 탭 패턴 → 서로 다른 판 3개
+    const runs = [3, 7, 13].map((mod) => {
+      const sim = new GameSim(seed);
+      const log = createInputLog(seed);
+      let guard = 0;
+      while (!sim.state.gameOver && guard++ < 20000) {
+        if ((sim.state.frame * 7919) % 89 < mod % 5 + 1 && sim.state.frame % mod === 0) {
+          recordTap(log, sim.state.frame);
+          sim.queueTap();
+        }
+        sim.step();
+      }
+      return { log, finalFrame: sim.state.frame };
+    });
+
+    const ghosts = runs.map((r) => new GhostDriver(r.log));
+    const maxFrames = Math.max(...runs.map((r) => r.finalFrame));
+    // 라이브 루프 흉내: 매 스텝 모든 고스트를 한 번씩 전진
+    for (let i = 0; i < maxFrames; i++) {
+      for (const g of ghosts) g.step();
+    }
+
+    runs.forEach((r, i) => {
+      const batch = replay(r.log, r.finalFrame);
+      expect(JSON.stringify(ghosts[i]!.sim.state)).toBe(JSON.stringify(batch.state));
+      expect(ghosts[i]!.finished).toBe(true); // 전부 자기 죽음 지점에서 멈춤
+    });
+  });
+
   test('라이브 sim과 같은 시드면 장애물 코스가 프레임 단위로 일치한다', () => {
     const { log } = playAndRecord(555);
     const live = new GameSim(555);

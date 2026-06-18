@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { ghostKey, saveIfBest, loadBest, type KVStore } from '../ghostStore';
+import { ghostKey, saveRun, loadTopRuns, GHOST_TOP_N, type KVStore } from '../ghostStore';
 import { createInputLog, recordTap, SIM_VERSION } from '../sim/inputLog';
 
 function memStore(): KVStore & { map: Map<string, string> } {
@@ -17,70 +17,80 @@ function makeLog(seed: number, taps: number[]) {
   return log;
 }
 
-describe('ghostStore — 그날 시드의 최고 기록만 보관', () => {
+describe('ghostStore — 그날 시드의 상위 N개 기록 보관', () => {
   test('키에 시뮬 버전과 시드가 들어간다', () => {
     expect(ghostKey(123)).toBe(`ga:ghost:v${SIM_VERSION}:123`);
   });
 
-  test('첫 기록은 무조건 저장된다', () => {
+  test('첫 기록은 저장되고 목록에 나온다', () => {
     const store = memStore();
-    const saved = saveIfBest(store, 7, makeLog(7, [10, 30]), 120);
-    expect(saved).toBe(true);
-    const best = loadBest(store, 7);
-    expect(best).not.toBeNull();
-    expect(best!.distance).toBe(120);
-    expect(best!.log.events).toHaveLength(2);
+    expect(saveRun(store, 7, makeLog(7, [10]), 120)).toBe(true);
+    const runs = loadTopRuns(store, 7);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.distance).toBe(120);
   });
 
-  test('더 짧은 거리는 기존 기록을 덮어쓰지 않는다', () => {
+  test('기록들은 거리 내림차순으로 정렬된다', () => {
     const store = memStore();
-    saveIfBest(store, 7, makeLog(7, [10]), 200);
-    const saved = saveIfBest(store, 7, makeLog(7, [99]), 150);
-    expect(saved).toBe(false);
-    expect(loadBest(store, 7)!.distance).toBe(200);
+    saveRun(store, 7, makeLog(7, [1]), 100);
+    saveRun(store, 7, makeLog(7, [2]), 300);
+    saveRun(store, 7, makeLog(7, [3]), 200);
+    expect(loadTopRuns(store, 7).map((r) => r.distance)).toEqual([300, 200, 100]);
   });
 
-  test('더 긴 거리는 덮어쓴다', () => {
+  test('상위 N개만 보관하고 최하위가 탈락한다', () => {
     const store = memStore();
-    saveIfBest(store, 7, makeLog(7, [10]), 200);
-    const saved = saveIfBest(store, 7, makeLog(7, [99]), 320);
-    expect(saved).toBe(true);
-    const best = loadBest(store, 7)!;
-    expect(best.distance).toBe(320);
-    expect(best.log.events[0]!.frame).toBe(99);
+    for (let i = 1; i <= GHOST_TOP_N + 2; i++) {
+      saveRun(store, 7, makeLog(7, [i]), i * 100); // 100..700
+    }
+    const runs = loadTopRuns(store, 7);
+    expect(runs).toHaveLength(GHOST_TOP_N);
+    expect(runs[0]!.distance).toBe((GHOST_TOP_N + 2) * 100); // 최고 유지
+    expect(runs[runs.length - 1]!.distance).toBe(300); // 100, 200 탈락
   });
 
-  test('시드가 다르면 별개 슬롯이다 (어제 기록이 오늘 코스에 안 나옴)', () => {
+  test('top-N 미달 기록은 저장되지 않고 false', () => {
     const store = memStore();
-    saveIfBest(store, 7, makeLog(7, [10]), 200);
-    expect(loadBest(store, 8)).toBeNull();
+    for (let i = 1; i <= GHOST_TOP_N; i++) {
+      saveRun(store, 7, makeLog(7, [i]), 1000 + i);
+    }
+    expect(saveRun(store, 7, makeLog(7, [99]), 50)).toBe(false);
+    expect(loadTopRuns(store, 7)).toHaveLength(GHOST_TOP_N);
+    expect(loadTopRuns(store, 7).every((r) => r.distance >= 1000)).toBe(true);
   });
 
-  test('저장된 로그의 시드가 키와 어긋나면 무시한다', () => {
+  test('시드가 다르면 별개 슬롯이다', () => {
     const store = memStore();
-    saveIfBest(store, 7, makeLog(7, [10]), 200);
-    // 손상 시나리오: 7번 슬롯에 시드 9짜리 로그가 들어앉음
-    // (로그는 중첩 직렬화돼 있어 내부 키가 \"seed\" 형태)
+    saveRun(store, 7, makeLog(7, [10]), 200);
+    expect(loadTopRuns(store, 8)).toEqual([]);
+  });
+
+  test('손상된 레코드는 개별 필터링되고 나머지는 살아남는다', () => {
+    const store = memStore();
+    saveRun(store, 7, makeLog(7, [10]), 200);
+    saveRun(store, 7, makeLog(7, [20]), 300);
+    // 한 레코드의 내부 로그 시드만 변조 (중첩 직렬화라 \"seed\" 형태)
     const tampered = store.map.get(ghostKey(7))!.replace('\\"seed\\":7', '\\"seed\\":9');
     store.map.set(ghostKey(7), tampered);
-    expect(loadBest(store, 7)).toBeNull();
+    const runs = loadTopRuns(store, 7);
+    expect(runs).toHaveLength(1); // 변조된 1건만 빠짐
   });
 
-  test('버전이 다른 저장본은 무시한다 (밸런스 패치 후 고스트 어긋남 방지)', () => {
+  test('버전이 다른 저장본은 무시한다', () => {
     const store = memStore();
-    saveIfBest(store, 7, makeLog(7, [10]), 200);
-    const tampered = store.map.get(ghostKey(7))!.replace(SIM_VERSION, '0.0.0-old');
+    saveRun(store, 7, makeLog(7, [10]), 200);
+    const tampered = store.map.get(ghostKey(7))!.replaceAll(SIM_VERSION, '0.0.0-old');
     store.map.set(ghostKey(7), tampered);
-    expect(loadBest(store, 7)).toBeNull();
+    expect(loadTopRuns(store, 7)).toEqual([]);
   });
 
-  test('손상된 JSON은 무시한다', () => {
+  test('손상된 JSON은 빈 목록으로 처리한다', () => {
     const store = memStore();
     store.map.set(ghostKey(7), '{broken');
-    expect(loadBest(store, 7)).toBeNull();
+    expect(loadTopRuns(store, 7)).toEqual([]);
   });
 
-  test('storage가 예외를 던져도 (용량 초과 등) 게임은 죽지 않는다', () => {
+  test('storage가 예외를 던져도 게임은 죽지 않는다', () => {
     const store: KVStore = {
       getItem: () => {
         throw new Error('SecurityError');
@@ -89,7 +99,7 @@ describe('ghostStore — 그날 시드의 최고 기록만 보관', () => {
         throw new Error('QuotaExceededError');
       },
     };
-    expect(() => saveIfBest(store, 7, makeLog(7, [10]), 100)).not.toThrow();
-    expect(loadBest(store, 7)).toBeNull();
+    expect(() => saveRun(store, 7, makeLog(7, [10]), 100)).not.toThrow();
+    expect(loadTopRuns(store, 7)).toEqual([]);
   });
 });

@@ -25,23 +25,23 @@ describe('GameSim — 플레이어 물리', () => {
     expect(sim.state.player.y).toBeGreaterThan(0);
   });
 
-  test('공중에서 한 번 더 점프할 수 있다 (2단 점프)', () => {
+  test('공중에서 두 번 더 점프할 수 있다 (총 3단)', () => {
     const sim = new GameSim(1);
-    sim.queueTap();
-    sim.step();
-    stepN(sim, 20); // 상승 중
-    sim.queueTap();
-    sim.step();
-    // 2단 점프 직후 속도가 점프 초속으로 재설정됨
-    expect(sim.state.player.vy).toBeCloseTo(C.JUMP_VEL - C.GRAVITY * C.DT, 5);
+    for (let j = 0; j < 3; j++) {
+      sim.queueTap();
+      sim.step();
+      // 점프 직후 속도가 점프 초속으로 재설정됨 (한 스텝 중력 적분 포함)
+      expect(sim.state.player.vy).toBeCloseTo(C.JUMP_VEL - C.GRAVITY * C.DT, 5);
+      stepN(sim, 5); // 공중 유지
+    }
   });
 
-  test('3번째 점프는 무시된다', () => {
+  test('MAX_JUMPS+1번째 점프는 무시된다', () => {
     const sim = new GameSim(1);
-    sim.queueTap();
-    sim.step();
-    sim.queueTap();
-    sim.step(); // 2단 소진
+    for (let j = 0; j < C.MAX_JUMPS; j++) {
+      sim.queueTap();
+      sim.step();
+    }
     const vyBefore = sim.state.player.vy;
     sim.queueTap();
     sim.step();

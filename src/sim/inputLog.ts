@@ -5,7 +5,15 @@
 // SIM_VERSION은 시뮬 로직이 바뀔 때마다 올린다. 버전이 다른 로그는 재생을
 // 거부한다 — 밸런스 패치 후 옛 로그를 재생하면 다른 결과가 나오기 때문
 // (TODOS의 "밸런스 패치 무효화" 결정과 직결).
-export const SIM_VERSION = '0.1.0';
+// 0.2.0: MAX_JUMPS 2→3 (점프 역학 변경 = 옛 로그 재생 결과가 달라짐 → 버전 격리)
+// 0.3.0: 피버 타임 — 피버 중 무한 점프, 옛 로그의 '막혔던 탭'이 이제 처리될 수 있어 궤적이 달라짐
+// 0.4.0: 피버 중 HP 드레인 동결 + feverLevel 누적 발동 (combo 미소비)
+// 0.5.0: 피버 중 3배속 (HP 드레인 복원) — 속도 변화로 궤적이 달라짐
+// 0.6.0: 점프 천장 클램프 + 피버 중 충돌 무적 — y 궤적 및 HP 변화가 달라짐
+// 0.7.0: 피버 중 자연 드레인 정지 + 탭마다 HP 회복 (FEVER_TAP_HEAL) — HP 궤적이 달라짐
+// 0.8.0: 피버 종료 후 2초 충돌 유예 (feverGraceFramesLeft) — HP 궤적이 달라짐
+// 0.9.0: 피버 시간 기반 발동(7초 콤보 유지) — feverLevel 제거, feverTimerFrames 추가
+export const SIM_VERSION = '0.9.0';
 
 export interface InputEvent {
   frame: number;
@@ -16,6 +24,17 @@ export interface InputLog {
   version: string;
   seed: number;
   events: InputEvent[];
+}
+
+/**
+ * 버전 불일치 전용 에러 — "밸런스 패치 후 옛 로그 거부"는 정상 동작이므로,
+ * 저장소 손상 같은 진짜 오류와 구분해 Sentry 노이즈에서 제외하기 위한 타입.
+ */
+export class SimVersionMismatchError extends Error {
+  constructor(public readonly found: unknown) {
+    super(`입력 로그 version 불일치: ${String(found)} (현재 ${SIM_VERSION})`);
+    this.name = 'SimVersionMismatchError';
+  }
 }
 
 export function createInputLog(seed: number): InputLog {
@@ -41,7 +60,7 @@ export function parseLog(raw: string): InputLog {
   }
   const obj = data as Record<string, unknown>;
   if (obj.version !== SIM_VERSION) {
-    throw new Error(`입력 로그 version 불일치: ${String(obj.version)} (현재 ${SIM_VERSION})`);
+    throw new SimVersionMismatchError(obj.version);
   }
   if (typeof obj.seed !== 'number' || !Array.isArray(obj.events)) {
     throw new Error('입력 로그 형식 오류: seed/events 누락');

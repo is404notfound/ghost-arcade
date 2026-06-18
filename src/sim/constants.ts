@@ -11,7 +11,7 @@ export const PLAYER_W = 40;
 export const PLAYER_H = 48;
 export const JUMP_VEL = 680;
 export const GRAVITY = 1400;
-export const MAX_JUMPS = 2;
+export const MAX_JUMPS = 3; // 지상 1단 + 공중 2단 (v0.2.0에서 2→3)
 
 // 월드
 export const WORLD_WIDTH = 800;
@@ -61,3 +61,24 @@ export const EV_HIT = 2;
 export const EV_NEAR_MISS = 4;
 export const EV_POTION = 8;
 export const EV_GAME_OVER = 16;
+export const EV_COMBO_BREAK = 32; // combo > 0 인 상태에서 피격 시 발화
+export const EV_FEVER_START = 64; // 피버 발동 순간
+export const EV_FEVER_END = 128; // 피버 만료 순간
+
+// 피버 — 일정 콤보 달성 시 무한 점프 + 3배속
+export const FEVER_COMBO = 10; // 이 콤보에 도달하면 피버 발동
+export const FEVER_SEC = 4; // 피버 지속 시간 (초)
+export const FEVER_SPEED_MULT = 3; // 피버 중 스크롤 배속
+
+// 플레이어 y 천장 — GROUND_Y_PX(432) - PLAYER_H(48) = 384에서 8px 여백 적용
+// 화면 상단 HUD 아래까지만 올라갈 수 있도록 제한
+export const PLAYER_Y_MAX = 376;
+
+// 피버 탭 회복 — 피버 중 탭(점프)할 때마다 회복되는 HP량
+export const FEVER_TAP_HEAL = 3;
+
+// 피버 종료 후 충돌 유예 — 피버가 끝난 직후 이 시간(초)만큼 장애물 충돌 면역 유지
+export const FEVER_GRACE_SEC = 2;
+
+// 피버 시간 기반 발동 — 콤보가 이 시간(초) 이상 끊기지 않으면 피버 발동
+export const FEVER_INTERVAL_SEC = 7;
