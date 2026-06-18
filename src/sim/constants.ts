@@ -67,7 +67,7 @@ export const EV_FEVER_END = 128; // 피버 만료 순간
 
 // 피버 — 일정 콤보 달성 시 무한 점프 + 3배속
 export const FEVER_COMBO = 10; // 이 콤보에 도달하면 피버 발동
-export const FEVER_SEC = 4; // 피버 지속 시간 (초)
+export const FEVER_SEC = 3; // 피버 지속 시간 (초)
 export const FEVER_SPEED_MULT = 3; // 피버 중 스크롤 배속
 
 // 플레이어 y 천장 — GROUND_Y_PX(432) - PLAYER_H(48) = 384에서 8px 여백 적용
@@ -81,4 +81,4 @@ export const FEVER_TAP_HEAL = 3;
 export const FEVER_GRACE_SEC = 2;
 
 // 피버 시간 기반 발동 — 콤보가 이 시간(초) 이상 끊기지 않으면 피버 발동
-export const FEVER_INTERVAL_SEC = 7;
+export const FEVER_INTERVAL_SEC = 10;

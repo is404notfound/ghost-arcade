@@ -13,7 +13,8 @@
 // 0.7.0: 피버 중 자연 드레인 정지 + 탭마다 HP 회복 (FEVER_TAP_HEAL) — HP 궤적이 달라짐
 // 0.8.0: 피버 종료 후 2초 충돌 유예 (feverGraceFramesLeft) — HP 궤적이 달라짐
 // 0.9.0: 피버 시간 기반 발동(7초 콤보 유지) — feverLevel 제거, feverTimerFrames 추가
-export const SIM_VERSION = '0.9.0';
+// 1.0.0: 피버 발동 간격 7→10초, 지속 4→3초 — 피버 타이밍 궤적 변경
+export const SIM_VERSION = '1.0.0';
 
 export interface InputEvent {
   frame: number;
