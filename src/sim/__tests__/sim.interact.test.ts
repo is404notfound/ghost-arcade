@@ -84,39 +84,6 @@ describe('GameSim — 체력포션', () => {
   });
 });
 
-describe('GameSim — 니어미스', () => {
-  function arrangeNearMiss(sim: GameSim, gapAboveTop: number): void {
-    // 장애물이 플레이어를 '막 완전히 통과'하기 직전 상태를 만든다
-    const obs = sim.state.obstacles[0]!;
-    obs.active = true;
-    obs.h = 60;
-    obs.scored = false;
-    obs.x = C.PLAYER_X - (C.PLAYER_W + C.OBS_W) / 2 + 2; // 한 스텝이면 완전 통과
-    sim.state.player.y = obs.h + gapAboveTop;
-    sim.state.player.vy = 300; // 상승 중 (공중 유지)
-    sim.state.player.jumpsUsed = 1;
-  }
-
-  test('아슬아슬하게 넘으면 콤보가 오르고 체력 보너스를 받는다', () => {
-    const sim = new GameSim(1);
-    sim.state.hp = 50;
-    arrangeNearMiss(sim, 20); // 윗면에서 20 — NEAR_MISS_UNITS(52) 이내
-    sim.step();
-    expect(sim.state.events & C.EV_NEAR_MISS).toBeTruthy();
-    expect(sim.state.nearMissCombo).toBe(1);
-    expect(sim.state.hp).toBeCloseTo(50 + C.NEAR_MISS_HEAL - C.HP_DRAIN_PER_SEC * C.DT, 3);
-  });
-
-  test('넉넉하게 넘으면 콤보가 리셋된다', () => {
-    const sim = new GameSim(1);
-    sim.state.nearMissCombo = 3;
-    arrangeNearMiss(sim, C.NEAR_MISS_UNITS + 40); // 한참 위로 통과
-    sim.step();
-    expect(sim.state.events & C.EV_NEAR_MISS).toBeFalsy();
-    expect(sim.state.nearMissCombo).toBe(0);
-  });
-});
-
 describe('GameSim — 결정론과 리플레이', () => {
   test('같은 시드 + 같은 입력 = 완전히 같은 상태 (2000스텝)', () => {
     const a = new GameSim(424242);

@@ -20,12 +20,10 @@ import { DESIGN_W, DESIGN_H, GROUND_Y_PX, toScreenX, toScreenY, boxCenterScreenY
 
 const COLOR_PLAYER = 0x64ffda;
 const COLOR_GHOST = 0xb39ddb; // 고스트 — 보라 계열 반투명
-const COLOR_BOSS_GHOST = 0xffb347; // 최고 기록 고스트 — 주황빛 "보스"
 const COLOR_OBSTACLE = 0xff6b6b;
 const COLOR_POTION = 0x4dabf7;
 const COLOR_GROUND = 0x8892b0;
-const GHOST_ALPHA = 0.22; // 15기 겹침 완화
-const BOSS_GHOST_ALPHA = 0.55; // 보스만 조금 더 뚜렷하게
+const GHOST_ALPHA = 0.22;
 const DEAD_PLAYER_ALPHA = 0.25; // 사망 후 구경 모드에서 내 캐릭터 디밍
 const SPECTATE_MAX_SEC = 3; // 사망 후 구경 최대 시간
 
@@ -66,7 +64,6 @@ export class GameScene extends Phaser.Scene {
 
   private hpFill!: Phaser.GameObjects.Rectangle;
   private distText!: Phaser.GameObjects.Text;
-  private comboText!: Phaser.GameObjects.Text;
   private gameOverPanel!: Phaser.GameObjects.Container;
   private gameOverDistText!: Phaser.GameObjects.Text;
   private comparisonText!: Phaser.GameObjects.Text; // 신기록/뒤짐 비교 한 줄
@@ -84,19 +81,17 @@ export class GameScene extends Phaser.Scene {
     this.add
       .rectangle(DESIGN_W / 2, (GROUND_Y_PX + DESIGN_H) / 2, DESIGN_W, DESIGN_H - GROUND_Y_PX, COLOR_GROUND);
 
-    // 고스트 풀 (플레이어보다 먼저 그려서 뒤에 깔림).
-    // 인덱스 0 = 최고 기록 고스트 → 보스 색으로 강조
+    // 고스트 풀 (플레이어보다 먼저 그려서 뒤에 깔림)
     for (let i = 0; i < GHOST_TOP_N; i++) {
-      const isBoss = i === 0;
       const g = this.add
         .rectangle(
           toScreenX(C.PLAYER_X),
           boxCenterScreenY(0, C.PLAYER_H),
           C.PLAYER_W,
           C.PLAYER_H,
-          isBoss ? COLOR_BOSS_GHOST : COLOR_GHOST,
+          COLOR_GHOST,
         )
-        .setAlpha(isBoss ? BOSS_GHOST_ALPHA : GHOST_ALPHA)
+        .setAlpha(GHOST_ALPHA)
         .setVisible(false);
       this.ghostRects.push(g);
     }
@@ -168,10 +163,6 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setStroke('#1a1a2e', 4)
       .setVisible(false);
-    // nearMiss 콤보는 작게 유지 — 중앙 큰 콤보가 메인
-    this.comboText = this.add
-      .text(16, 16, '', { fontSize: '14px', color: '#ffd166' })
-      .setOrigin(0, 0);
     // 콤보 아래: 생존 기반 제침 카운터 (고스트 없으면 숨김)
     this.overtakeHudText = this.add
       .text(16, 34, '', { fontSize: '15px', color: '#b39ddb', fontStyle: 'bold' })
@@ -338,10 +329,6 @@ export class GameScene extends Phaser.Scene {
       this.cameras.main.shake(90, 0.005);
       this.popup('BREAK', '#ff4757');
     }
-    if (ev & C.EV_NEAR_MISS) {
-      this.cameras.main.shake(90, 0.006);
-      this.popup(`NICE! +${C.NEAR_MISS_HEAL}HP`, '#ffd166');
-    }
     if (ev & C.EV_POTION) {
       this.popup('+HP', '#4dabf7');
     }
@@ -470,7 +457,6 @@ export class GameScene extends Phaser.Scene {
     this.hpFill.setFillStyle(ratio > 0.5 ? 0x2ecc71 : ratio > 0.25 ? 0xf1c40f : 0xff4757);
     // 거리 HUD: 구경 모드면 살아있는 유령 기준으로 계속 오른다 (격차 시각화)
     this.distText.setText(`${Math.floor(world.distance)}M`);
-    this.comboText.setText(s.nearMissCombo > 0 ? `NEAR x${s.nearMissCombo}` : '');
 
     // 중앙 큰 콤보 — 2 이상일 때, 게임오버/구경 중엔 숨김.
     const showCombo = s.combo >= 2 && !s.gameOver;

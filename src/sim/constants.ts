@@ -44,10 +44,6 @@ export const POTION_R = 13;
 export const POTION_Y_MIN = 70; // 포션 중심 높이 범위
 export const POTION_Y_MAX = 230;
 
-// 니어미스
-export const NEAR_MISS_UNITS = 52; // 발끝-장애물 윗면 간격 허용치
-export const NEAR_MISS_HEAL = 5;
-
 // 거리 점수
 export const UNITS_PER_METER = 30;
 
@@ -58,7 +54,6 @@ export const MAX_POTIONS = 8;
 // step() 이벤트 비트마스크 — 렌더/사운드 트리거용 (할당 없는 신호 전달)
 export const EV_JUMP = 1;
 export const EV_HIT = 2;
-export const EV_NEAR_MISS = 4;
 export const EV_POTION = 8;
 export const EV_GAME_OVER = 16;
 export const EV_COMBO_BREAK = 32; // combo > 0 인 상태에서 피격 시 발화

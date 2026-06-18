@@ -64,7 +64,6 @@ export interface SimState {
   hp: number;
   distance: number; // 미터
   speed: number; // 현재 스크롤 속도 (렌더 참조용 캐시)
-  nearMissCombo: number;
   combo: number; // 장애물 통과 콤보 — 표시 전용, HP·거리·RNG에 영향 없음
   feverFramesLeft: number; // 피버 잔여 프레임 (0 = 피버 없음)
   feverGraceFramesLeft: number; // 피버 종료 후 충돌 유예 잔여 프레임 (0 = 유예 없음)
@@ -120,7 +119,6 @@ export class GameSim {
       hp: C.HP_MAX,
       distance: 0,
       speed: speedAtSec(0),
-      nearMissCombo: 0,
       combo: 0,
       feverFramesLeft: 0,
       feverGraceFramesLeft: 0,
@@ -219,26 +217,14 @@ export class GameSim {
       if (p.x < C.DESPAWN_X) p.active = false;
     }
 
-    // 7) 니어미스 평가 — 장애물이 플레이어를 '완전히 통과'한 첫 스텝에 1회
+    // 7) 장애물 통과 평가 — 장애물이 플레이어를 '완전히 통과'한 첫 스텝에 1회
     const playerLeft = C.PLAYER_X - C.PLAYER_W / 2;
-    const airborne = s.player.y > 0;
     for (let i = 0; i < C.MAX_OBSTACLES; i++) {
       const o = s.obstacles[i]!;
       if (!o.active || o.scored) continue;
       if (o.x + o.w / 2 < playerLeft) {
         o.scored = true;
-        s.combo++; // 맞든 안 맞든 통과하면 콤보 축적 (HP·거리 영향 없음)
-        if (airborne) {
-          const gap = s.player.y - o.h; // 발끝과 윗면 간격
-          if (gap >= 0 && gap <= C.NEAR_MISS_UNITS) {
-            s.nearMissCombo++;
-            this.heal(C.NEAR_MISS_HEAL);
-            s.events |= C.EV_NEAR_MISS;
-          } else {
-            // 넉넉히 넘으면 콤보 끊김 — 아슬아슬해야 유지된다
-            s.nearMissCombo = 0;
-          }
-        }
+        s.combo++; // 통과하면 콤보 축적 (HP·거리 영향 없음)
       }
     }
 
