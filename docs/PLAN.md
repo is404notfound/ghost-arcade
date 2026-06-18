@@ -5,6 +5,29 @@ Branch: main
 기반 문서: docs/DESIGN.md (APPROVED)
 Status: REVIEWED
 
+## 진행 현황 (2026-06-18 갱신)
+
+- **Phase 0 ✅** — canvas-tap 승자 확정 (외부 n=3 자발적 재시도, OBSERVATIONS.md).
+- **Phase 1 ✅** — T3 결정론 시뮬 코어 / T4 골든 리플레이 / T5 Phaser 렌더 완료.
+- **Phase 2 (일부) ✅** — 로컬 셀프 고스트 MVP: 데일리 시드, 멀티 셀프 고스트(상위 N),
+  콤보·피버, 경쟁 HUD(실시간+게임오버), 구경 모드. SIM_VERSION 진행 중(1.x).
+- **검증 ✅** — Go/No-Go 통과(한 명 8연속 자발 플레이). 경쟁 HUD+피버가 초기 "시들함" 해소.
+- **배포 ✅** — Vercel(정적). Sentry 연동 진행 중. PostHog(T6) 마무리 예정.
+- **진행 중** — 백엔드 전 sim 비율 굳히기(WORLD_WIDTH 와이드화 + 캐릭터/장애물 크기).
+- **남은 것** — T6 PostHog, T7 정책, T8 E2E. **다음 대형 작업: 백엔드 + 크로스유저 고스트.**
+
+### 다음 대형 설계: 백엔드 + 크로스유저 고스트 (별도 /plan-eng-review 권장)
+원래 plan에서 상세 설계가 미뤄진 새 서브시스템. 들어갈 때 따로 설계:
+- 스토리지/API (Vercel 서버리스 + DB/KV — 플랫폼 미제공, 자체 구축)
+- 고스트 선택 로직 + **콜드스타트**(기본/봇 고스트로 첫 유저도 경쟁 상대 확보)
+- 리더보드(데일리 시드별) + **사망 지점 분포 그래프**(저장된 distance 집계, TODOS 참고)
+- **로그/레코드 스키마 슬롯 예약**: `characterId`/`nickname`/`modifiers`(부스터) — 가법적 확장용
+- 치팅: 이상치 필터링 유지(D11). 부스터/경쟁 도입으로 재검토 여지.
+
+### 기능 백로그
+캐릭터 선택·스탯, 부스터, 닉네임, 일시정지/다시하기, 에셋, 사망분포, iOS 결정론 검증,
+WebView 통합 등은 **TODOS.md**에 What/Why/When/forward-design으로 정리됨. (PLAN엔 미포함)
+
 ## 확정된 결정 (eng review D1-D11)
 
 | # | 결정 | 선택 |
