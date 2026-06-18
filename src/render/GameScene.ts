@@ -218,6 +218,14 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
 
     this.input.on('pointerdown', this.onTap, this);
+    // Space·ArrowUp도 같은 onTap 경로 — e.repeat는 꾹 누름 자동반복이라 한 번만 처리
+    this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
+      if (event.repeat) return;
+      if (event.key === ' ' || event.key === 'ArrowUp') {
+        event.preventDefault(); // 스페이스 스크롤 방지
+        this.onTap();
+      }
+    });
   }
 
   /** 새 판 시작 — 데일리 시드(오늘의 코스) + 저장된 최고 기록 유령 로드 */
@@ -437,7 +445,7 @@ export class GameScene extends Phaser.Scene {
       const r = this.obstacleRects[i]!;
       r.setVisible(o.active);
       if (o.active) {
-        r.setDisplaySize(C.OBS_W, o.h);
+        r.setDisplaySize(o.w, o.h);
         r.setPosition(toScreenX(o.x), boxCenterScreenY(0, o.h));
       }
     }

@@ -6,10 +6,10 @@ import * as C from '../constants';
  * 장애물이 한 스텝 뒤에 scored=true 되도록 배치한다.
  * 충돌이 일어나지 않는 위치 (playerLeft 바로 직전).
  *
- * scored 조건: o.x + OBS_W/2 < PLAYER_X - PLAYER_W/2
- *   → o.x < 110 (한 스텝 이동량 ≈ 4.8 이므로 초기값 112 로 충분)
- * 충돌 조건: |o.x - PLAYER_X| < (PLAYER_W + OBS_W)/2 = 34 (사후 이동값 ≈ 107)
- *   → 사후 107 기준 |107-144| = 37 > 34 → 충돌 없음 ✓
+ * scored 조건: o.x + OBS_W/2 < PLAYER_X - PLAYER_W/2 (= 158)
+ *   → o.x < 142 (한 스텝 이동량 ≈ 4.8 이므로 초기값 ≈147)
+ * 충돌 조건: |o.x - PLAYER_X| < (PLAYER_W + OBS_W)/2 = 31 (사후 이동값 ≈ 139)
+ *   → 사후 139 기준 |139-173| = 34 > 31 → 충돌 없음 ✓
  */
 function arrangeScoring(sim: GameSim, playerY = 200): void {
   sim.state.player.y = playerY;

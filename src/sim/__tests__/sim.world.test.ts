@@ -40,7 +40,8 @@ describe('GameSim — 장애물', () => {
     const sim = immortal(new GameSim(1));
     stepN(sim, 91); // 첫 간격(1500ms = 90프레임) 직후
     const active = sim.state.obstacles.filter((o) => o.active);
-    expect(active).toHaveLength(1);
+    // 패턴 라이브러리 도입 후 첫 스폰이 1~3개일 수 있음 (BURST=2, STAIRCASE=3)
+    expect(active.length).toBeGreaterThanOrEqual(1);
     const obs = active[0]!;
     // 스폰 직후 1-2스텝 이동분만 허용 — SPAWN_X 부근에서 등장해야 함
     expect(obs.x).toBeGreaterThan(C.SPAWN_X - 3 * C.SPEED_BASE * C.DT);

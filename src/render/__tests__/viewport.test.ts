@@ -22,8 +22,8 @@ describe('viewport — 시뮬 좌표 → 화면 픽셀 매핑', () => {
   test('박스 중심 변환: 바닥 기준 박스의 화면 중심 y', () => {
     // 지면 위 높이 h=60 장애물: 시뮬 중심 = 30 → 화면 = GROUND_Y_PX - 30
     expect(boxCenterScreenY(0, 60)).toBe(GROUND_Y_PX - 30);
-    // 점프 중 플레이어: 발 y=100, 키 48 → 중심 124
-    expect(boxCenterScreenY(100, C.PLAYER_H)).toBe(GROUND_Y_PX - 124);
+    // 점프 중 플레이어: 발 y=100, 키=PLAYER_H → 중심 = 100 + PLAYER_H/2
+    expect(boxCenterScreenY(100, C.PLAYER_H)).toBe(GROUND_Y_PX - (100 + C.PLAYER_H / 2));
   });
 
   test('최대 점프 높이가 화면 안에 들어온다 (잘림 방지)', () => {

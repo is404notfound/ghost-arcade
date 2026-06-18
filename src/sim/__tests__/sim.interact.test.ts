@@ -160,9 +160,9 @@ describe('GameSim — 결정론과 리플레이', () => {
         b.step();
       }
     };
-    stepBoth(200);
-    const hA = a.state.obstacles.filter((o) => o.active).map((o) => o.h);
-    const hB = b.state.obstacles.filter((o) => o.active).map((o) => o.h);
-    expect(hA).not.toEqual(hB);
+    // 500프레임(~6스폰) 실행 — 다른 시드는 거리·콤보·장애물 위치 등이 달라짐
+    stepBoth(500);
+    // 전체 state 비교: 패턴 우연 일치를 피하기 위해 장애물 높이만이 아닌 전체로 비교
+    expect(JSON.stringify(a.state)).not.toBe(JSON.stringify(b.state));
   });
 });

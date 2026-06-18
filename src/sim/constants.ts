@@ -5,23 +5,23 @@
 export const SIM_FPS = 60;
 export const DT = 1 / SIM_FPS; // 고정 스텝 (초)
 
-// 플레이어 (x 고정 — 월드가 왼쪽으로 흐른다)
-export const PLAYER_X = 144;
-export const PLAYER_W = 40;
-export const PLAYER_H = 48;
+// 플레이어 (x 고정 — 월드가 왼쪽으로 흐른다, PLAYER_X ≈ WORLD_WIDTH × 0.18)
+export const PLAYER_X = 173;
+export const PLAYER_W = 30; // 날렵한 히트박스 (위→30)
+export const PLAYER_H = 42; // (위→42)
 export const JUMP_VEL = 680;
 export const GRAVITY = 1400;
 export const MAX_JUMPS = 3; // 지상 1단 + 공중 2단 (v0.2.0에서 2→3)
 
-// 월드
-export const WORLD_WIDTH = 800;
+// 월드 (2:1 비율 — DESIGN_H=480 기준 WORLD_WIDTH=960 → 폰 가로를 더 채움)
+export const WORLD_WIDTH = 960;
 export const SPAWN_X = WORLD_WIDTH + 30; // 화면 오른쪽 바깥
 export const DESPAWN_X = -60; // 이보다 왼쪽이면 풀로 반환
 
 // 장애물 + 에스컬레이션
-export const OBS_W = 28;
-export const OBS_H_MIN = 40;
-export const OBS_H_MAX = 90;
+export const OBS_W = 32;     // 위→32 (플레이어보다 넓어 위협감↑)
+export const OBS_H_MIN = 50; // 위→50
+export const OBS_H_MAX = 120; // 위→120 (싱글점프 피크 165 이하, 충분히 위협적)
 export const SPEED_BASE = 290; // 유닛/초
 export const SPEED_RAMP = 13; // 초당 증가량
 // Phase 0 학습 #2: 속도+간격 이중 가속은 어느 순간 벽이 된다 → 상한 필수

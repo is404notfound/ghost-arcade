@@ -23,8 +23,34 @@ export interface ObstacleState {
   active: boolean;
   x: number; // 중심 x
   h: number; // 높이 (바닥에서 윗면까지)
+  w: number; // 폭 (per-obstacle — 패턴마다 다를 수 있음)
   scored: boolean; // 니어미스 평가 완료 여부
 }
+
+/** 패턴 내 장애물 스펙 */
+export interface ObsSpec {
+  readonly h: number;    // 높이 (OBS_PATTERN_H_RANDOM이면 스폰 시 랜덤 롤)
+  readonly w: number;    // 폭
+  readonly xOff: number; // SPAWN_X 기준 오프셋 (0 = 화면 오른쪽 경계)
+}
+
+// h 롤 결과로 대체할 sentinel 값
+export const OBS_PATTERN_H_RANDOM = -1;
+
+// 스폰 1회 = 패턴 1개. 배열 인덱스가 패턴 ID.
+// RNG 소비 순서: (1)패턴ID → (2)랜덤높이 → (3)포션여부 → (4)포션Y(조건부)
+export const OBS_PATTERNS: ReadonlyArray<ReadonlyArray<ObsSpec>> = [
+  // 0: SINGLE — 랜덤 높이 1개 (기존 동작)
+  [{ h: OBS_PATTERN_H_RANDOM, w: C.OBS_W, xOff: 0 }],
+  // 1: TALL — 싱글 점프 피크(165)에 근접, 더블 점프 권장 (h=148)
+  [{ h: 148, w: C.OBS_W, xOff: 0 }],
+  // 2: WIDE_LOW — 넓고 낮음, 체공 시간 필요 (h=72, w=64)
+  [{ h: 72, w: 64, xOff: 0 }],
+  // 3: BURST — 낮은 2개 근접 배치 (연속 점프 or 한 번에 넘기, h=60)
+  [{ h: 60, w: C.OBS_W, xOff: 0 }, { h: 60, w: C.OBS_W, xOff: 90 }],
+  // 4: STAIRCASE — 낮→중→높 3단 리듬 점프 (h=60/92/120)
+  [{ h: 60, w: C.OBS_W, xOff: 0 }, { h: 92, w: C.OBS_W, xOff: 90 }, { h: 120, w: C.OBS_W, xOff: 180 }],
+];
 
 export interface PotionState {
   active: boolean;
@@ -69,6 +95,8 @@ export class GameSim {
   private readonly rng: Rng;
   private pendingTaps = 0;
   private framesUntilSpawn: number;
+  // 멀티-장애물 패턴 슬롯 버퍼 — 생성자에서 한 번 할당, spawnObstacle에서 재사용 (D6)
+  private readonly spawnSlots: number[];
   // 다음 포션 스폰 예약 (-1 = 없음). 높이는 장애물 스폰 시점에 미리 굴려둔다 —
   // RNG 소비 순서를 스폰 스텝에 고정해야 어떤 인터리빙에서도 결정론이 유지된다.
   private potionInFrames = -1;
@@ -76,10 +104,11 @@ export class GameSim {
 
   constructor(seed: number) {
     this.rng = new Rng(seed);
+    this.spawnSlots = [0, 0, 0]; // STAIRCASE 최대 3개 슬롯 예약
     // 풀은 여기서 단 한 번 할당 — step()은 이 객체들만 재사용한다 (D6)
     const obstacles: ObstacleState[] = [];
     for (let i = 0; i < C.MAX_OBSTACLES; i++) {
-      obstacles.push({ active: false, x: 0, h: 0, scored: false });
+      obstacles.push({ active: false, x: 0, h: 0, w: C.OBS_W, scored: false });
     }
     const potions: PotionState[] = [];
     for (let i = 0; i < C.MAX_POTIONS; i++) {
@@ -196,7 +225,7 @@ export class GameSim {
     for (let i = 0; i < C.MAX_OBSTACLES; i++) {
       const o = s.obstacles[i]!;
       if (!o.active || o.scored) continue;
-      if (o.x + C.OBS_W / 2 < playerLeft) {
+      if (o.x + o.w / 2 < playerLeft) {
         o.scored = true;
         s.combo++; // 맞든 안 맞든 통과하면 콤보 축적 (HP·거리 영향 없음)
         if (airborne) {
@@ -230,7 +259,7 @@ export class GameSim {
       for (let i = 0; i < C.MAX_OBSTACLES; i++) {
         const o = s.obstacles[i]!;
         if (!o.active) continue;
-        const overlapX = Math.abs(o.x - C.PLAYER_X) < (C.PLAYER_W + C.OBS_W) / 2;
+        const overlapX = Math.abs(o.x - C.PLAYER_X) < (C.PLAYER_W + o.w) / 2;
         if (overlapX && s.player.y < o.h) {
           s.hp -= C.HIT_DAMAGE;
           s.invincibleFrames = Math.round((C.INVINCIBLE_MS / 1000) * C.SIM_FPS);
@@ -277,21 +306,31 @@ export class GameSim {
   }
 
   private spawnObstacle(t: number): void {
-    // 포션 동반 여부는 장애물 스폰 시점에 전부 굴린다 (RNG 순서 고정)
-    const h = this.rng.nextInt(C.OBS_H_MIN, C.OBS_H_MAX);
+    // RNG 소비 순서 고정 (패턴 종류에 무관하게 항상 동일):
+    // (1) 패턴 ID, (2) 랜덤 높이, (3) 포션 여부, (4) 포션 Y (조건부)
+    const patIdx = this.rng.nextInt(0, OBS_PATTERNS.length - 1);
+    const heightRoll = this.rng.nextInt(C.OBS_H_MIN, C.OBS_H_MAX);
     if (this.rng.next() < C.POTION_CHANCE) {
       this.potionPendingY = this.rng.nextInt(C.POTION_Y_MIN, C.POTION_Y_MAX);
       this.potionInFrames = Math.max(1, Math.floor(intervalFramesAtSec(t) / 2));
     }
-    // 빈 슬롯 탐색 — 없으면 이번 스폰은 건너뜀 (풀 한도가 동시 활성 상한)
-    for (let i = 0; i < C.MAX_OBSTACLES; i++) {
-      const o = this.state.obstacles[i]!;
-      if (o.active) continue;
+
+    const specs = OBS_PATTERNS[patIdx]!;
+    // 빈 슬롯을 패턴 크기만큼 수집 — 미리 할당된 버퍼 재사용 (D6)
+    let slotsFound = 0;
+    for (let i = 0; i < C.MAX_OBSTACLES && slotsFound < specs.length; i++) {
+      if (!this.state.obstacles[i]!.active) this.spawnSlots[slotsFound++] = i;
+    }
+    if (slotsFound < specs.length) return; // 풀 부족 — RNG는 이미 소비됨
+
+    for (let j = 0; j < specs.length; j++) {
+      const spec = specs[j]!;
+      const o = this.state.obstacles[this.spawnSlots[j]!]!;
       o.active = true;
-      o.x = C.SPAWN_X;
-      o.h = h;
+      o.x = C.SPAWN_X + spec.xOff;
+      o.h = spec.h === OBS_PATTERN_H_RANDOM ? heightRoll : spec.h;
+      o.w = spec.w;
       o.scored = false;
-      return;
     }
   }
 

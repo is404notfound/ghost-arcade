@@ -14,7 +14,9 @@
 // 0.8.0: 피버 종료 후 2초 충돌 유예 (feverGraceFramesLeft) — HP 궤적이 달라짐
 // 0.9.0: 피버 시간 기반 발동(7초 콤보 유지) — feverLevel 제거, feverTimerFrames 추가
 // 1.0.0: 피버 발동 간격 7→10초, 지속 4→3초 — 피버 타이밍 궤적 변경
-export const SIM_VERSION = '1.0.0';
+// 1.1.0: 장애물 패턴 라이브러리(SINGLE/TALL/WIDE/BURST/STAIRCASE) — RNG 소비 순서 변경, 궤적 달라짐
+// 1.2.0: WORLD_WIDTH 800→960, PLAYER_X 144→173 — 장애물 이동 거리·충돌 위치 변경
+export const SIM_VERSION = '1.2.0';
 
 export interface InputEvent {
   frame: number;

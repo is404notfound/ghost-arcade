@@ -1,0 +1,19 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #1a1a2e;
+  /* 터치 스크롤·줌·풀-투-리프레시 전부 차단 */
+  touch-action: none;
+  overscroll-behavior: none;
+  /* 롱프레스 컨텍스트 메뉴 / 텍스트 선택 방지 */
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+}
+
+canvas {
+  touch-action: none;
+  display: block; /* inline 기본값이 만드는 하단 여백 제거 */
+}

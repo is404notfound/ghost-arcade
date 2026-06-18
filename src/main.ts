@@ -1,5 +1,6 @@
 // 반드시 첫 import — 어떤 런타임 코드보다 먼저 Sentry.init이 실행되도록 한다.
 import './instrument';
+import './style.css';
 import Phaser from 'phaser';
 import * as Sentry from '@sentry/browser';
 import { GameScene } from './render/GameScene';
