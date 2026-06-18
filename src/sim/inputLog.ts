@@ -16,7 +16,8 @@
 // 1.0.0: 피버 발동 간격 7→10초, 지속 4→3초 — 피버 타이밍 궤적 변경
 // 1.1.0: 장애물 패턴 라이브러리(SINGLE/TALL/WIDE/BURST/STAIRCASE) — RNG 소비 순서 변경, 궤적 달라짐
 // 1.2.0: WORLD_WIDTH 800→960, PLAYER_X 144→173 — 장애물 이동 거리·충돌 위치 변경
-export const SIM_VERSION = '1.2.0';
+// 1.3.0: WORLD_WIDTH 960→1040, PLAYER_X 173→187, SPEED_BASE 290→340, SPEED_MAX 560→660, FEVER_SEC 3→2.5 — 속도·위치 궤적 변경
+export const SIM_VERSION = '1.3.0';
 
 export interface InputEvent {
   frame: number;
