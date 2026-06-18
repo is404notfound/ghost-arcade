@@ -1,14 +1,22 @@
-// 전체화면 토글 + 방향 전환 DOM 버튼
+// 전체화면 토글 + 일시정지 DOM 버튼
 //
 //  - pointerdown/click stopPropagation으로 게임 점프(window pointerdown)와 분리
-//  - 방향 전환은 Screen Orientation API feature-detect: 미지원 기기에선 버튼 숨김
+//  - 일시정지 콜백은 GameScene.create()에서 registerPauseToggle로 등록
 
-type OrLockFn = (orientation: string) => Promise<void>;
+let _onPauseToggle: (() => void) | null = null;
+let _pauseBtn: HTMLButtonElement | null = null;
 
-const hasOrientationLock: boolean =
-  typeof screen !== 'undefined' &&
-  'orientation' in screen &&
-  typeof (screen.orientation as unknown as Record<string, unknown>).lock === 'function';
+/** GameScene.create() 시 등록 — 일시정지 토글 핸들러 */
+export function registerPauseToggle(cb: () => void): void {
+  _onPauseToggle = cb;
+}
+
+/** 일시정지 버튼 상태 갱신 (GameScene에서 호출) */
+export function setPauseButtonState(paused: boolean, visible: boolean): void {
+  if (!_pauseBtn) return;
+  _pauseBtn.textContent = paused ? '▶' : '⏸';
+  _pauseBtn.style.display = visible ? '' : 'none';
+}
 
 export function initGameControls(): void {
   const wrap = document.createElement('div');
@@ -41,31 +49,17 @@ export function initGameControls(): void {
   });
   document.addEventListener('fullscreenchange', updateFsIcon);
 
-  // ─── 방향 전환 버튼 ─────────────────────────────────────────
-  const orientBtn = document.createElement('button');
-  orientBtn.id = 'orient-btn';
-  orientBtn.setAttribute('aria-label', '방향 전환');
-  orientBtn.textContent = '↻';
-  wrap.appendChild(orientBtn);
+  // ─── 일시정지 버튼 ───────────────────────────────────────────
+  const pauseBtn = document.createElement('button');
+  pauseBtn.id = 'pause-btn';
+  pauseBtn.setAttribute('aria-label', '일시정지');
+  pauseBtn.textContent = '⏸';
+  wrap.appendChild(pauseBtn);
+  _pauseBtn = pauseBtn;
 
-  if (!hasOrientationLock) {
-    // feature-detect 단계에서 이미 미지원 확인 → 버튼 숨김
-    orientBtn.style.display = 'none';
-  }
-
-  orientBtn.addEventListener('pointerdown', (e: PointerEvent) => { e.stopPropagation(); });
-  orientBtn.addEventListener('click', (e: MouseEvent) => {
+  pauseBtn.addEventListener('pointerdown', (e: PointerEvent) => { e.stopPropagation(); });
+  pauseBtn.addEventListener('click', (e: MouseEvent) => {
     e.stopPropagation();
-    const toLandscape = window.innerHeight > window.innerWidth; // 현재 세로 → 가로로
-    void (async () => {
-      try {
-        await (screen.orientation as unknown as { lock: OrLockFn }).lock(
-          toLandscape ? 'landscape' : 'portrait',
-        );
-      } catch {
-        // 런타임에서 미지원 확인 → 이후 표시 불필요
-        orientBtn.style.display = 'none';
-      }
-    })();
+    _onPauseToggle?.();
   });
 }

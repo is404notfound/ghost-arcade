@@ -28,4 +28,9 @@ export class FixedTimestep {
     }
     return n;
   }
+
+  /** 어큐뮬레이터를 초기화한다 — 일시정지 후 재개 시 burst-step 방지 */
+  reset(): void {
+    this.acc = 0;
+  }
 }

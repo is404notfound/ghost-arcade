@@ -30,7 +30,7 @@ canvas {
 }
 
 #fs-btn,
-#orient-btn {
+#pause-btn {
   width: 40px;
   height: 40px;
   background: rgba(0, 0, 0, 0.45);

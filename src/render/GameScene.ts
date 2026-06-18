@@ -17,6 +17,7 @@ import { dailySeed } from '../dailySeed';
 import { saveRun, loadTopRuns, GHOST_TOP_N } from '../ghostStore';
 import { compareGhosts, livePace, type GhostComparison } from './ghostCompare';
 import { DESIGN_W, DESIGN_H, GROUND_Y_PX, toScreenX, toScreenY, boxCenterScreenY } from './viewport';
+import { registerPauseToggle, setPauseButtonState } from '../controls';
 
 const COLOR_PLAYER = 0x64ffda;
 const COLOR_GHOST = 0xb39ddb; // 고스트 — 보라 계열 반투명
@@ -50,6 +51,8 @@ export class GameScene extends Phaser.Scene {
   private comboDisplay!: Phaser.GameObjects.Text; // 화면 중앙 큰 콤보 숫자 (combo >= 2)
   private prevCombo = 0; // 이전 프레임 combo 값 — 증가 감지용
   private crashed = false; // 렌더 루프 예외 발생 시 1회만 보고하고 정지 (이벤트 폭주 방지)
+  private gamePaused = false;
+  private pauseOverlay!: Phaser.GameObjects.Container;
   private _windowTapHandler!: () => void;
   private feverOverlay!: Phaser.GameObjects.Rectangle; // 피버 중 warm tint 레이어
   private infiniteJumpText!: Phaser.GameObjects.Text; // 피버 중 "클릭시 무한 회복!" 안내
@@ -209,6 +212,21 @@ export class GameScene extends Phaser.Scene {
       ])
       .setVisible(false);
 
+    // 일시정지 오버레이 — 게임오버 패널 위에 렌더되도록 마지막에 생성
+    const poBg = this.add.rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.55);
+    const poText = this.add
+      .text(DESIGN_W / 2, DESIGN_H / 2, '일시정지\n탭하여 계속', {
+        fontSize: '28px',
+        color: '#ffffff',
+        fontStyle: 'bold',
+        align: 'center',
+      })
+      .setOrigin(0.5)
+      .setStroke('#1a1a2e', 6);
+    this.pauseOverlay = this.add.container(0, 0, [poBg, poText]).setVisible(false);
+
+    registerPauseToggle(() => { this.togglePause(); });
+
     // 화면 어디를 탭해도 점프 — 캔버스 밖 빈 공간(좌우 기둥)도 포함
     // #fs-btn은 pointerdown에서 stopPropagation → 이 핸들러까지 버블되지 않음
     this._windowTapHandler = () => { this.onTap(); };
@@ -244,14 +262,22 @@ export class GameScene extends Phaser.Scene {
     this.prevCombo = 0;
     console.log(`[ghost-arcade] 시드 ${this.seed}, 유령 ${this.ghosts.length}기 로드`);
 
+    this.gamePaused = false;
     if (this.gameOverPanel) this.gameOverPanel.setVisible(false);
     if (this.comboDisplay) this.comboDisplay.setVisible(false);
     if (this.feverOverlay) this.feverOverlay.setVisible(false);
     if (this.infiniteJumpText) this.infiniteJumpText.setVisible(false);
     if (this.spectateHintText) this.spectateHintText.setVisible(false);
+    if (this.pauseOverlay) this.pauseOverlay.setVisible(false);
+    setPauseButtonState(false, true);
   }
 
   private onTap() {
+    // 일시정지 중 탭 = 재개 (점프로 기록 안 됨 — 결정론 경계 유지)
+    if (this.gamePaused) {
+      this.togglePause();
+      return;
+    }
     if (this.spectating) {
       // 구경 중 탭 = 구경 즉시 종료 → 결과 패널 표시 (재시작 아님)
       this.spectating = false;
@@ -270,6 +296,15 @@ export class GameScene extends Phaser.Scene {
     this.sim.queueTap();
   }
 
+  private togglePause(): void {
+    this.gamePaused = !this.gamePaused;
+    if (!this.gamePaused) {
+      this.timestep.reset(); // 재개: 멈춘 동안 쌓인 delta → burst-step 방지
+    }
+    this.pauseOverlay.setVisible(this.gamePaused);
+    setPauseButtonState(this.gamePaused, true);
+  }
+
   update(_time: number, delta: number) {
     // 매 프레임 도는 핫 루프 — 같은 예외가 초당 수십 번 Sentry로 폭주하는 걸 막기 위해
     // 한 번 터지면 보고 1회 후 루프를 정지시킨다 (Sentry 기본 dedupe보다 확실한 차단).
@@ -284,38 +319,40 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tick(delta: number) {
-    // 렌더 fps가 어떻든 시뮬은 DT 단위로만 전진 (결정론 경계)
-    this.timestep.update(delta, () => {
-      this.sim.step();
-      // 유령들은 라이브와 lockstep. 내가 죽은 뒤에는 '구경 모드'에서만 계속 달리고,
-      // 결과 패널이 뜨면 함께 멈춘다.
-      if (!this.sim.state.gameOver || this.spectating) {
-        for (const g of this.ghosts) {
-          const wasFinished = g.finished;
-          g.step();
-          // 유령이 죽는 순간(finished 전환) = 내가 그 기록보다 오래 버팀 = 제침
-          if (!wasFinished && g.finished && !this.sim.state.gameOver) {
-            this.overtakenLive++;
-            this.popup('고스트 제침!', '#b39ddb');
+    if (!this.gamePaused) {
+      // 렌더 fps가 어떻든 시뮬은 DT 단위로만 전진 (결정론 경계)
+      this.timestep.update(delta, () => {
+        this.sim.step();
+        // 유령들은 라이브와 lockstep. 내가 죽은 뒤에는 '구경 모드'에서만 계속 달리고,
+        // 결과 패널이 뜨면 함께 멈춘다.
+        if (!this.sim.state.gameOver || this.spectating) {
+          for (const g of this.ghosts) {
+            const wasFinished = g.finished;
+            g.step();
+            // 유령이 죽는 순간(finished 전환) = 내가 그 기록보다 오래 버팀 = 제침
+            if (!wasFinished && g.finished && !this.sim.state.gameOver) {
+              this.overtakenLive++;
+              this.popup('고스트 제침!', '#b39ddb');
+            }
           }
         }
-      }
-      this.handleStepEvents(this.sim.state.events);
+        this.handleStepEvents(this.sim.state.events);
 
-      // 구경 종료: 유령 전멸 or 시간 만료 → 보류해둔 결과 패널 표시
-      if (this.spectating) {
-        this.spectateFramesLeft--;
-        const allDead = this.ghosts.every((g) => g.finished);
-        if (this.spectateFramesLeft <= 0 || allDead) {
-          console.log(
-            `[ghost-arcade] 구경 종료: ${allDead ? '유령 전멸' : '시간 만료'} (잔여 ${this.spectateFramesLeft}f)`,
-          );
-          this.spectating = false;
-          this.spectateHintText.setVisible(false);
-          if (this.pendingCmp !== null) this.showResultPanel(this.pendingCmp, this.pendingMyDist);
+        // 구경 종료: 유령 전멸 or 시간 만료 → 보류해둔 결과 패널 표시
+        if (this.spectating) {
+          this.spectateFramesLeft--;
+          const allDead = this.ghosts.every((g) => g.finished);
+          if (this.spectateFramesLeft <= 0 || allDead) {
+            console.log(
+              `[ghost-arcade] 구경 종료: ${allDead ? '유령 전멸' : '시간 만료'} (잔여 ${this.spectateFramesLeft}f)`,
+            );
+            this.spectating = false;
+            this.spectateHintText.setVisible(false);
+            if (this.pendingCmp !== null) this.showResultPanel(this.pendingCmp, this.pendingMyDist);
+          }
         }
-      }
-    });
+      });
+    }
     this.syncVisuals();
   }
 
@@ -361,6 +398,7 @@ export class GameScene extends Phaser.Scene {
       this.feverOverlay.setVisible(false);
     }
     if (ev & C.EV_GAME_OVER) {
+      setPauseButtonState(false, false); // 게임오버 → 일시정지 버튼 숨김
       const myDist = this.sim.state.distance;
       // 비교 먼저 (판 시작 시점 기록 기준) → 저장은 그 다음
       const cmp = compareGhosts(myDist, this.ghostDistances);
