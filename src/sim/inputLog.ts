@@ -20,7 +20,8 @@
 // 1.4.0: MAX_JUMPS 3→2, INTERVAL_BASE 1500→1700, INTERVAL_RAMP 28→22, PATTERN 온보딩 램프 — 점프·간격·패턴 궤적 변경
 // 1.5.0: nearMissCombo 필드 제거, EV_NEAR_MISS 제거 — SimState 직렬화 구조 변경
 // 1.6.0: INTERVAL_BASE 1700→2000, INTERVAL_MIN 620→750, INTERVAL_RAMP 22→14 — 간격 에스컬레이션 곡선 변경
-export const SIM_VERSION = '1.6.0';
+// 1.7.0: INTERVAL_BASE 2000→1800, INTERVAL_MIN 750→680, INTERVAL_RAMP 14→18 — 간격 중간 조정 (~62초)
+export const SIM_VERSION = '1.7.0';
 
 export interface InputEvent {
   frame: number;

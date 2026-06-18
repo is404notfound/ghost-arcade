@@ -26,9 +26,9 @@ export const SPEED_BASE = 340; // 유닛/초
 export const SPEED_RAMP = 15; // 초당 증가량
 // Phase 0 학습 #2: 속도+간격 이중 가속은 어느 순간 벽이 된다 → 상한 필수
 export const SPEED_MAX = 660;
-export const INTERVAL_BASE_MS = 2000; // 1.6.0: 초기 간격 확대 (온보딩 더 완화)
-export const INTERVAL_MIN_MS = 750;   // 1.6.0: 최소 간격 상향 (후반 난이도 완화)
-export const INTERVAL_RAMP_MS = 14;   // 1.6.0: 초당 단축량(ms) — 낮춰서 최소 간격 도달을 ~89초로 지연
+export const INTERVAL_BASE_MS = 1800; // 1.7.0: 중간 조정 (2000→1800 — 1.6.0보단 빡빡, 1.5.0보단 넓음)
+export const INTERVAL_MIN_MS = 680;   // 1.7.0: 중간 조정 (750→680)
+export const INTERVAL_RAMP_MS = 18;   // 1.7.0: 초당 단축량(ms) — 최소 간격 도달을 ~62초로 조정
 
 // 체력
 export const HP_MAX = 100;

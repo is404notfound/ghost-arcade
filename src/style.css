@@ -18,35 +18,33 @@ canvas {
   display: block; /* inline 기본값이 만드는 하단 여백 제거 */
 }
 
-/* 시작 게이트 + 세로 가드 오버레이 */
-#start-overlay,
-#portrait-overlay {
+/* 전체화면 + 방향 전환 DOM 버튼 — 우상단 고정 오버레이 */
+#game-controls {
   position: fixed;
-  inset: 0;
+  top: 8px;
+  right: 8px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#fs-btn,
+#orient-btn {
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 7px;
+  color: #ffffff;
+  font-size: 20px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(26, 26, 46, 0.95);
-  color: #ffffff;
-  font-family: system-ui, sans-serif;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
   user-select: none;
-  cursor: pointer;
-}
-
-#start-overlay {
-  z-index: 2000;
-}
-
-#portrait-overlay {
-  z-index: 2100; /* 시작 오버레이보다 위 — 세로 상태에서 항상 최상단 */
-  cursor: default;
-}
-
-#start-overlay span,
-#portrait-overlay span {
-  font-size: 28px;
-  font-weight: bold;
-  letter-spacing: 0.04em;
 }
