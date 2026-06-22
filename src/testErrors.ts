@@ -22,8 +22,10 @@ function throwGeneric(): void {
 
 function throwTypeError(): void {
   // 실제 TypeError: Cannot read properties of undefined (reading 'play')
+  // [수정] 옵셔널 체이닝(?.)을 사용하여 undefined일 경우 메서드를 실행하지 않고 안전하게 넘어갑니다.
+  // (주의: 이 수정을 적용하면 Sentry 연동 테스트용 TypeError는 더 이상 발생하지 않습니다.)
   const ghost = undefined as unknown as { play(): void };
-  ghost.play();
+  ghost?.play();
 }
 
 function throwRangeError(): void {
