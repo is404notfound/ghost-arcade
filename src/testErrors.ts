@@ -46,7 +46,9 @@ function throwUriError(): void {
 }
 
 function throwCustomError(): void {
-  throw new GhostReplayError('[test] 고스트 리플레이 디코딩 실패');
+  // 실제 Sentry 이슈 생성을 방지하기 위해 예외를 던지는 대신 콘솔 경고로 대체합니다.
+  console.warn('[test] 고스트 리플레이 디코딩 실패 (Sentry 테스트 예외 비활성화)');
+  // throw new GhostReplayError('[test] 고스트 리플레이 디코딩 실패');
 }
 
 function triggerUnhandledRejection(): void {
