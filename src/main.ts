@@ -8,11 +8,19 @@ import { DESIGN_W, DESIGN_H } from './render/viewport';
 import { dailySeed } from './dailySeed';
 import { initGameControls } from './controls';
 import { initAnalytics } from './analytics';
+import { runTestError } from './testErrors';
 
-// 파이프라인 검증용 의도적 에러 — ?boom 진입 시 전역 핸들러 + 소스맵 + Seer Autofix를
-// 확인하기 위한 실제 이슈를 만든다. (검증 후 제거 가능)
-if (new URLSearchParams(window.location.search).has('boom')) {
-  throw new Error('[ghost-arcade] 테스트 에러: ?boom 트리거됨 (Sentry 파이프라인 검증용)');
+// 검증용 의도적 에러 — Sentry/Seer 테스트. (검증 후 제거 가능)
+//   ?error=<type>  하나만 (type/range/reference/syntax/uri/custom/promise/async/manual/generic)
+//   ?error=all     10종 한 번에
+//   ?boom          generic 별칭(기존 호환)
+{
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('boom')) {
+    runTestError('generic');
+  } else if (params.has('error')) {
+    runTestError(params.get('error') ?? '');
+  }
 }
 
 // DEV 전용: ?seedghosts 파라미터 or console의 window.__seedGhosts()로 고스트 필드 시딩.
