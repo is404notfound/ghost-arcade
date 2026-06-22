@@ -90,6 +90,18 @@ export const TEST_ERROR_KEYS = Object.keys(TRIGGERS);
  * 단일 키의 동기 throw는 모듈 평가를 중단시키므로(=게임 미로딩) 한 판에 하나만.
  */
 export function runTestError(key: string): void {
+  // [수정됨] 프로덕션 환경에서 악의적인 테스트 호출로 인한 Sentry 쿼터 고갈 방지 로직
+  // Vercel 등 배포 환경에 맞춰 허용할 도메인을 관리하거나, 개발/QA 환경 변수를 통해 제어할 수 있습니다.
+  const isSafeEnvironment = 
+    window.location.hostname === 'localhost' || 
+    window.location.hostname === '127.0.0.1' || 
+    window.location.hostname.includes('vercel.app'); // 필요 시 QA 서버 도메인만 허용
+
+  if (!isSafeEnvironment) {
+    console.warn('[test] 프로덕션 환경에서는 에러 테스트 기능을 제한합니다. (Sentry 쿼터 보호)');
+    return;
+  }
+
   if (key === 'all') {
     for (const name of TEST_ERROR_KEYS) {
       setTimeout(() => TRIGGERS[name]!(), 0);
