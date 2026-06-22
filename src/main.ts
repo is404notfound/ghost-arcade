@@ -8,20 +8,6 @@ import { DESIGN_W, DESIGN_H } from './render/viewport';
 import { dailySeed } from './dailySeed';
 import { initGameControls } from './controls';
 import { initAnalytics } from './analytics';
-import { runTestError } from './testErrors';
-
-// 검증용 의도적 에러 — Sentry/Seer 테스트. (검증 후 제거 가능)
-//   ?error=<type>  하나만 (type/range/reference/syntax/uri/custom/promise/async/manual/generic)
-//   ?error=all     10종 한 번에
-//   ?boom          generic 별칭(기존 호환)
-{
-  const params = new URLSearchParams(window.location.search);
-  if (params.has('boom')) {
-    runTestError('generic');
-  } else if (params.has('error')) {
-    runTestError(params.get('error') ?? '');
-  }
-}
 
 // DEV 전용: ?seedghosts 파라미터 or console의 window.__seedGhosts()로 고스트 필드 시딩.
 // import.meta.env.DEV = false인 프로덕션 빌드에서 이 블록은 dead-code로 제거된다.
