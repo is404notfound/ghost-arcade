@@ -46,7 +46,8 @@ function throwUriError(): void {
 }
 
 function throwCustomError(): void {
-  throw new GhostReplayError('[test] 고스트 리플레이 디코딩 실패');
+  // Sentry 로깅 방지를 위해 에러 throw를 console.warn으로 대체
+  console.warn('[test] 고스트 리플레이 디코딩 실패 시뮬레이션 (에러 발생 안함)');
 }
 
 function triggerUnhandledRejection(): void {
