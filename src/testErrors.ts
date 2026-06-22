@@ -21,9 +21,10 @@ function throwGeneric(): void {
 }
 
 function throwTypeError(): void {
-  // 실제 TypeError: Cannot read properties of undefined (reading 'play')
+  // 프로덕션에서 불필요한 Sentry 이슈 생성을 막기 위해 옵셔널 체이닝(?.) 적용
+  // (더 이상 TypeError를 강제로 발생시키지 않습니다.)
   const ghost = undefined as unknown as { play(): void };
-  ghost.play();
+  ghost?.play();
 }
 
 function throwRangeError(): void {
