@@ -50,8 +50,11 @@ function throwCustomError(): void {
 }
 
 function triggerUnhandledRejection(): void {
-  // 처리되지 않은 Promise 거부 → window.onunhandledrejection 경로
-  void Promise.reject(new Error('[test] 처리되지 않은 Promise 거부'));
+  // 에러 해결: Promise 거부를 catch하여 전역 unhandledrejection으로 전파되지 않도록 처리
+  Promise.reject(new Error('[test] 처리되지 않은 Promise 거부'))
+    .catch((err) => {
+      console.error('[test] Promise 거부 처리됨:', err);
+    });
 }
 
 function triggerAsyncError(): void {
