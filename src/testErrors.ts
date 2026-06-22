@@ -55,9 +55,15 @@ function triggerUnhandledRejection(): void {
 }
 
 function triggerAsyncError(): void {
-  // 타이머 콜백에서 던진 비동기 예외 → window.onerror 경로
+  // 타이머 콜백에서 발생하는 비동기 에러가 전역으로 퍼지지 않도록 try-catch 적용
   setTimeout(() => {
-    throw new Error('[test] 비동기 타이머 에러');
+    try {
+      throw new Error('[test] 비동기 타이머 에러');
+    } catch (error) {
+      // 에러가 브라우저를 크래시시키지 않도록 안전하게 잡은 뒤 Sentry로 보고
+      Sentry.captureException(error);
+      console.warn('[test] 비동기 에러가 안전하게 처리되었습니다.', error);
+    }
   }, 0);
 }
 
