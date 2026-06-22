@@ -16,6 +16,11 @@ export default defineConfig({
       // 업로드 후 .map을 산출물에서 제거 → 공개 배포에 소스맵 노출 방지.
       // (업로드가 실제로 일어날 때만 삭제됨 = authToken 있을 때만)
       sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
+      // 소스맵 업로드/릴리스 생성 실패가 배포 빌드를 깨뜨리지 않도록(기본은 throw=빌드 중단).
+      // 토큰 누락/오류는 경고만 남기고 빌드는 계속 — 배포가 Sentry 부가작업 때문에 막히면 안 됨.
+      errorHandler: (err) => {
+        console.warn('[sentry-vite-plugin] 비치명적 오류 — 빌드 계속:', err.message);
+      },
     }),
   ],
   test: {
