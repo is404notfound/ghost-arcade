@@ -57,7 +57,8 @@ function triggerUnhandledRejection(): void {
 function triggerAsyncError(): void {
   // 타이머 콜백에서 던진 비동기 예외 → window.onerror 경로
   setTimeout(() => {
-    throw new Error('[test] 비동기 타이머 에러');
+    // Sentry 테스트 에러 보고 방지를 위해 실제 에러를 던지지 않고 콘솔 로그로 대체합니다.
+    console.warn('[test] 비동기 타이머 에러 (로그로 대체)');
   }, 0);
 }
 
