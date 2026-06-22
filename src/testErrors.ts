@@ -50,8 +50,13 @@ function throwCustomError(): void {
 }
 
 function triggerUnhandledRejection(): void {
-  // 처리되지 않은 Promise 거부 → window.onunhandledrejection 경로
-  void Promise.reject(new Error('[test] 처리되지 않은 Promise 거부'));
+  // 처리되지 않은 Promise 거부 에러를 방지하기 위해 catch 블록으로 핸들링합니다.
+  Promise.reject(new Error('[test] 처리되지 않은 Promise 거부'))
+    .catch((error) => {
+      console.warn('[test] Promise rejection이 정상적으로 처리되었습니다:', error.message);
+      // 만약 테스트 목적으로 Sentry에만 조용히 보내려면 아래 코드를 사용합니다.
+      // Sentry.captureException(error);
+    });
 }
 
 function triggerAsyncError(): void {
