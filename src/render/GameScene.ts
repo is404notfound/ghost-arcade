@@ -482,7 +482,7 @@ export class GameScene extends Phaser.Scene {
     // RANK_TITLES[...]가 undefined가 되어 .toUpperCase()에서 TypeError.
     // (고스트가 있을 때 5등 밖으로 죽으면 = 대부분의 죽음에서 재현)
     const finalRank = cmp.total - cmp.overtaken + 1;
-    const rankTitle = this.RANK_TITLES[finalRank - 1]!;
+    const rankTitle = this.RANK_TITLES[Math.min(finalRank - 1, this.RANK_TITLES.length - 1)];
     this.gameOverDistText.setText(`거리  ${Math.floor(myDist)}M · ${rankTitle.toUpperCase()}`);
 
     if (!cmp.hasGhosts) {
