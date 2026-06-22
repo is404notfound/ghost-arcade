@@ -248,8 +248,9 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  /** 새 판 시작 — 데일리 시드(오늘의 코스) + 저장된 최고 기록 유령 로드 */
-  private startRun() {
+  /** 새 판 시작 — 데일리 시드(오늘의 코스) + 저장된 최고 기록 유령 로드.
+   *  isRetry=true면 게임오버 후 자발적 재시작(첫 진입과 구분). */
+  private startRun(isRetry = false) {
     this.seed = dailySeed(); // 같은 날 = 같은 코스 (TODOS 시드 공유 → 데일리 시드로 결정)
     this.sim = new GameSim(this.seed);
     this.log = createInputLog(this.seed);
@@ -266,7 +267,9 @@ export class GameScene extends Phaser.Scene {
     this.prevRank = this.ghosts.length + 1;
     this.feverCount = 0;
     console.log(`[ghost-arcade] 시드 ${this.seed}, 유령 ${this.ghosts.length}기 로드`);
-    track('game_start', { seed: this.seed, ghost_count: this.ghosts.length });
+    // is_retry로 첫 시작/재시작 구분 → 자발적 재시도율 = is_retry=true 비율.
+    // 별도 retry 이벤트는 제거(game_start와 중복이었음).
+    track('game_start', { seed: this.seed, ghost_count: this.ghosts.length, is_retry: isRetry });
 
     this.gamePaused = false;
     if (this.gameOverPanel) this.gameOverPanel.setVisible(false);
@@ -293,9 +296,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (this.sim.state.gameOver) {
-      // 결과 패널 표시 상태에서 탭 = 새 판 시작
-      track('retry', { ghost_count: this.ghosts.length }); // game_start보다 먼저 — 자발적 재시도 신호
-      this.startRun();
+      // 결과 패널 표시 상태에서 탭 = 자발적 재시작 (game_start에 is_retry=true로 기록)
+      this.startRun(true);
       return;
     }
     // 기록 먼저, 큐잉 다음 — 같은 frame 값을 공유해야 재생이 일치한다
