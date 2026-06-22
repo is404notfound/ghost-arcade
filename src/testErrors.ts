@@ -90,6 +90,16 @@ export const TEST_ERROR_KEYS = Object.keys(TRIGGERS);
  * 단일 키의 동기 throw는 모듈 평가를 중단시키므로(=게임 미로딩) 한 판에 하나만.
  */
 export function runTestError(key: string): void {
+  // 프로덕션 환경에서는 Sentry 오염 방지를 위해 테스트 에러 실행 차단 (Vite 및 Node/Webpack 대응)
+  const isProd =
+    (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.PROD) ||
+    (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production');
+
+  if (isProd) {
+    console.warn('[test] 프로덕션 환경에서는 에러 테스트를 실행할 수 없습니다.');
+    return;
+  }
+
   if (key === 'all') {
     for (const name of TEST_ERROR_KEYS) {
       setTimeout(() => TRIGGERS[name]!(), 0);
