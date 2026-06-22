@@ -36,8 +36,16 @@ function throwReferenceError(): void {
 }
 
 function throwSyntaxError(): void {
-  // 손상된 고스트 레코드 파싱을 흉내 → 실제 SyntaxError
-  JSON.parse('{ "distance": , }');
+  // 손상된 고스트 레코드 파싱을 흉내
+  // [수정사항] 앱 크래시를 방지하기 위해 try-catch로 감싸고 안전하게 Sentry에 보고합니다.
+  try {
+    JSON.parse('{ "distance": , }');
+  } catch (error) {
+    Sentry.captureException(error, {
+      tags: { test_kind: 'handled_syntax' }
+    });
+    console.warn('[test] JSON 파싱 에러가 안전하게 처리되었습니다.', error);
+  }
 }
 
 function throwUriError(): void {
