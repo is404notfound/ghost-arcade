@@ -12,9 +12,10 @@ import { GameSim } from '../sim/sim';
 import { GhostDriver } from '../sim/ghost';
 import { FixedTimestep } from '../sim/timestep';
 import * as C from '../sim/constants';
-import { createInputLog, recordTap, serializeLog, type InputLog } from '../sim/inputLog';
+import { createInputLog, recordTap, serializeLog, SIM_VERSION, type InputLog } from '../sim/inputLog';
 import { dailySeed } from '../dailySeed';
-import { saveRun, loadTopRuns, GHOST_TOP_N } from '../ghostStore';
+import { saveRun, loadTopRuns, GHOST_TOP_N, type GhostRecord } from '../ghostStore';
+import { loadTopRunsRemote, submitRunRemote } from '../remoteStore';
 import { compareGhosts, type GhostComparison } from './ghostCompare';
 import { DESIGN_W, DESIGN_H, GROUND_Y_PX, toScreenX, toScreenY, boxCenterScreenY } from './viewport';
 import { registerPauseToggle, setPauseButtonState } from '../controls';
@@ -40,6 +41,8 @@ export class GameScene extends Phaser.Scene {
   private ghostDistances: number[] = [];
   // 이번 판에서 내가 살아있는 동안 죽은(=제친) 고스트 수
   private overtakenLive = 0;
+  // 마지막으로 완료된 원격 로드 결과 — 다음 판 startRun()에서 사용
+  private remoteRuns: GhostRecord[] = [];
 
   // 구경 모드: 내가 죽어도 살아있는 유령들이 격차를 벌리는 걸 보여주는 구간
   private spectating = false;
@@ -67,6 +70,11 @@ export class GameScene extends Phaser.Scene {
   // sim의 고정 크기 풀과 1:1 매핑 — 생성은 create()에서 단 한 번 (D6)
   private obstacleRects: Phaser.GameObjects.Rectangle[] = [];
   private potionCircles: Phaser.GameObjects.Arc[] = [];
+
+  // [TEST] Seer Autofix 검증용 — 의도적 잠재 버그 2종(게임플레이 경로). 검증 후 제거.
+  // 둘 다 배열 경계 초과를 non-null 단언(!)으로 눌러버린 흔한 실수 패턴.
+  private readonly RANK_TITLES = ['LEGEND', 'MASTER', 'DIAMOND', 'PLATINUM', 'GOLD'];
+  private readonly COMBO_MILESTONES = ['NICE', 'GREAT', 'AMAZING', 'INSANE'];
 
   private hpFill!: Phaser.GameObjects.Rectangle;
   private distText!: Phaser.GameObjects.Text;
@@ -256,8 +264,9 @@ export class GameScene extends Phaser.Scene {
     this.log = createInputLog(this.seed);
     this.timestep = new FixedTimestep(C.DT * 1000);
 
-    // 그날 시드의 상위 기록들을 유령으로 — 같은 시드라 장애물 코스가 정렬된다
-    const records = loadTopRuns(window.localStorage, this.seed);
+    // 원격 → 로컬 순서로 폴백: 크로스유저 고스트 우선, 없으면 셀프 고스트
+    const localRecords = loadTopRuns(window.localStorage, this.seed);
+    const records = this.remoteRuns.length > 0 ? this.remoteRuns : localRecords;
     this.ghosts = records.map((r) => new GhostDriver(r.log));
     this.ghostDistances = records.map((r) => r.distance);
     this.overtakenLive = 0;
@@ -266,10 +275,20 @@ export class GameScene extends Phaser.Scene {
     this.prevCombo = 0;
     this.prevRank = this.ghosts.length + 1;
     this.feverCount = 0;
-    console.log(`[ghost-arcade] 시드 ${this.seed}, 유령 ${this.ghosts.length}기 로드`);
+    console.log(`[ghost-arcade] 시드 ${this.seed}, 유령 ${this.ghosts.length}기 로드 (원격 ${this.remoteRuns.length}기)`);
     // is_retry로 첫 시작/재시작 구분 → 자발적 재시도율 = is_retry=true 비율.
     // 별도 retry 이벤트는 제거(game_start와 중복이었음).
     track('game_start', { seed: this.seed, ghost_count: this.ghosts.length, is_retry: isRetry });
+
+    // 다음 판을 위해 원격 데이터를 백그라운드로 갱신
+    const currentSeed = this.seed;
+    void loadTopRunsRemote(currentSeed).then((remote) => {
+      this.remoteRuns = remote;
+      // 원격·로컬 모두 비어있으면 봇 콜드스타트 업로드 (B4)
+      if (remote.length === 0 && localRecords.length === 0) {
+        void this.uploadBotColdStart(currentSeed);
+      }
+    });
 
     this.gamePaused = false;
     if (this.gameOverPanel) this.gameOverPanel.setVisible(false);
@@ -279,6 +298,22 @@ export class GameScene extends Phaser.Scene {
     if (this.spectateHintText) this.spectateHintText.setVisible(false);
     if (this.pauseOverlay) this.pauseOverlay.setVisible(false);
     setPauseButtonState(false, true);
+  }
+
+  /** 원격에 기록이 없을 때 봇 로그를 1회 업로드한다 — localStorage 플래그로 중복 방지 */
+  private async uploadBotColdStart(seed: number): Promise<void> {
+    const flagKey = `ga:bots:v${SIM_VERSION}:${seed}`;
+    try {
+      if (window.localStorage.getItem(flagKey)) return;
+    } catch {
+      return; // localStorage 접근 실패 = 스킵
+    }
+    const { recordAllBotRuns } = await import('../botRecorder');
+    const botRuns = recordAllBotRuns(seed);
+    for (const { log, distance } of botRuns) {
+      await submitRunRemote(seed, log, distance, true);
+    }
+    try { window.localStorage.setItem(flagKey, '1'); } catch { /* 무시 */ }
   }
 
   private onTap() {
@@ -420,6 +455,8 @@ export class GameScene extends Phaser.Scene {
       // 비교 먼저 (판 시작 시점 기록 기준) → 저장은 그 다음
       const cmp = compareGhosts(myDist, this.ghostDistances);
       saveRun(window.localStorage, this.seed, this.log, myDist);
+      // 원격 제출 — fire-and-forget: 실패해도 로컬 기록은 보존된다
+      void submitRunRemote(this.seed, this.log, myDist);
       // 골든 리플레이/고스트 재료 — 이 로그와 시드만 있으면 이 판 전체가 복원된다
       console.log('[ghost-arcade] 입력 로그:', serializeLog(this.log));
 
@@ -441,7 +478,12 @@ export class GameScene extends Phaser.Scene {
 
   /** 보류됐던 결과 패널 채우기 + 표시 (사망 즉시 or 구경 종료 후) */
   private showResultPanel(cmp: GhostComparison, myDist: number) {
-    this.gameOverDistText.setText(`거리  ${Math.floor(myDist)}M`);
+    // [TEST BUG A] 최종 등수 등급 칭호 — finalRank가 RANK_TITLES 개수(5)를 넘으면
+    // RANK_TITLES[...]가 undefined가 되어 .toUpperCase()에서 TypeError.
+    // (고스트가 있을 때 5등 밖으로 죽으면 = 대부분의 죽음에서 재현)
+    const finalRank = cmp.total - cmp.overtaken + 1;
+    const rankTitle = this.RANK_TITLES[finalRank - 1]!;
+    this.gameOverDistText.setText(`거리  ${Math.floor(myDist)}M · ${rankTitle.toUpperCase()}`);
 
     if (!cmp.hasGhosts) {
       // 그날 첫 판 — 비교할 상대가 없다
@@ -544,6 +586,13 @@ export class GameScene extends Phaser.Scene {
       } else if (!this.tweens.isTweening(this.comboDisplay)) {
         this.comboDisplay.setScale(targetScale);
       }
+    }
+    // [TEST BUG B] 5콤보마다 마일스톤 팝업 — combo가 COMBO_MILESTONES 범위(최대 20)를
+    // 넘으면(25 이상) COMBO_MILESTONES[tier-1]이 undefined → .toUpperCase()에서 TypeError.
+    if (s.combo > this.prevCombo && s.combo % 5 === 0) {
+      const tier = s.combo / 5;
+      const milestone = this.COMBO_MILESTONES[tier - 1]!;
+      this.popup(milestone.toUpperCase(), '#ffd700');
     }
     this.prevCombo = s.combo;
 
