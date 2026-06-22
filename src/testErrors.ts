@@ -62,11 +62,11 @@ function triggerAsyncError(): void {
 }
 
 function triggerManualCapture(): void {
-  // 던지지 않고 직접 보고 — 컨텍스트/태그를 붙인 warning 레벨 이벤트
-  Sentry.captureException(new Error('[test] 수동 캡처 (warning + 컨텍스트)'), {
+  // 던지지 않고 직접 보고 — Error 객체 대신 captureMessage를 사용하여 명시적인 warning 레벨로 보고
+  Sentry.captureMessage('[test] 수동 캡처 (warning + 컨텍스트)', {
     level: 'warning',
     tags: { test_kind: 'manual' },
-    extra: { note: 'Sentry.captureException 직접 호출 경로' },
+    extra: { note: 'Sentry.captureMessage 직접 호출 경로' },
   });
 }
 
@@ -90,6 +90,17 @@ export const TEST_ERROR_KEYS = Object.keys(TRIGGERS);
  * 단일 키의 동기 throw는 모듈 평가를 중단시키므로(=게임 미로딩) 한 판에 하나만.
  */
 export function runTestError(key: string): void {
+  // 프로덕션 환경(Vite 기반 등)에서는 의도적인 Sentry 테스트 에러 차단
+  const isProduction = 
+    (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production') || 
+    // @ts-ignore (Vite 환경의 import.meta.env 접근 시 TS 에러 방지)
+    (typeof import !== 'undefined' && import.meta?.env?.PROD);
+
+  if (isProduction) {
+    console.warn('[test] 프로덕션 환경에서는 Sentry 테스트 에러를 발생시킬 수 없습니다.');
+    return;
+  }
+
   if (key === 'all') {
     for (const name of TEST_ERROR_KEYS) {
       setTimeout(() => TRIGGERS[name]!(), 0);
