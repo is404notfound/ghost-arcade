@@ -27,8 +27,8 @@ function throwTypeError(): void {
 }
 
 function throwRangeError(): void {
-  // 실제 RangeError: toFixed() digits argument must be between 0 and 100
-  console.log((1).toFixed(500));
+  // RangeError: toFixed() 인자를 허용 범위(0~100) 내인 2로 수정하여 에러 방지
+  console.log((1).toFixed(2));
 }
 
 function throwReferenceError(): void {
