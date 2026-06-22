@@ -18,6 +18,7 @@ import { saveRun, loadTopRuns, GHOST_TOP_N } from '../ghostStore';
 import { compareGhosts, type GhostComparison } from './ghostCompare';
 import { DESIGN_W, DESIGN_H, GROUND_Y_PX, toScreenX, toScreenY, boxCenterScreenY } from './viewport';
 import { registerPauseToggle, setPauseButtonState } from '../controls';
+import { track } from '../analytics';
 
 const COLOR_PLAYER = 0x64ffda;
 const COLOR_GHOST = 0xb39ddb; // 고스트 — 보라 계열 반투명
@@ -51,6 +52,7 @@ export class GameScene extends Phaser.Scene {
   private comboDisplay!: Phaser.GameObjects.Text; // 화면 중앙 큰 콤보 숫자 (combo >= 2)
   private prevCombo = 0; // 이전 프레임 combo 값 — 증가 감지용
   private prevRank = 0;  // 이전 프레임 등수 — 상승 감지용
+  private feverCount = 0; // 이번 판 피버 발동 횟수 — game_over 이벤트용
   private crashed = false; // 렌더 루프 예외 발생 시 1회만 보고하고 정지 (이벤트 폭주 방지)
   private gamePaused = false;
   private pauseOverlay!: Phaser.GameObjects.Container;
@@ -262,7 +264,9 @@ export class GameScene extends Phaser.Scene {
     this.pendingCmp = null;
     this.prevCombo = 0;
     this.prevRank = this.ghosts.length + 1;
+    this.feverCount = 0;
     console.log(`[ghost-arcade] 시드 ${this.seed}, 유령 ${this.ghosts.length}기 로드`);
+    track('game_start', { seed: this.seed, ghost_count: this.ghosts.length });
 
     this.gamePaused = false;
     if (this.gameOverPanel) this.gameOverPanel.setVisible(false);
@@ -290,6 +294,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.sim.state.gameOver) {
       // 결과 패널 표시 상태에서 탭 = 새 판 시작
+      track('retry', { ghost_count: this.ghosts.length }); // game_start보다 먼저 — 자발적 재시도 신호
       this.startRun();
       return;
     }
@@ -372,6 +377,7 @@ export class GameScene extends Phaser.Scene {
       this.popup('+HP', '#4dabf7');
     }
     if (ev & C.EV_FEVER_START) {
+      this.feverCount++;
       this.cameras.main.flash(200, 255, 215, 0); // 황금빛 노란 플래시 (피격 빨강과 구분)
       this.feverOverlay.setVisible(true);
       // 큰 FEVER! 연출 — popup()보다 크게 직접 생성
@@ -402,6 +408,13 @@ export class GameScene extends Phaser.Scene {
     if (ev & C.EV_GAME_OVER) {
       setPauseButtonState(false, false); // 게임오버 → 일시정지 버튼 숨김
       const myDist = this.sim.state.distance;
+      track('game_over', {
+        distance: Math.floor(myDist),
+        rank: this.ghosts.length - this.overtakenLive + 1,
+        ghost_count: this.ghosts.length,
+        duration_frames: this.sim.state.frame,
+        fever_count: this.feverCount,
+      });
       // 비교 먼저 (판 시작 시점 기록 기준) → 저장은 그 다음
       const cmp = compareGhosts(myDist, this.ghostDistances);
       saveRun(window.localStorage, this.seed, this.log, myDist);
