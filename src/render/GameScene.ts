@@ -587,11 +587,12 @@ export class GameScene extends Phaser.Scene {
         this.comboDisplay.setScale(targetScale);
       }
     }
-    // [TEST BUG B] 5콤보마다 마일스톤 팝업 — combo가 COMBO_MILESTONES 범위(최대 20)를
-    // 넘으면(25 이상) COMBO_MILESTONES[tier-1]이 undefined → .toUpperCase()에서 TypeError.
+    // 5콤보마다 마일스톤 팝업 — combo가 COMBO_MILESTONES 범위(최대 20)를 넘으면(25 이상)
+    // 인덱스를 마지막 마일스톤으로 클램프해 최상위 마일스톤(INSANE)을 재사용한다.
     if (s.combo > this.prevCombo && s.combo % 5 === 0) {
       const tier = s.combo / 5;
-      const milestone = this.COMBO_MILESTONES[tier - 1]!;
+      const idx = Math.min(tier - 1, this.COMBO_MILESTONES.length - 1);
+      const milestone = this.COMBO_MILESTONES[idx];
       this.popup(milestone.toUpperCase(), '#ffd700');
     }
     this.prevCombo = s.combo;
