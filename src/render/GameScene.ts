@@ -71,11 +71,6 @@ export class GameScene extends Phaser.Scene {
   private obstacleRects: Phaser.GameObjects.Rectangle[] = [];
   private potionCircles: Phaser.GameObjects.Arc[] = [];
 
-  // [TEST] Seer Autofix 검증용 — 의도적 잠재 버그 2종(게임플레이 경로). 검증 후 제거.
-  // 둘 다 배열 경계 초과를 non-null 단언(!)으로 눌러버린 흔한 실수 패턴.
-  private readonly RANK_TITLES = ['LEGEND', 'MASTER', 'DIAMOND', 'PLATINUM', 'GOLD'];
-  private readonly COMBO_MILESTONES = ['NICE', 'GREAT', 'AMAZING', 'INSANE'];
-
   private hpFill!: Phaser.GameObjects.Rectangle;
   private distText!: Phaser.GameObjects.Text;
   private gameOverPanel!: Phaser.GameObjects.Container;
@@ -478,12 +473,7 @@ export class GameScene extends Phaser.Scene {
 
   /** 보류됐던 결과 패널 채우기 + 표시 (사망 즉시 or 구경 종료 후) */
   private showResultPanel(cmp: GhostComparison, myDist: number) {
-    // [TEST BUG A] 최종 등수 등급 칭호 — finalRank가 RANK_TITLES 개수(5)를 넘으면
-    // RANK_TITLES[...]가 undefined가 되어 .toUpperCase()에서 TypeError.
-    // (고스트가 있을 때 5등 밖으로 죽으면 = 대부분의 죽음에서 재현)
-    const finalRank = cmp.total - cmp.overtaken + 1;
-    const rankTitle = this.RANK_TITLES[finalRank - 1]!;
-    this.gameOverDistText.setText(`거리  ${Math.floor(myDist)}M · ${rankTitle.toUpperCase()}`);
+    this.gameOverDistText.setText(`거리  ${Math.floor(myDist)}M`);
 
     if (!cmp.hasGhosts) {
       // 그날 첫 판 — 비교할 상대가 없다
@@ -586,13 +576,6 @@ export class GameScene extends Phaser.Scene {
       } else if (!this.tweens.isTweening(this.comboDisplay)) {
         this.comboDisplay.setScale(targetScale);
       }
-    }
-    // [TEST BUG B] 5콤보마다 마일스톤 팝업 — combo가 COMBO_MILESTONES 범위(최대 20)를
-    // 넘으면(25 이상) COMBO_MILESTONES[tier-1]이 undefined → .toUpperCase()에서 TypeError.
-    if (s.combo > this.prevCombo && s.combo % 5 === 0) {
-      const tier = s.combo / 5;
-      const milestone = this.COMBO_MILESTONES[tier - 1]!;
-      this.popup(milestone.toUpperCase(), '#ffd700');
     }
     this.prevCombo = s.combo;
 
