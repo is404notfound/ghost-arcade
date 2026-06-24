@@ -28,7 +28,7 @@ async function triggerBug05(): Promise<void> {
 
 async function triggerBug06(): Promise<void> {
   const { loadHighScores } = await import('../network/ScoreService');
-  loadHighScores();
+  await loadHighScores();
 }
 
 async function triggerBug07(): Promise<void> {
