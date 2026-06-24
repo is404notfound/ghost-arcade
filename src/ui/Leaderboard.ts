@@ -6,8 +6,8 @@ export interface LeaderboardEntry {
 
 export function renderRecentScores(scores: number[]): string[] {
   const results: string[] = [];
-  for (let i = 0; i <= scores.length; i++) {
-    results.push(scores[i]!.toFixed(0) + 'm');
+  for (let i = 0; i < scores.length; i++) {
+    results.push(scores[i].toFixed(0) + 'm');
   }
   return results;
 }
