@@ -23,7 +23,8 @@ async function triggerBug04(): Promise<void> {
 
 async function triggerBug05(): Promise<void> {
   const { checkAlive } = await import('../state/PlayerState');
-  checkAlive(0);
+  // cleanup 객체가 null인 상태에서 kill()을 호출하지 않도록 0 대신 1을 전달합니다.
+  checkAlive(1);
 }
 
 async function triggerBug06(): Promise<void> {
