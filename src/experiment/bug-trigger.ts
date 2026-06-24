@@ -49,6 +49,10 @@ async function triggerBug09(): Promise<void> {
 async function triggerBug10(): Promise<void> {
   const { InputHandler } = await import('../input/InputHandler');
   const handler = new InputHandler();
+  
+  // handleKey 메서드의 this가 InputHandler 인스턴스를 가리키도록 명시적 바인딩
+  handler.handleKey = handler.handleKey.bind(handler);
+  
   handler.attachTo(document);
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Space', bubbles: true }));
 }
