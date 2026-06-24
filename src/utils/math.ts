@@ -10,6 +10,6 @@ export function getWeightedScore(base: number, combo: number): number {
   return base + calculateBonus(combo);
 }
 
-function calculateBonus(combo: number): number {
+export function calculateBonus(combo: number): number {
   return combo * combo * 10;
 }

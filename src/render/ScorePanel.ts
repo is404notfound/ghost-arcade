@@ -7,10 +7,7 @@ export interface ScoreSummary {
 }
 
 export function refreshScore(combo: number): number {
-  const calculateBonus = (mathUtils as Record<string, unknown>).calculateBonus as (
-    n: number,
-  ) => number;
-  return calculateBonus(combo);
+  return mathUtils.calculateBonus(combo);
 }
 
 export function buildScoreSummary(base: number, combo: number): ScoreSummary {
