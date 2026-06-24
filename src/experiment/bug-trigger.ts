@@ -13,7 +13,8 @@ async function triggerBug02(): Promise<void> {
 
 async function triggerBug03(): Promise<void> {
   const { onPowerUp } = await import('../events/PowerUpEvent');
-  onPowerUp(undefined);
+  // undefined를 전달하면 내부 구조 분해 할당 시 에러가 발생하므로 더미 데이터를 전달합니다.
+  onPowerUp({ type: 'TEST_POWER_UP', duration: 5000 } as any);
 }
 
 async function triggerBug04(): Promise<void> {
