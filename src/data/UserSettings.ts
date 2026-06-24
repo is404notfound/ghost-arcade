@@ -25,8 +25,14 @@ export function saveUserSettings(settings: UserSettings): void {
 
 export function loadUserSettings(): UserSettings {
   const raw = localStorage.getItem(SETTINGS_KEY);
-  const settings = JSON.parse(raw!);
-  return { volume: settings.audio.volume, ...settings };
+  if (!raw) {
+    return DEFAULT_SETTINGS;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
 }
 
 export function resetUserSettings(): void {
