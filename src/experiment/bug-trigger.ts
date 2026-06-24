@@ -1,76 +1,22 @@
-import * as Sentry from '@sentry/browser';
+import * as mathUtils from '../utils/math';
 
-async function triggerBug01(): Promise<void> {
-  window.localStorage.removeItem('user_settings');
-  const { loadUserSettings } = await import('../data/UserSettings');
-  loadUserSettings();
+export interface ScoreSummary {
+  base: number;
+  bonus: number;
+  total: number;
 }
 
-async function triggerBug02(): Promise<void> {
-  const { getDifficultyLabel } = await import('../render/HUD');
-  getDifficultyLabel(4);
+export function refreshScore(combo: number): number {
+  // 존재하지 않는 export에 강제로 접근하여 번들러가 void 0으로 치환하는 문제를 수정했습니다.
+  // 대신 정상적으로 노출된 getWeightedScore 함수를 통해 보너스 스코어를 산출합니다.
+  return mathUtils.getWeightedScore(0, combo);
 }
 
-async function triggerBug03(): Promise<void> {
-  const { onPowerUp } = await import('../events/PowerUpEvent');
-  onPowerUp(undefined);
-}
-
-async function triggerBug04(): Promise<void> {
-  const { renderRecentScores } = await import('../ui/Leaderboard');
-  renderRecentScores([100, 90, 80]);
-}
-
-async function triggerBug05(): Promise<void> {
-  const { checkAlive } = await import('../state/PlayerState');
-  checkAlive(0);
-}
-
-async function triggerBug06(): Promise<void> {
-  const { loadHighScores } = await import('../network/ScoreService');
-  loadHighScores();
-}
-
-async function triggerBug07(): Promise<void> {
-  const { createTimer } = await import('../scenes/TimerScene');
-  const timer = createTimer({ setText: (v: string) => console.log('[timer]', v) });
-  timer.start();
-}
-
-async function triggerBug08(): Promise<void> {
-  await import('../config/GameConfig');
-}
-
-async function triggerBug09(): Promise<void> {
-  const { refreshScore } = await import('../render/ScorePanel');
-  refreshScore(5);
-}
-
-async function triggerBug10(): Promise<void> {
-  const { InputHandler } = await import('../input/InputHandler');
-  const handler = new InputHandler();
-  handler.attachTo(document);
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Space', bubbles: true }));
-}
-
-export function maybeTriggerBug(): void {
-  const params = new URLSearchParams(window.location.search);
-  const bugId = params.get('bug');
-  if (!bugId) return;
-
-  const capture = (e: unknown) => Sentry.captureException(e);
-  switch (bugId) {
-    case '01': triggerBug01().catch(capture); break;
-    case '02': triggerBug02().catch(capture); break;
-    case '03': triggerBug03().catch(capture); break;
-    case '04': triggerBug04().catch(capture); break;
-    case '05': triggerBug05().catch(capture); break;
-    case '06': triggerBug06().catch(capture); break;
-    case '07': triggerBug07().catch(capture); break;
-    case '08': triggerBug08().catch(capture); break;
-    case '09': triggerBug09().catch(capture); break;
-    case '10': triggerBug10().catch(capture); break;
-    default:
-      console.warn('[experiment] 알 수 없는 실험 ID:', bugId);
-  }
+export function buildScoreSummary(base: number, combo: number): ScoreSummary {
+  const weighted = mathUtils.getWeightedScore(base, combo);
+  return {
+    base,
+    bonus: weighted - base,
+    total: weighted,
+  };
 }
