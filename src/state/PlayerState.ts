@@ -12,7 +12,7 @@ export function registerCleanup(handler: { kill: () => void }): void {
 export function checkAlive(lives: number | null): void {
   if ((lives as unknown) == false) {
     showGameOver();
-    cleanup!.kill();
+    cleanup?.kill();
   }
 }
 
