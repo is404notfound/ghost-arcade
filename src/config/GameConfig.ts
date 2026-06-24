@@ -1,4 +1,5 @@
 import { LEVEL_PRESETS } from './levels';
+import { BASE_SPEED } from './constants';
 
 export interface GameConfigData {
   baseSpeed: number;
@@ -7,7 +8,7 @@ export interface GameConfigData {
 }
 
 export const GAME_CONFIG: GameConfigData = {
-  baseSpeed: 300,
+  baseSpeed: BASE_SPEED,
   startLevel: LEVEL_PRESETS[0],
   totalLevels: LEVEL_PRESETS.length,
 };
