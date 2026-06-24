@@ -37,6 +37,15 @@ describe('GameSim — 충돌과 무적', () => {
 });
 
 describe('GameSim — 체력포션', () => {
+  test('POTION_Y_MAX는 1단 점프로 포션 수집이 가능한 이론 상한 이하이다 (불변식)', () => {
+    // 1단 점프 정점(발 기준): JUMP_VEL²/(2·GRAVITY)
+    const singleJumpPeak = (C.JUMP_VEL * C.JUMP_VEL) / (2 * C.GRAVITY);
+    // 수집 조건: player.y + PLAYER_H > p.y - POTION_R
+    // → 이론 상한: p.y < singleJumpPeak + PLAYER_H + POTION_R
+    const reachableMax = singleJumpPeak + C.PLAYER_H + C.POTION_R;
+    expect(C.POTION_Y_MAX).toBeLessThanOrEqual(reachableMax);
+  });
+
   test('포션은 시간이 지나면 스폰되고 점프 높이 범위에 등장한다', () => {
     const sim = new GameSim(5);
     sim.state.hp = 1e9;
@@ -52,6 +61,21 @@ describe('GameSim — 체력포션', () => {
       }
     }
     expect(found).toBe(true);
+  });
+
+  test('스폰된 포션은 모두 1단 점프로 수집 가능한 높이에 있다', () => {
+    const singleJumpPeak = (C.JUMP_VEL * C.JUMP_VEL) / (2 * C.GRAVITY);
+    const reachableMax = singleJumpPeak + C.PLAYER_H + C.POTION_R;
+    const sim = new GameSim(42);
+    sim.state.hp = 1e9;
+    for (let i = 0; i < 10000; i++) {
+      sim.step();
+      for (const p of sim.state.potions) {
+        if (p.active) {
+          expect(p.y).toBeLessThanOrEqual(reachableMax);
+        }
+      }
+    }
   });
 
   test('포션에 닿으면 회복하고 포션은 비활성화된다', () => {

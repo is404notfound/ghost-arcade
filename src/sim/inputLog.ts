@@ -21,7 +21,8 @@
 // 1.5.0: nearMissCombo 필드 제거, EV_NEAR_MISS 제거 — SimState 직렬화 구조 변경
 // 1.6.0: INTERVAL_BASE 1700→2000, INTERVAL_MIN 620→750, INTERVAL_RAMP 22→14 — 간격 에스컬레이션 곡선 변경
 // 1.7.0: INTERVAL_BASE 2000→1800, INTERVAL_MIN 750→680, INTERVAL_RAMP 14→18 — 간격 중간 조정 (~62초)
-export const SIM_VERSION = '1.7.0';
+// 1.8.0: POTION_Y_MAX 230→150 — 1단 점프 도달 범위 보정, 포션 위치 운빨 제거
+export const SIM_VERSION = '1.8.0';
 
 export interface InputEvent {
   frame: number;

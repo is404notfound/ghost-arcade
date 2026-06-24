@@ -41,8 +41,13 @@ export const INVINCIBLE_MS = 900;
 export const POTION_HEAL = 30;
 export const POTION_CHANCE = 0.35;
 export const POTION_R = 13;
-export const POTION_Y_MIN = 70; // 포션 중심 높이 범위
-export const POTION_Y_MAX = 230;
+export const POTION_Y_MIN = 70; // 포션 중심 높이 범위 (낮은 포션 = 안 뛰거나 살짝 점프)
+// POTION_Y_MAX 불변식: 모든 포션은 1단 점프로 획득 가능해야 한다.
+// 1단 점프 정점(발 기준) = JUMP_VEL²/(2·GRAVITY) = 680²/2800 ≈ 165
+// 수집 조건 = player.y + PLAYER_H > p.y - POTION_R
+// → 이론 상한 = 165 + PLAYER_H(42) - POTION_R(13) = 194
+// → 여유(±44) 포함 150 채택 — 획득 자체는 보장, 타이밍 결정이 긴장 요소
+export const POTION_Y_MAX = 150;
 
 // 거리 점수
 export const UNITS_PER_METER = 30;
