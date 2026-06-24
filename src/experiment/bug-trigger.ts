@@ -8,7 +8,8 @@ async function triggerBug01(): Promise<void> {
 
 async function triggerBug02(): Promise<void> {
   const { getDifficultyLabel } = await import('../render/HUD');
-  getDifficultyLabel(4);
+  // 배열 범위(1~3)에 맞는 정상적인 인자를 전달하도록 수정
+  getDifficultyLabel(3);
 }
 
 async function triggerBug03(): Promise<void> {
