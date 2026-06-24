@@ -9,6 +9,7 @@ import { dailySeed } from './dailySeed';
 import { initGameControls } from './controls';
 import { initAnalytics } from './analytics';
 import { runTestError } from './testErrors';
+import { maybeTriggerBug } from './experiment/bug-trigger';
 
 // 검증용 의도적 에러 — Sentry/Seer 테스트. (검증 후 제거 가능)
 //   ?error=<type>  하나만 (type/range/reference/syntax/uri/custom/promise/async/manual/generic)
@@ -22,6 +23,9 @@ import { runTestError } from './testErrors';
     runTestError(params.get('error') ?? '');
   }
 }
+
+// 에이전트 비교 실험: ?bug=NN 파라미터가 있을 때만 해당 시나리오 실행
+maybeTriggerBug();
 
 // DEV 전용: ?seedghosts 파라미터 or console의 window.__seedGhosts()로 고스트 필드 시딩.
 // import.meta.env.DEV = false인 프로덕션 빌드에서 이 블록은 dead-code로 제거된다.
