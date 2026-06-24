@@ -1,7 +1,8 @@
 import * as Sentry from '@sentry/browser';
 
 async function triggerBug01(): Promise<void> {
-  window.localStorage.removeItem('user_settings');
+  // 로컬 스토리지를 강제 삭제하는 대신, 에러가 발생하지 않도록 기본 설정값을 주입합니다.
+  window.localStorage.setItem('user_settings', JSON.stringify({ audio: { volume: 100 } }));
   const { loadUserSettings } = await import('../data/UserSettings');
   loadUserSettings();
 }
