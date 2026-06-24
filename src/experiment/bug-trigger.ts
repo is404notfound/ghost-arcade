@@ -1,3 +1,5 @@
+import * as Sentry from '@sentry/browser';
+
 async function triggerBug01(): Promise<void> {
   window.localStorage.removeItem('user_settings');
   const { loadUserSettings } = await import('../data/UserSettings');
@@ -56,17 +58,18 @@ export function maybeTriggerBug(): void {
   const bugId = params.get('bug');
   if (!bugId) return;
 
+  const capture = (e: unknown) => Sentry.captureException(e);
   switch (bugId) {
-    case '01': void triggerBug01(); break;
-    case '02': void triggerBug02(); break;
-    case '03': void triggerBug03(); break;
-    case '04': void triggerBug04(); break;
-    case '05': void triggerBug05(); break;
-    case '06': void triggerBug06(); break;
-    case '07': void triggerBug07(); break;
-    case '08': void triggerBug08(); break;
-    case '09': void triggerBug09(); break;
-    case '10': void triggerBug10(); break;
+    case '01': triggerBug01().catch(capture); break;
+    case '02': triggerBug02().catch(capture); break;
+    case '03': triggerBug03().catch(capture); break;
+    case '04': triggerBug04().catch(capture); break;
+    case '05': triggerBug05().catch(capture); break;
+    case '06': triggerBug06().catch(capture); break;
+    case '07': triggerBug07().catch(capture); break;
+    case '08': triggerBug08().catch(capture); break;
+    case '09': triggerBug09().catch(capture); break;
+    case '10': triggerBug10().catch(capture); break;
     default:
       console.warn('[experiment] 알 수 없는 실험 ID:', bugId);
   }
