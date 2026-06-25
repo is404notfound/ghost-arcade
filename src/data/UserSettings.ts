@@ -24,9 +24,29 @@ export function saveUserSettings(settings: UserSettings): void {
 }
 
 export function loadUserSettings(): UserSettings {
-  const raw = localStorage.getItem(SETTINGS_KEY);
-  const settings = JSON.parse(raw!);
-  return { volume: settings.audio.volume, ...settings };
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) {
+      return DEFAULT_SETTINGS;
+    }
+    
+    const settings = JSON.parse(raw);
+    if (!settings) {
+      return DEFAULT_SETTINGS;
+    }
+
+    return {
+      ...DEFAULT_SETTINGS,
+      ...settings,
+      audio: {
+        ...DEFAULT_SETTINGS.audio,
+        ...(settings.audio || {}),
+      },
+    };
+  } catch {
+    // JSON 파싱 에러 발생 시 기본값 반환
+    return DEFAULT_SETTINGS;
+  }
 }
 
 export function resetUserSettings(): void {
