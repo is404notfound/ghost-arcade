@@ -10,9 +10,11 @@ export function registerCleanup(handler: { kill: () => void }): void {
 }
 
 export function checkAlive(lives: number | null): void {
-  if ((lives as unknown) == false) {
+  // 느슨한 비교(== false)를 제거하고 명시적인 숫자 비교(<= 0)로 변경
+  if (lives !== null && lives <= 0) {
     showGameOver();
-    cleanup!.kill();
+    // Non-null assertion(!) 대신 Optional Chaining(?.)을 사용하여 안전하게 호출
+    cleanup?.kill();
   }
 }
 
