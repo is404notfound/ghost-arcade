@@ -58,10 +58,11 @@ export class GameScene extends Phaser.Scene {
   private feverCount = 0; // 이번 판 피버 발동 횟수 — game_over 이벤트용
   private crashed = false; // 렌더 루프 예외 발생 시 1회만 보고하고 정지 (이벤트 폭주 방지)
   private gamePaused = false;
-  // 인게임 안내 — 세션 1회
-  private onboardingHint: Phaser.GameObjects.Container | null = null;
-  private hasShownPotionHint = false; // 첫 포션 획득 강조
-  private hasShownFeverHint = false;  // 첫 피버 발동 강조
+  // 인게임 안내
+  private onboardingHint: Phaser.GameObjects.Container | null = null; // 최초 1회 (localStorage)
+  private feverTutorial: Phaser.GameObjects.Container | null = null;  // 첫 피버 일시정지 안내
+  private hasShownPotionHint = false;  // 첫 포션 획득 강조 (세션 1회)
+  private needsFeverTutorial = true;   // 첫 피버 멈춤 튜토리얼 필요 여부
   private pauseOverlay!: Phaser.GameObjects.Container;
   private _windowTapHandler!: () => void;
   private feverOverlay!: Phaser.GameObjects.Rectangle; // 피버 중 warm tint 레이어
@@ -248,8 +249,8 @@ export class GameScene extends Phaser.Scene {
     if (isFirstPlay) {
       const hintBg = this.add
         .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.7);
-      const hintTitle = this.add
-        .text(DESIGN_W / 2, DESIGN_H / 2 - 36, '탭하여 점프\n장애물을 피하세요', {
+      const hintMain = this.add
+        .text(DESIGN_W / 2, DESIGN_H / 2 - 66, '탭하여 점프\n장애물을 피하세요', {
           fontSize: '26px',
           color: '#ffffff',
           fontStyle: 'bold',
@@ -257,15 +258,66 @@ export class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5)
         .setStroke('#1a1a2e', 5);
+      // 게임 thesis 전달 — 반투명 캐릭터 = 다른 플레이어 고스트 (경쟁 상대)
+      const hintGhost = this.add
+        .text(
+          DESIGN_W / 2,
+          DESIGN_H / 2 + 12,
+          '반투명 캐릭터는 다른 플레이어의 고스트\n더 멀리 가서 제치세요!',
+          {
+            fontSize: '17px',
+            color: '#b39ddb',
+            align: 'center',
+          },
+        )
+        .setOrigin(0.5)
+        .setStroke('#1a1a2e', 4);
       const hintSub = this.add
-        .text(DESIGN_W / 2, DESIGN_H / 2 + 52, '탭하여 시작 →', {
+        .text(DESIGN_W / 2, DESIGN_H / 2 + 78, '탭하여 시작 →', {
           fontSize: '16px',
           color: '#64ffda',
         })
         .setOrigin(0.5);
       this.onboardingHint = this.add
-        .container(0, 0, [hintBg, hintTitle, hintSub])
+        .container(0, 0, [hintBg, hintMain, hintGhost, hintSub])
         .setDepth(100);
+    }
+
+    // 피버 튜토리얼 — localStorage 'ga:fever-tutorial' 없으면 최초 1회 표시.
+    // 첫 EV_FEVER_START 발동 시 게임을 일시정지하고 이 패널을 보여준다.
+    try {
+      this.needsFeverTutorial = !window.localStorage.getItem('ga:fever-tutorial');
+    } catch { this.needsFeverTutorial = false; }
+    if (this.needsFeverTutorial) {
+      const feverSec = Math.round(C.FEVER_INTERVAL_SEC); // 하드코딩 방지
+      const ftBg = this.add.rectangle(DESIGN_W / 2, DESIGN_H / 2, 420, 180, 0x1a1a2e, 0.95);
+      const ftTitle = this.add
+        .text(DESIGN_W / 2, DESIGN_H / 2 - 50, 'FEVER!', {
+          fontSize: '24px',
+          color: '#ffd700',
+          fontStyle: 'bold',
+        })
+        .setOrigin(0.5)
+        .setStroke('#1a1a2e', 5);
+      const ftDesc = this.add
+        .text(
+          DESIGN_W / 2,
+          DESIGN_H / 2 - 8,
+          `콤보를 ${feverSec}초 이상 유지하면 발동!\n무한 점프 + 탭마다 체력 회복`,
+          { fontSize: '17px', color: '#ffffff', align: 'center' },
+        )
+        .setOrigin(0.5)
+        .setStroke('#1a1a2e', 3);
+      const ftSub = this.add
+        .text(DESIGN_W / 2, DESIGN_H / 2 + 62, '탭하여 계속 →', {
+          fontSize: '14px',
+          color: '#aaaaaa',
+        })
+        .setOrigin(0.5);
+      this.feverTutorial = this.add
+        .container(0, 0, [ftBg, ftTitle, ftDesc, ftSub])
+        .setDepth(90)
+        .setVisible(false);
     }
 
     registerPauseToggle(() => { this.togglePause(); });
@@ -362,8 +414,13 @@ export class GameScene extends Phaser.Scene {
       this.onboardingHint.setVisible(false);
       try { window.localStorage.setItem('ga:onboarded', '1'); } catch { /* 무시 */ }
     }
-    // 일시정지 중 탭 = 재개 (점프로 기록 안 됨 — 결정론 경계 유지)
+    // 일시정지 중 탭 = 재개.
+    // 피버 튜토리얼로 멈춰있으면 먼저 닫고 togglePause로 이어진다.
     if (this.gamePaused) {
+      if (this.feverTutorial?.visible) {
+        this.feverTutorial.setVisible(false);
+        try { window.localStorage.setItem('ga:fever-tutorial', '1'); } catch { /* 무시 */ }
+      }
       this.togglePause();
       return;
     }
@@ -490,17 +547,13 @@ export class GameScene extends Phaser.Scene {
         ease: 'Cubic.out',
         onComplete: () => ft.destroy(),
       });
-      // 첫 피버 발동: infiniteJumpText를 한 번 크게 튀어오르게 (탭=회복 연결 강조)
-      if (!this.hasShownFeverHint) {
-        this.hasShownFeverHint = true;
-        this.infiniteJumpText.setScale(1.7);
-        this.tweens.add({
-          targets: this.infiniteJumpText,
-          scaleX: 1,
-          scaleY: 1,
-          duration: 550,
-          ease: 'Back.out',
-        });
+      // 첫 피버 발동: 게임 일시정지 + 피버 튜토리얼 표시 (최초 1회)
+      if (this.needsFeverTutorial && this.feverTutorial) {
+        this.needsFeverTutorial = false;
+        this.gamePaused = true;
+        this.timestep.reset();
+        this.feverTutorial.setVisible(true);
+        setPauseButtonState(false, false); // 튜토리얼 중 일시정지 버튼 숨김
       }
     }
     if (ev & C.EV_FEVER_END) {
