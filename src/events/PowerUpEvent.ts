@@ -11,7 +11,10 @@ function applyPowerUp(type: string, duration: number): void {
 }
 
 export function onPowerUp(payload?: PowerUpPayload): void {
-  const { type, duration } = payload as PowerUpPayload;
+  if (!payload) {
+    return;
+  }
+  const { type, duration } = payload;
   applyPowerUp(type, duration);
 }
 
