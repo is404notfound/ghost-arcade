@@ -13,16 +13,20 @@ vi.mock('@sentry/browser', () => ({
 const seed = 20240101;
 const log = createInputLog(seed);
 
-/** SELECT 체인 + INSERT를 모두 지원하는 Supabase 쿼리 빌더 목업 */
+/** SELECT 체인 + INSERT를 모두 지원하는 Supabase 쿼리 빌더 목업.
+ *  SELECT: .select().eq().eq().order().limit().abortSignal(signal) → Promise
+ *  INSERT: .insert()                                               → Promise
+ */
 function makeChain(
-  limitResult: unknown = { data: [], error: null },
+  queryResult: unknown = { data: [], error: null },
   insertResult: unknown = { error: null },
 ) {
   const chain = {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
-    limit: vi.fn().mockResolvedValue(limitResult),
+    limit: vi.fn().mockReturnThis(),           // 체인 유지
+    abortSignal: vi.fn().mockResolvedValue(queryResult), // 여기서 최종 resolve
     insert: vi.fn().mockResolvedValue(insertResult),
   };
   return { client: { from: vi.fn().mockReturnValue(chain) }, chain };
@@ -101,6 +105,36 @@ describe('loadTopRunsRemote', () => {
     const result = await loadTopRunsRemote(seed);
     expect(result).toHaveLength(1);
     expect(result[0]!.distance).toBe(200);
+  });
+
+  it('타임아웃(5초 초과): 빈 배열 반환, 예외 미전파', async () => {
+    vi.useFakeTimers();
+    const getClient = await getGetSupabaseClient();
+
+    // AbortSignal이 abort되면 AbortError로 reject하는 체인 (hang 시뮬레이션)
+    const chain = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      abortSignal: vi.fn().mockImplementation((signal: AbortSignal) =>
+        new Promise<{ data: null; error: unknown }>((_, reject) => {
+          signal.addEventListener('abort', () =>
+            reject(new DOMException('The operation was aborted.', 'AbortError')),
+          );
+        }),
+      ),
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getClient.mockReturnValue({ from: vi.fn().mockReturnValue(chain) } as any);
+    const { loadTopRunsRemote } = await importRemote();
+
+    const resultPromise = loadTopRunsRemote(seed);
+    vi.advanceTimersByTime(5001); // REMOTE_TIMEOUT_MS 초과
+    const result = await resultPromise;
+
+    expect(result).toEqual([]);
+    vi.useRealTimers();
   });
 
   it('시드 불일치 레코드 스킵', async () => {

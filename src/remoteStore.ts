@@ -15,6 +15,9 @@ import { SPEED_MAX, UNITS_PER_METER } from './sim/constants';
 // HP 드레인으로 실제 달성 불가능한 값 — 명백한 치트만 걸러낸다
 const DISTANCE_OUTLIER_CEILING = (SPEED_MAX / UNITS_PER_METER) * 900;
 
+// SELECT 타임아웃 — Supabase hang 시 무한 대기 방지 (로컬 폴백 보장)
+const REMOTE_TIMEOUT_MS = 5000;
+
 type DbRow = { distance: number; log: unknown };
 
 /**
@@ -28,6 +31,9 @@ export async function loadTopRunsRemote(seed: number): Promise<GhostRecord[]> {
     return [];
   }
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REMOTE_TIMEOUT_MS);
+
   try {
     const { data, error } = (await client
       .from('ghost_runs')
@@ -35,8 +41,10 @@ export async function loadTopRunsRemote(seed: number): Promise<GhostRecord[]> {
       .eq('seed', seed)
       .eq('sim_version', SIM_VERSION)
       .order('distance', { ascending: false })
-      .limit(GHOST_TOP_N)) as { data: DbRow[] | null; error: unknown };
+      .limit(GHOST_TOP_N)
+      .abortSignal(controller.signal)) as { data: DbRow[] | null; error: unknown };
 
+    clearTimeout(timer);
     if (error) throw error;
     if (!data) return [];
 
@@ -56,8 +64,12 @@ export async function loadTopRunsRemote(seed: number): Promise<GhostRecord[]> {
     }
     return runs;
   } catch (e) {
-    console.error('[remoteStore] SELECT 실패 —', e);
-    Sentry.captureException(e, { level: 'warning' });
+    clearTimeout(timer);
+    // AbortError는 의도적 타임아웃 — Sentry 노이즈 제외
+    if (!(e instanceof DOMException && e.name === 'AbortError')) {
+      console.error('[remoteStore] SELECT 실패 —', e);
+      Sentry.captureException(e, { level: 'warning' });
+    }
     return [];
   }
 }
