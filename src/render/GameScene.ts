@@ -279,6 +279,14 @@ export class GameScene extends Phaser.Scene {
     const currentSeed = this.seed;
     void loadTopRunsRemote(currentSeed).then((remote) => {
       this.remoteRuns = remote;
+      // 새 기기 첫 판 UX: 고스트 없이 시작했고(ghosts.length===0) 원격 데이터가
+      // 게임 시작 3초 이내(SIM_FPS*3 프레임)에 도착했으면 현재 판에도 즉시 적용.
+      // Supabase 왕복이 보통 <1s이므로 대부분의 첫 판에서 고스트가 출현한다.
+      if (remote.length > 0 && this.ghosts.length === 0 && this.sim.state.frame < C.SIM_FPS * 3) {
+        this.ghosts = remote.map((r) => new GhostDriver(r.log));
+        this.ghostDistances = remote.map((r) => r.distance);
+        this.prevRank = this.ghosts.length + 1;
+      }
       // 원격·로컬 모두 비어있으면 봇 콜드스타트 업로드 (B4)
       if (remote.length === 0 && localRecords.length === 0) {
         void this.uploadBotColdStart(currentSeed);

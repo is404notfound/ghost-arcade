@@ -23,7 +23,10 @@ type DbRow = { distance: number; log: unknown };
  */
 export async function loadTopRunsRemote(seed: number): Promise<GhostRecord[]> {
   const client = getSupabaseClient();
-  if (!client) return [];
+  if (!client) {
+    console.warn('[remoteStore] Supabase 클라이언트 null — 환경변수 미설정?');
+    return [];
+  }
 
   try {
     const { data, error } = (await client
@@ -42,14 +45,18 @@ export async function loadTopRunsRemote(seed: number): Promise<GhostRecord[]> {
       try {
         // JSONB → 문자열 → parseLog (스키마·버전 검증 재사용)
         const parsed = parseLog(JSON.stringify(row.log));
-        if (parsed.seed !== seed) continue; // 키-내용 시드 불일치 = 손상
+        if (parsed.seed !== seed) {
+          console.warn('[remoteStore] 시드 불일치 스킵 — row.seed:', parsed.seed, '기대:', seed);
+          continue;
+        }
         runs.push({ distance: row.distance, log: parsed });
-      } catch {
-        // 손상·버전불일치 레코드 — 스킵
+      } catch (e) {
+        console.warn('[remoteStore] parseLog 스킵 —', (e as Error).message);
       }
     }
     return runs;
   } catch (e) {
+    console.error('[remoteStore] SELECT 실패 —', e);
     Sentry.captureException(e, { level: 'warning' });
     return [];
   }
