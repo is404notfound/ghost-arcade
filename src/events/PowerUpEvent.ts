@@ -11,7 +11,9 @@ function applyPowerUp(type: string, duration: number): void {
 }
 
 export function onPowerUp(payload?: PowerUpPayload): void {
-  const { type, duration } = payload as PowerUpPayload;
+  if (!payload) return; // payload가 undefined일 경우 안전하게 종료
+  
+  const { type, duration } = payload;
   applyPowerUp(type, duration);
 }
 
