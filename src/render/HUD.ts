@@ -1,7 +1,8 @@
 const DIFFICULTY_LABELS: string[] = ['EASY', 'NORMAL', 'HARD'];
 
 export function getDifficultyLabel(level: number): string {
-  return DIFFICULTY_LABELS[level - 1]!.toUpperCase();
+  const label = DIFFICULTY_LABELS[level - 1];
+  return label ? label.toUpperCase() : 'UNKNOWN';
 }
 
 export function formatDistance(meters: number): string {
