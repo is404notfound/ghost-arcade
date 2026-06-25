@@ -29,6 +29,7 @@ const COLOR_GROUND = 0x8892b0;
 const GHOST_ALPHA = 0.22;
 const DEAD_PLAYER_ALPHA = 0.25; // 사망 후 구경 모드에서 내 캐릭터 디밍
 const SPECTATE_MAX_SEC = 3; // 사망 후 구경 최대 시간
+const SPECTATE_SPEED_MULT = 3; // 구경 모드에서 고스트 재생 배속
 
 export class GameScene extends Phaser.Scene {
   private sim!: GameSim;
@@ -68,6 +69,7 @@ export class GameScene extends Phaser.Scene {
   private feverOverlay!: Phaser.GameObjects.Rectangle; // 피버 중 warm tint 레이어
   private infiniteJumpText!: Phaser.GameObjects.Text; // 피버 중 "클릭시 무한 회복!" 안내
   private spectateHintText!: Phaser.GameObjects.Text; // 구경 중 "탭하여 건너뛰기" 안내
+  private youDiedText!: Phaser.GameObjects.Text;      // 구경 모드 상단 "당신은 죽었습니다"
 
   // 고스트 스프라이트 풀 — GHOST_TOP_N개를 create()에서 한 번만 생성 (D6)
   private ghostRects: Phaser.GameObjects.Rectangle[] = [];
@@ -150,7 +152,7 @@ export class GameScene extends Phaser.Scene {
 
     // 구경 모드 안내 — 내가 죽은 뒤 유령들이 계속 달리는 동안 탭으로 건너뛸 수 있음을 알림
     this.spectateHintText = this.add
-      .text(DESIGN_W / 2, DESIGN_H * 0.78, 'GAME OVER\n탭하여 건너뛰기', {
+      .text(DESIGN_W / 2, DESIGN_H * 0.78, '탭하여 건너뛰기', {
         fontSize: '22px',
         color: '#ffffff',
         fontStyle: 'bold',
@@ -160,6 +162,19 @@ export class GameScene extends Phaser.Scene {
       .setStroke('#1a1a2e', 6)
       .setAlpha(0.85)
       .setVisible(false);
+
+    // 구경 모드 상단 "당신은 죽었습니다" — 내가 죽은 뒤 구경 중에만 표시
+    this.youDiedText = this.add
+      .text(DESIGN_W / 2, 14, '당신은 죽었습니다', {
+        fontSize: '22px',
+        color: '#ff4757',
+        fontStyle: 'bold',
+      })
+      .setOrigin(0.5, 0)
+      .setStroke('#1a1a2e', 6)
+      .setAlpha(0.92)
+      .setVisible(false)
+      .setDepth(20);
 
     // HUD: 체력바(상단 중앙) + 거리(우상단) + 콤보(좌상단)
     const barW = 220, barH = 14;
@@ -263,7 +278,7 @@ export class GameScene extends Phaser.Scene {
         .text(
           DESIGN_W / 2,
           DESIGN_H / 2 + 12,
-          '반투명 캐릭터는 다른 플레이어의 고스트\n더 멀리 가서 제치세요!',
+          '다른 플레이어를 제치고 더 멀리 가보세요!',
           {
             fontSize: '17px',
             color: '#b39ddb',
@@ -382,12 +397,16 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
+    // 재시도 판에서는 피버 튜토리얼을 건너뜀 (이미 게임 흐름을 아는 상태)
+    if (isRetry) this.needsFeverTutorial = false;
+
     this.gamePaused = false;
     if (this.gameOverPanel) this.gameOverPanel.setVisible(false);
     if (this.comboDisplay) this.comboDisplay.setVisible(false);
     if (this.feverOverlay) this.feverOverlay.setVisible(false);
     if (this.infiniteJumpText) this.infiniteJumpText.setVisible(false);
     if (this.spectateHintText) this.spectateHintText.setVisible(false);
+    if (this.youDiedText) this.youDiedText.setVisible(false);
     if (this.pauseOverlay) this.pauseOverlay.setVisible(false);
     setPauseButtonState(false, true);
   }
@@ -429,6 +448,7 @@ export class GameScene extends Phaser.Scene {
       this.spectating = false;
       this.spectateFramesLeft = 0;
       this.spectateHintText.setVisible(false);
+      this.youDiedText.setVisible(false);
       if (this.pendingCmp !== null) this.showResultPanel(this.pendingCmp, this.pendingMyDist);
       return;
     }
@@ -474,9 +494,10 @@ export class GameScene extends Phaser.Scene {
         // 유령들은 라이브와 lockstep. 내가 죽은 뒤에는 '구경 모드'에서만 계속 달리고,
         // 결과 패널이 뜨면 함께 멈춘다.
         if (!this.sim.state.gameOver || this.spectating) {
+          const ghostSteps = this.spectating ? SPECTATE_SPEED_MULT : 1;
           for (const g of this.ghosts) {
             const wasFinished = g.finished;
-            g.step();
+            for (let _s = 0; _s < ghostSteps; _s++) g.step();
             // 유령이 죽는 순간(finished 전환) = 내가 그 기록보다 오래 버팀 = 제침
             if (!wasFinished && g.finished && !this.sim.state.gameOver) {
               this.overtakenLive++;
@@ -496,6 +517,7 @@ export class GameScene extends Phaser.Scene {
             );
             this.spectating = false;
             this.spectateHintText.setVisible(false);
+            this.youDiedText.setVisible(false);
             if (this.pendingCmp !== null) this.showResultPanel(this.pendingCmp, this.pendingMyDist);
           }
         }
@@ -587,6 +609,7 @@ export class GameScene extends Phaser.Scene {
         this.pendingCmp = cmp;
         this.pendingMyDist = myDist;
         this.spectateHintText.setVisible(true);
+        this.youDiedText.setVisible(true);
       } else {
         this.showResultPanel(cmp, myDist);
       }
