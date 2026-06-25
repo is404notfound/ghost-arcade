@@ -11,7 +11,8 @@ class TimerComponent {
   }
 
   start(): void {
-    setInterval(function (this: TimerComponent) {
+    // 화살표 함수를 사용하여 this가 TimerComponent 인스턴스를 가리키도록 수정
+    setInterval(() => {
       this.ticks += 1;
       this.display.setText(`${this.ticks}s`);
     }, 1000);
@@ -25,3 +26,4 @@ class TimerComponent {
 export function createTimer(display: DisplayTarget): TimerComponent {
   return new TimerComponent(display);
 }
+
