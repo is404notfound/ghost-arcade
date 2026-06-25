@@ -7,10 +7,15 @@ export interface ScoreSummary {
 }
 
 export function refreshScore(combo: number): number {
-  const calculateBonus = (mathUtils as Record<string, unknown>).calculateBonus as (
-    n: number,
-  ) => number;
-  return calculateBonus(combo);
+  const mathUtilsRecord = mathUtils as Record<string, unknown>;
+  
+  if (typeof mathUtilsRecord.calculateBonus === 'function') {
+    const calculateBonus = mathUtilsRecord.calculateBonus as (n: number) => number;
+    return calculateBonus(combo);
+  }
+  
+  // 함수가 존재하지 않을 때 애플리케이션 크래시를 방지하기 위해 안전한 기본값 반환
+  return 0;
 }
 
 export function buildScoreSummary(base: number, combo: number): ScoreSummary {
