@@ -12,10 +12,10 @@ export class InputHandler {
     this.active = false;
   }
 
-  handleKey(event: Event): void {
+  handleKey = (event: Event): void => {
     const kbEvent = event as KeyboardEvent;
     this.buffer.push(kbEvent.key);
-  }
+  };
 
   getBuffer(): string[] {
     return [...this.buffer];
@@ -29,3 +29,4 @@ export class InputHandler {
     this.buffer = [];
   }
 }
+
