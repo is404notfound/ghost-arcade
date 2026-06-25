@@ -6,7 +6,7 @@ export interface LeaderboardEntry {
 
 export function renderRecentScores(scores: number[]): string[] {
   const results: string[] = [];
-  for (let i = 0; i <= scores.length; i++) {
+  for (let i = 0; i < scores.length; i++) {
     results.push(scores[i]!.toFixed(0) + 'm');
   }
   return results;
@@ -26,3 +26,4 @@ export function buildLeaderboardEntries(
 export function formatLeaderboardEntry(entry: LeaderboardEntry): string {
   return `#${entry.rank} ${entry.nickname} — ${entry.distance.toFixed(0)}m`;
 }
+
