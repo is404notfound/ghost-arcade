@@ -12,7 +12,8 @@ export class InputHandler {
     this.active = false;
   }
 
-  handleKey(event: Event): void {
+  // this 바인딩 손실을 막기 위해 화살표 함수로 변경
+  handleKey = (event: Event): void => {
     const kbEvent = event as KeyboardEvent;
     this.buffer.push(kbEvent.key);
   }
@@ -29,3 +30,4 @@ export class InputHandler {
     this.buffer = [];
   }
 }
+
