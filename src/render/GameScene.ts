@@ -58,6 +58,10 @@ export class GameScene extends Phaser.Scene {
   private feverCount = 0; // 이번 판 피버 발동 횟수 — game_over 이벤트용
   private crashed = false; // 렌더 루프 예외 발생 시 1회만 보고하고 정지 (이벤트 폭주 방지)
   private gamePaused = false;
+  // 인게임 안내 — 세션 1회
+  private onboardingHint: Phaser.GameObjects.Container | null = null;
+  private hasShownPotionHint = false; // 첫 포션 획득 강조
+  private hasShownFeverHint = false;  // 첫 피버 발동 강조
   private pauseOverlay!: Phaser.GameObjects.Container;
   private _windowTapHandler!: () => void;
   private feverOverlay!: Phaser.GameObjects.Rectangle; // 피버 중 warm tint 레이어
@@ -162,6 +166,10 @@ export class GameScene extends Phaser.Scene {
     this.hpFill = this.add
       .rectangle(DESIGN_W / 2 - barW / 2, 28, barW, barH, 0x2ecc71)
       .setOrigin(0, 0.5);
+    // "HP" 라벨 — 체력바가 무엇인지 첫 눈에 알 수 있도록
+    this.add
+      .text(DESIGN_W / 2 - barW / 2 - 6, 28, 'HP', { fontSize: '12px', color: '#aaaaaa' })
+      .setOrigin(1, 0.5);
     this.distText = this.add
       .text(DESIGN_W - 16, 16, '0M', { fontSize: '24px', color: '#ffffff', fontStyle: 'bold' })
       .setOrigin(1, 0);
@@ -230,6 +238,35 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setStroke('#1a1a2e', 6);
     this.pauseOverlay = this.add.container(0, 0, [poBg, poText]).setVisible(false);
+
+    // 온보딩 힌트 — localStorage 'ga:onboarded' 없으면 최초 1회만 표시.
+    // 탭하면 힌트가 닫히면서 동시에 게임이 시작된다.
+    let isFirstPlay = false;
+    try {
+      isFirstPlay = !window.localStorage.getItem('ga:onboarded');
+    } catch { /* localStorage 차단 환경은 힌트 건너뜀 */ }
+    if (isFirstPlay) {
+      const hintBg = this.add
+        .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.7);
+      const hintTitle = this.add
+        .text(DESIGN_W / 2, DESIGN_H / 2 - 36, '탭하여 점프\n장애물을 피하세요', {
+          fontSize: '26px',
+          color: '#ffffff',
+          fontStyle: 'bold',
+          align: 'center',
+        })
+        .setOrigin(0.5)
+        .setStroke('#1a1a2e', 5);
+      const hintSub = this.add
+        .text(DESIGN_W / 2, DESIGN_H / 2 + 52, '탭하여 시작 →', {
+          fontSize: '16px',
+          color: '#64ffda',
+        })
+        .setOrigin(0.5);
+      this.onboardingHint = this.add
+        .container(0, 0, [hintBg, hintTitle, hintSub])
+        .setDepth(100);
+    }
 
     registerPauseToggle(() => { this.togglePause(); });
 
@@ -320,6 +357,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onTap() {
+    // 온보딩 힌트 표시 중: 닫기 + 이후 점프로 이어짐 (return 없음)
+    if (this.onboardingHint?.visible) {
+      this.onboardingHint.setVisible(false);
+      try { window.localStorage.setItem('ga:onboarded', '1'); } catch { /* 무시 */ }
+    }
     // 일시정지 중 탭 = 재개 (점프로 기록 안 됨 — 결정론 경계 유지)
     if (this.gamePaused) {
       this.togglePause();
@@ -366,6 +408,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tick(delta: number) {
+    // 온보딩 힌트 표시 중: 시뮬·렌더 대기 (탭하면 힌트 닫히고 게임 시작)
+    if (this.onboardingHint?.visible) return;
     if (!this.gamePaused) {
       // 렌더 fps가 어떻든 시뮬은 DT 단위로만 전진 (결정론 경계)
       this.timestep.update(delta, () => {
@@ -414,7 +458,12 @@ export class GameScene extends Phaser.Scene {
       this.popup('BREAK', '#ff4757');
     }
     if (ev & C.EV_POTION) {
-      this.popup('+HP', '#4dabf7');
+      if (!this.hasShownPotionHint) {
+        this.hasShownPotionHint = true;
+        this.bigPopup('+HP 회복!', '#4dabf7');
+      } else {
+        this.popup('+HP', '#4dabf7');
+      }
     }
     if (ev & C.EV_FEVER_START) {
       this.feverCount++;
@@ -441,6 +490,18 @@ export class GameScene extends Phaser.Scene {
         ease: 'Cubic.out',
         onComplete: () => ft.destroy(),
       });
+      // 첫 피버 발동: infiniteJumpText를 한 번 크게 튀어오르게 (탭=회복 연결 강조)
+      if (!this.hasShownFeverHint) {
+        this.hasShownFeverHint = true;
+        this.infiniteJumpText.setScale(1.7);
+        this.tweens.add({
+          targets: this.infiniteJumpText,
+          scaleX: 1,
+          scaleY: 1,
+          duration: 550,
+          ease: 'Back.out',
+        });
+      }
     }
     if (ev & C.EV_FEVER_END) {
       this.feverOverlay.setVisible(false);
@@ -625,6 +686,24 @@ export class GameScene extends Phaser.Scene {
       y: y - 34,
       alpha: 0,
       duration: 520,
+      ease: 'Cubic.out',
+      onComplete: () => t.destroy(),
+    });
+  }
+
+  /** 첫 이벤트 한정 강조 팝업 — popup()보다 크고 오래 남음 */
+  private bigPopup(msg: string, color: string) {
+    const x = toScreenX(C.PLAYER_X);
+    const y = boxCenterScreenY(this.sim.state.player.y, C.PLAYER_H) - 50;
+    const t = this.add
+      .text(x, y, msg, { fontSize: '30px', color, fontStyle: 'bold' })
+      .setOrigin(0.5)
+      .setStroke('#1a1a2e', 6);
+    this.tweens.add({
+      targets: t,
+      y: y - 54,
+      alpha: 0,
+      duration: 1000,
       ease: 'Cubic.out',
       onComplete: () => t.destroy(),
     });
