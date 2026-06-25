@@ -12,7 +12,8 @@ export class InputHandler {
     this.active = false;
   }
 
-  handleKey(event: Event): void {
+  // 화살표 함수로 변경하여 this 컨텍스트를 인스턴스에 고정
+  handleKey = (event: Event): void => {
     const kbEvent = event as KeyboardEvent;
     this.buffer.push(kbEvent.key);
   }
