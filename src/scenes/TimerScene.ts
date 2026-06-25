@@ -11,7 +11,7 @@ class TimerComponent {
   }
 
   start(): void {
-    setInterval(function (this: TimerComponent) {
+    setInterval(() => {
       this.ticks += 1;
       this.display.setText(`${this.ticks}s`);
     }, 1000);
@@ -25,3 +25,4 @@ class TimerComponent {
 export function createTimer(display: DisplayTarget): TimerComponent {
   return new TimerComponent(display);
 }
+
