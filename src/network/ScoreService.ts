@@ -10,11 +10,12 @@ async function fetchHighScores(): Promise<{ scores: number[] }> {
   );
 }
 
-export function loadHighScores(): number[] {
-  const response = fetchHighScores() as unknown as { scores: number[] };
+export async function loadHighScores(): Promise<number[]> {
+  const response = await fetchHighScores();
   return response.scores.slice(0, 10);
 }
 
 export async function submitScore(record: ScoreRecord): Promise<void> {
   console.debug('[score-service] submit', record);
 }
+
