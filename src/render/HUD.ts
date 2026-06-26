@@ -1,7 +1,7 @@
 const DIFFICULTY_LABELS: string[] = ['EASY', 'NORMAL', 'HARD'];
 
 export function getDifficultyLabel(level: number): string {
-  return DIFFICULTY_LABELS[level - 1]!.toUpperCase();
+  return DIFFICULTY_LABELS[level - 1]?.toUpperCase() ?? 'UNKNOWN';
 }
 
 export function formatDistance(meters: number): string {
@@ -16,3 +16,4 @@ export function formatTime(seconds: number): string {
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
+
