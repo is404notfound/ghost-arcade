@@ -5,13 +5,16 @@ export interface PowerUpPayload {
   duration: number;
 }
 
-function applyPowerUp(type: string, duration: number): void {
+function applyPowerUp(type: PowerUpType, duration: number): void {
   const entry = { type, expiresAt: Date.now() + duration };
   console.debug('[power-up] activated', entry);
 }
 
 export function onPowerUp(payload?: PowerUpPayload): void {
-  const { type, duration } = payload as PowerUpPayload;
+  if (!payload) {
+    return;
+  }
+  const { type, duration } = payload;
   applyPowerUp(type, duration);
 }
 
