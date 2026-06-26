@@ -21,15 +21,48 @@ import { DESIGN_W, DESIGN_H, GROUND_Y_PX, toScreenX, toScreenY, boxCenterScreenY
 import { registerPauseToggle, setPauseButtonState } from '../controls';
 import { track } from '../analytics';
 
-const COLOR_PLAYER = 0x64ffda;
-const COLOR_GHOST = 0xb39ddb; // 고스트 — 보라 계열 반투명
-const COLOR_OBSTACLE = 0xff6b6b;
-const COLOR_POTION = 0x4dabf7;
-const COLOR_GROUND = 0x8892b0;
-const GHOST_ALPHA = 0.22;
+// 게임 에셋(전처리본 assets/game/*) — Vite가 해시 URL로 번들. scripts/prep-assets.py 산출물.
+import playerRideUrl from '../../assets/game/player-ride.png';
+import playerJumpUrl from '../../assets/game/player-jump.png';
+import playerHitUrl from '../../assets/game/player-hit.png';
+import playerDeadUrl from '../../assets/game/player-dead.png';
+import ghostRun0Url from '../../assets/game/ghost-run-0.png';
+import ghostRun1Url from '../../assets/game/ghost-run-1.png';
+import fuelCanUrl from '../../assets/game/fuel-can.png';
+import buildingCapUrl from '../../assets/game/building-cap.png';
+import buildingFloorUrl from '../../assets/game/building-floor.png';
+import bgSunUrl from '../../assets/game/bg-sun.png';
+// 일본어 네온 간판 데코 (배경 패럴랙스 레이어)
+import signYakouUrl from '../../assets/images/signage/signage-yakou.png';
+import signHotelUrl from '../../assets/images/signage/signage-hotel.png';
+import signMusicUrl from '../../assets/images/signage/signage-music-bar.png';
+import signShinyaUrl from '../../assets/images/signage/signage-shinya.png';
+
+const COLOR_GHOST = 0xb39ddb; // 고스트 — 보라 계열 반투명(스프라이트 틴트)
+
+// 배경(코드 스킨) 팔레트 — neon-asset-spec.md §2 토큰. 전부 렌더 전용.
+const COLOR_SKY_TOP = 0x170a2e;   // 하늘 상단(딥 인디고)
+const COLOR_SKY_LOW = 0x6b1248;   // 지평선(마젠타-퍼플)
+const COLOR_NEON_CYAN = 0x36f9f6; // 바닥 그리드 / 지평선 글로우
+const COLOR_SKYLINE = 0x1b0c33;   // 먼 도시 실루엣
+const COLOR_SKYLINE_WIN = 0xff6fb0; // 실루엣 창문 점
+const COLOR_GROUND_DARK = 0x0a0612; // 지면(지평선 아래)
+const SKYLINE_PARALLAX = 0.2;     // 먼 스카이라인 스크롤 배수(월드속도 대비)
+const GRID_SPACING = 70;          // 바닥 그리드 수직선 간격(px)
 const DEAD_PLAYER_ALPHA = 0.25; // 사망 후 구경 모드에서 내 캐릭터 디밍
 const SPECTATE_MAX_SEC = 3; // 사망 후 구경 최대 시간
 const SPECTATE_SPEED_MULT = 3; // 구경 모드에서 고스트 재생 배속
+
+// 스프라이트 표시 튜닝 — 아트는 풋프린트(히트박스)보다 크게 overhang 허용(스펙 §1).
+// 충돌은 sim의 직사각형 풋프린트로만 판정되므로 아래 값은 '보이는 크기'일 뿐이다.
+const PLAYER_ART_H = 78;          // 라이더 표시 높이(px) — 히트박스 42 + 후드/스카프 overhang
+const PLAYER_ART_ORIGIN_X = 0.62; // 아트 내 히트박스 정렬점(왼쪽 트레일 보정 → 우측 치우침)
+const PLAYER_ART_ORIGIN_Y = 0.96; // 바퀴 접지점이 바닥선에 닿도록
+const GHOST_ART_H = 60;           // 고스트 러너 표시 높이
+const GHOST_SPRITE_ALPHA = 0.5;   // 디테일 실루엣이 읽히도록 도형(0.22)보다 높임
+const BUILDING_ART_W = 42;        // 건물 표시 폭(루프/안테나 overhang 포함, 히트박스 32)
+const FUEL_ART_SIZE = 32;         // 연료통 표시 한 변(px), 히트박스 26
+const GHOST_RUN_FPS = 9;          // 고스트 달리기 2프레임 교차 속도(렌더 전용)
 
 export class GameScene extends Phaser.Scene {
   private sim!: GameSim;
@@ -60,7 +93,9 @@ export class GameScene extends Phaser.Scene {
   private crashed = false; // 렌더 루프 예외 발생 시 1회만 보고하고 정지 (이벤트 폭주 방지)
   private gamePaused = false;
   // 인게임 안내
-  private onboardingHint: Phaser.GameObjects.Container | null = null; // 최초 1회 (localStorage)
+  private startOverlay!: Phaser.GameObjects.Container; // 판 시작마다 표시되는 오버레이
+  private startBestRankText!: Phaser.GameObjects.Text; // 최고 등수 (이력 있으면 표시)
+  private startSubText!: Phaser.GameObjects.Text;      // 고스트 경쟁 안내 / 첫판 조작 힌트
   private feverTutorial: Phaser.GameObjects.Container | null = null;  // 첫 피버 일시정지 안내
   private hasShownPotionHint = false;  // 첫 포션 획득 강조 (세션 1회)
   private needsFeverTutorial = true;   // 첫 피버 멈춤 튜토리얼 필요 여부
@@ -71,12 +106,17 @@ export class GameScene extends Phaser.Scene {
   private spectateHintText!: Phaser.GameObjects.Text; // 구경 중 "탭하여 건너뛰기" 안내
   private youDiedText!: Phaser.GameObjects.Text;      // 구경 모드 상단 "당신은 죽었습니다"
 
-  // 고스트 스프라이트 풀 — GHOST_TOP_N개를 create()에서 한 번만 생성 (D6)
-  private ghostRects: Phaser.GameObjects.Rectangle[] = [];
-  private playerRect!: Phaser.GameObjects.Rectangle;
+  // 고스트 스프라이트 풀 — GHOST_TOP_N개를 create()에서 한 번만 생성 (D6).
+  // 발로 뛰는 헤일로 고스트(죽은 라이벌) 스프라이트, 보라 틴트 + 반투명.
+  private ghostRects: Phaser.GameObjects.Sprite[] = [];
+  private playerRect!: Phaser.GameObjects.Image; // 후드 라이더 + 네온 오토바이
   // sim의 고정 크기 풀과 1:1 매핑 — 생성은 create()에서 단 한 번 (D6)
-  private obstacleRects: Phaser.GameObjects.Rectangle[] = [];
-  private potionCircles: Phaser.GameObjects.Arc[] = [];
+  private obstacleRects: Phaser.GameObjects.Image[] = []; // 네온 건물(가변 높이)
+  private fuelSprites: Phaser.GameObjects.Image[] = [];   // 연료통(회복=주유)
+
+  // 배경 패럴랙스 레이어 (렌더 전용 — sim 무관, world.distance만 읽어 스크롤)
+  private bgSkylineFar!: Phaser.GameObjects.Container;
+  private groundGrid!: Phaser.GameObjects.Graphics;
 
   private hpFill!: Phaser.GameObjects.Rectangle;
   private distText!: Phaser.GameObjects.Text;
@@ -90,45 +130,78 @@ export class GameScene extends Phaser.Scene {
     super({ key: 'GameScene' });
   }
 
+  preload() {
+    // 전처리된 게임 텍스처 로드 (Vite 해시 URL). 결정론과 무관한 렌더 자원.
+    this.load.image('player-ride', playerRideUrl);
+    this.load.image('player-jump', playerJumpUrl);
+    this.load.image('player-hit', playerHitUrl);
+    this.load.image('player-dead', playerDeadUrl);
+    this.load.image('ghost-run-0', ghostRun0Url);
+    this.load.image('ghost-run-1', ghostRun1Url);
+    this.load.image('fuel-can', fuelCanUrl);
+    this.load.image('building-cap', buildingCapUrl);
+    this.load.image('building-floor', buildingFloorUrl);
+    this.load.image('bg-sun', bgSunUrl);
+    this.load.image('sign-yakou', signYakouUrl);
+    this.load.image('sign-hotel', signHotelUrl);
+    this.load.image('sign-music', signMusicUrl);
+    this.load.image('sign-shinya', signShinyaUrl);
+  }
+
   create() {
     this.startRun();
 
-    // 바닥 띠 (지면 선 아래)
-    this.add
-      .rectangle(DESIGN_W / 2, (GROUND_Y_PX + DESIGN_H) / 2, DESIGN_W, DESIGN_H - GROUND_Y_PX, COLOR_GROUND);
+    // 배경 레이어 (하늘·노을 선·패럴랙스 스카이라인·바닥 그리드).
+    // 가장 먼저 add → 디스플레이 리스트 최하단 = 모든 게임 오브젝트 뒤에 렌더.
+    this.createBackground();
 
-    // 고스트 풀 (플레이어보다 먼저 그려서 뒤에 깔림)
+    // 고스트 달리기 애니메이션(2프레임 교차) — 렌더 전용, 씬당 1회 등록
+    if (!this.anims.exists('ghost-run')) {
+      this.anims.create({
+        key: 'ghost-run',
+        frames: [{ key: 'ghost-run-0' }, { key: 'ghost-run-1' }],
+        frameRate: GHOST_RUN_FPS,
+        repeat: -1,
+      });
+    }
+
+    // 고스트 풀: 발로 뛰는 헤일로 고스트(죽은 라이벌). 보라 틴트 + 반투명.
     for (let i = 0; i < GHOST_TOP_N; i++) {
       const g = this.add
-        .rectangle(
-          toScreenX(C.PLAYER_X),
-          boxCenterScreenY(0, C.PLAYER_H),
-          C.PLAYER_W,
-          C.PLAYER_H,
-          COLOR_GHOST,
-        )
-        .setAlpha(GHOST_ALPHA)
+        .sprite(toScreenX(C.PLAYER_X), GROUND_Y_PX, 'ghost-run-0')
+        .setOrigin(0.5, 1)
+        .setTint(COLOR_GHOST)
+        .setAlpha(GHOST_SPRITE_ALPHA)
         .setVisible(false);
+      g.setDisplaySize((g.width / g.height) * GHOST_ART_H, GHOST_ART_H);
+      g.play({ key: 'ghost-run', startFrame: i % 2 }); // 위상 분산 → 군집이 덜 똑같이 보임
       this.ghostRects.push(g);
     }
 
-    // 플레이어
-    this.playerRect = this.add.rectangle(
-      toScreenX(C.PLAYER_X),
-      boxCenterScreenY(0, C.PLAYER_H),
-      C.PLAYER_W,
-      C.PLAYER_H,
-      COLOR_PLAYER,
+    // 플레이어: 후드 라이더 + 네온 오토바이. 아트는 히트박스보다 넓다(overhang).
+    this.playerRect = this.add
+      .image(toScreenX(C.PLAYER_X), GROUND_Y_PX, 'player-ride')
+      .setOrigin(PLAYER_ART_ORIGIN_X, PLAYER_ART_ORIGIN_Y);
+    this.playerRect.setDisplaySize(
+      (this.playerRect.width / this.playerRect.height) * PLAYER_ART_H,
+      PLAYER_ART_H,
     );
 
-    // 장애물/포션 스프라이트 풀 — sim 풀 인덱스와 1:1
+    // 장애물 풀(네온 건물) — sim 풀 인덱스와 1:1. 높이는 syncVisuals에서 setDisplaySize.
     for (let i = 0; i < C.MAX_OBSTACLES; i++) {
-      const r = this.add.rectangle(0, 0, C.OBS_W, 1, COLOR_OBSTACLE).setVisible(false);
+      // 아키타입 2종 교차(cap=옥상/안테나형, floor=창문형)로 다양성 부여
+      const tex = i % 2 === 0 ? 'building-cap' : 'building-floor';
+      const r = this.add
+        .image(0, GROUND_Y_PX, tex)
+        .setOrigin(0.5, 1) // 바닥 접지 기준
+        .setVisible(false);
       this.obstacleRects.push(r);
     }
+    // 연료통 풀
     for (let i = 0; i < C.MAX_POTIONS; i++) {
-      const c = this.add.circle(0, 0, C.POTION_R, COLOR_POTION).setVisible(false);
-      this.potionCircles.push(c);
+      const c = this.add.image(0, 0, 'fuel-can').setVisible(false);
+      c.setDisplaySize(FUEL_ART_SIZE, FUEL_ART_SIZE);
+      this.fuelSprites.push(c);
     }
 
     // 피버 오버레이 — 피버 중 화면 전체에 황금빛 tint (HUD보다 먼저 생성 → 그 아래 렌더)
@@ -217,7 +290,7 @@ export class GameScene extends Phaser.Scene {
     // 게임오버 패널 (숨김 상태로 미리 생성)
     const goBg = this.add.rectangle(0, 0, 340, 200, 0x000000, 0.72);
     const goTitle = this.add
-      .text(0, -70, 'GAME OVER', { fontSize: '30px', color: '#ff4757', fontStyle: 'bold' })
+      .text(0, -70, 'YOU LOSE', { fontSize: '30px', color: '#ff4757', fontStyle: 'bold' })
       .setOrigin(0.5);
     this.gameOverDistText = this.add
       .text(0, -28, '', { fontSize: '22px', color: '#ffffff' })
@@ -255,47 +328,41 @@ export class GameScene extends Phaser.Scene {
       .setStroke('#1a1a2e', 6);
     this.pauseOverlay = this.add.container(0, 0, [poBg, poText]).setVisible(false);
 
-    // 온보딩 힌트 — localStorage 'ga:onboarded' 없으면 최초 1회만 표시.
-    // 탭하면 힌트가 닫히면서 동시에 게임이 시작된다.
-    let isFirstPlay = false;
-    try {
-      isFirstPlay = !window.localStorage.getItem('ga:onboarded');
-    } catch { /* localStorage 차단 환경은 힌트 건너뜀 */ }
-    if (isFirstPlay) {
-      const hintBg = this.add
-        .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.7);
-      const hintMain = this.add
-        .text(DESIGN_W / 2, DESIGN_H / 2 - 66, '탭하여 점프\n장애물을 피하세요', {
-          fontSize: '26px',
-          color: '#ffffff',
+    // 시작 오버레이 — 판마다 항상 표시. 이력 있으면 최고 등수, 없으면 조작 안내.
+    // tick()이 visible 동안 게임을 멈춰두고, 탭으로 닫혀 게임이 시작된다.
+    {
+      const ovBg = this.add
+        .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.72);
+      // 최고 등수 (이력 있으면 채워짐, 없으면 빈 문자열)
+      this.startBestRankText = this.add
+        .text(DESIGN_W / 2, DESIGN_H / 2 - 80, '', {
+          fontSize: '28px',
+          color: '#ffd700',
           fontStyle: 'bold',
           align: 'center',
         })
         .setOrigin(0.5)
-        .setStroke('#1a1a2e', 5);
-      // 게임 thesis 전달 — 반투명 캐릭터 = 다른 플레이어 고스트 (경쟁 상대)
-      const hintGhost = this.add
-        .text(
-          DESIGN_W / 2,
-          DESIGN_H / 2 + 12,
-          '다른 플레이어를 제치고 더 멀리 가보세요!',
-          {
-            fontSize: '17px',
-            color: '#b39ddb',
-            align: 'center',
-          },
-        )
+        .setStroke('#1a1a2e', 6);
+      // 조작 힌트(첫판) or 고스트 경쟁 안내(재방문)
+      this.startSubText = this.add
+        .text(DESIGN_W / 2, DESIGN_H / 2 - 10, '', {
+          fontSize: '18px',
+          color: '#b39ddb',
+          align: 'center',
+        })
         .setOrigin(0.5)
         .setStroke('#1a1a2e', 4);
-      const hintSub = this.add
-        .text(DESIGN_W / 2, DESIGN_H / 2 + 78, '탭하여 시작 →', {
+      const ovCta = this.add
+        .text(DESIGN_W / 2, DESIGN_H / 2 + 76, '탭하여 시작 →', {
           fontSize: '16px',
-          color: '#64ffda',
+          color: '#5efce8',
         })
         .setOrigin(0.5);
-      this.onboardingHint = this.add
-        .container(0, 0, [hintBg, hintMain, hintGhost, hintSub])
+      this.startOverlay = this.add
+        .container(0, 0, [ovBg, this.startBestRankText, this.startSubText, ovCta])
         .setDepth(100);
+      // 첫 표시 내용 채우기
+      this.refreshStartOverlay();
     }
 
     // 피버 튜토리얼 — localStorage 'ga:fever-tutorial' 없으면 최초 1회 표시.
@@ -409,6 +476,11 @@ export class GameScene extends Phaser.Scene {
     if (this.youDiedText) this.youDiedText.setVisible(false);
     if (this.pauseOverlay) this.pauseOverlay.setVisible(false);
     setPauseButtonState(false, true);
+    // 재시작 시 오버레이를 다시 올리고 내용 갱신 (create()에서 첫 판 시 이미 visible)
+    if (this.startOverlay) {
+      this.refreshStartOverlay();
+      this.startOverlay.setVisible(true);
+    }
   }
 
   /** 원격에 기록이 없을 때 봇 로그를 1회 업로드한다 — localStorage 플래그로 중복 방지 */
@@ -428,9 +500,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onTap() {
-    // 온보딩 힌트 표시 중: 닫기 + 이후 점프로 이어짐 (return 없음)
-    if (this.onboardingHint?.visible) {
-      this.onboardingHint.setVisible(false);
+    // 시작 오버레이 표시 중: 닫기 + 이후 점프로 이어짐 (return 없음)
+    if (this.startOverlay.visible) {
+      this.startOverlay.setVisible(false);
       try { window.localStorage.setItem('ga:onboarded', '1'); } catch { /* 무시 */ }
     }
     // 일시정지 중 탭 = 재개.
@@ -485,8 +557,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tick(delta: number) {
-    // 온보딩 힌트 표시 중: 시뮬·렌더 대기 (탭하면 힌트 닫히고 게임 시작)
-    if (this.onboardingHint?.visible) return;
+    // 시작 오버레이 표시 중: 시뮬·렌더 대기 (탭하면 닫히고 게임 시작)
+    if (this.startOverlay.visible) return;
     if (!this.gamePaused) {
       // 렌더 fps가 어떻든 시뮬은 DT 단위로만 전진 (결정론 경계)
       this.timestep.update(delta, () => {
@@ -616,9 +688,46 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * 시작 오버레이 내용 갱신.
+   * - 최고 등수(ga:best-rank)가 있으면 골드로 표시 + 고스트 경쟁 문구
+   * - 없으면(첫 판) 조작 안내
+   */
+  private refreshStartOverlay() {
+    let bestRank: number | null = null;
+    let isFirstPlay = true;
+    try {
+      const raw = window.localStorage.getItem('ga:best-rank');
+      if (raw !== null) bestRank = parseInt(raw, 10);
+      isFirstPlay = !window.localStorage.getItem('ga:onboarded');
+    } catch { /* localStorage 차단 환경 */ }
+
+    if (bestRank !== null) {
+      this.startBestRankText.setText(`최고 기록  ${bestRank}등`);
+      this.startSubText.setText('고스트와 경쟁하세요!\n반투명 캐릭터를 추월해 순위를 올리세요');
+    } else if (isFirstPlay) {
+      this.startBestRankText.setText('');
+      this.startSubText.setText('탭하여 점프, 장애물을 피하세요\n반투명 캐릭터는 다른 플레이어의 고스트');
+    } else {
+      this.startBestRankText.setText('');
+      this.startSubText.setText('고스트와 경쟁하세요!\n더 멀리 가서 순위를 올리세요');
+    }
+  }
+
   /** 보류됐던 결과 패널 채우기 + 표시 (사망 즉시 or 구경 종료 후) */
   private showResultPanel(cmp: GhostComparison, myDist: number) {
     this.gameOverDistText.setText(`거리  ${Math.floor(myDist)}M`);
+
+    // 최고 등수 저장 (고스트 있을 때만 의미있는 등수)
+    if (cmp.hasGhosts) {
+      const finalRankForSave = cmp.total - cmp.overtaken + 1;
+      try {
+        const stored = parseInt(window.localStorage.getItem('ga:best-rank') ?? '99999', 10);
+        if (finalRankForSave < stored) {
+          window.localStorage.setItem('ga:best-rank', String(finalRankForSave));
+        }
+      } catch { /* 무시 */ }
+    }
 
     if (!cmp.hasGhosts) {
       // 그날 첫 판 — 비교할 상대가 없다
@@ -643,6 +752,104 @@ export class GameScene extends Phaser.Scene {
     this.gameOverPanel.setVisible(true);
   }
 
+  /**
+   * 일본어 네온 간판 데코 생성 — 먼 배경(L2)에 흩뿌려 시티팝 분위기.
+   * 각 간판을 x, x+DESIGN_W 두 벌로 두어 1040px 주기로 심리스 반복(스카이라인과 동일 트릭).
+   */
+  private makeSignageDecor(): Phaser.GameObjects.Image[] {
+    // [텍스처키, x, 바닥y, 표시높이] — 원경이므로 작게·은은하게, 플레이 레인(하단) 위에만.
+    const defs: [string, number, number, number][] = [
+      ['sign-yakou', 120, 362, 92],
+      ['sign-hotel', 470, 350, 86],
+      ['sign-shinya', 720, 374, 66],
+      ['sign-music', 905, 356, 96],
+    ];
+    const out: Phaser.GameObjects.Image[] = [];
+    for (const [key, x, by, h] of defs) {
+      for (const dx of [0, DESIGN_W]) {
+        const img = this.add.image(x + dx, by, key).setOrigin(0.5, 1);
+        img.setDisplaySize((img.width / img.height) * h, h).setAlpha(0.5);
+        out.push(img);
+      }
+    }
+    return out;
+  }
+
+  /** 배경 레이어 1회 생성 (하늘·노을 선·먼 스카이라인·바닥 그리드). 전부 렌더 전용. */
+  private createBackground() {
+    // 1) 하늘 그라데이션 (상단 인디고 → 지평선 마젠타). 지평선 위만 덮는다.
+    const sky = this.add.graphics();
+    sky.fillGradientStyle(COLOR_SKY_TOP, COLOR_SKY_TOP, COLOR_SKY_LOW, COLOR_SKY_LOW, 1);
+    sky.fillRect(0, 0, DESIGN_W, GROUND_Y_PX);
+
+    // 2) 레트로 선(노을 태양) 이미지 — 지평선 부근, 거의 고정(L1).
+    const sun = this.add.image(DESIGN_W * 0.5, 214, 'bg-sun');
+    sun.setDisplaySize((sun.width / sun.height) * 220, 220).setAlpha(0.95);
+
+    // 3) 먼 도시 실루엣(코드) + 일본어 네온 간판 데코를 한 컨테이너에 → 함께 패럴랙스.
+    const g1 = this.add.graphics();
+    const g2 = this.add.graphics();
+    this.drawSkyline(g1);
+    this.drawSkyline(g2);
+    g2.x = DESIGN_W;
+    this.bgSkylineFar = this.add.container(0, 0, [g1, g2, ...this.makeSignageDecor()]);
+
+    // 4) 바닥 네온 그리드 — 매 프레임 worldPx로 다시 그려 좌측 스크롤(syncVisuals).
+    this.groundGrid = this.add.graphics();
+    this.drawGroundGrid(0);
+  }
+
+  /** 먼 도시 실루엣 한 벌. 고정 시드 LCG라 두 벌이 동일 → 1040px 주기로 심리스. */
+  private drawSkyline(g: Phaser.GameObjects.Graphics) {
+    const W = DESIGN_W;
+    const horizon = GROUND_Y_PX;
+    let x = 0;
+    let seed = 0x1a2b3c;
+    const rnd = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    while (x < W) {
+      const bw = 26 + Math.floor(rnd() * 46); // 26~72
+      if (x + bw > W) break; // 경계를 걸치지 않게 = 이음매 깔끔
+      const bh = 30 + Math.floor(rnd() * 100); // 30~130
+      g.fillStyle(COLOR_SKYLINE, 1);
+      g.fillRect(x, horizon - bh, bw, bh);
+      if (rnd() > 0.5) {
+        g.fillStyle(COLOR_SKYLINE_WIN, 0.5);
+        const wx = x + Math.floor(bw * 0.45);
+        g.fillRect(wx, horizon - bh + 8, 2, 2);
+        if (bh > 72) g.fillRect(wx, horizon - bh + 22, 2, 2);
+      }
+      x += bw + 6 + Math.floor(rnd() * 22); // 건물 간 간격
+    }
+  }
+
+  /** 바닥 네온 그리드. worldPx만큼 좌측으로 흐르는 원근 그리드 (매 프레임 redraw). */
+  private drawGroundGrid(worldPx: number) {
+    const g = this.groundGrid;
+    g.clear();
+    const horizon = GROUND_Y_PX;
+    const bottom = DESIGN_H;
+    const cx = DESIGN_W * 0.5;
+    g.fillStyle(COLOR_GROUND_DARK, 1);
+    g.fillRect(0, horizon, DESIGN_W, bottom - horizon);
+    // 지평선 글로우 라인
+    g.lineStyle(2, COLOR_NEON_CYAN, 0.85);
+    g.lineBetween(0, horizon, DESIGN_W, horizon);
+    // 좌측으로 흐르는 수직 그리드(바닥에서 바깥으로 퍼지는 원근감)
+    g.lineStyle(1, COLOR_NEON_CYAN, 0.22);
+    const off = worldPx % GRID_SPACING;
+    for (let gx = -off; gx <= DESIGN_W + GRID_SPACING; gx += GRID_SPACING) {
+      const bx = cx + (gx - cx) * 1.8;
+      g.lineBetween(gx, horizon, bx, bottom);
+    }
+    // 수평 보조선 2줄
+    g.lineStyle(1, COLOR_NEON_CYAN, 0.13);
+    g.lineBetween(0, horizon + 16, DESIGN_W, horizon + 16);
+    g.lineBetween(0, horizon + 32, DESIGN_W, horizon + 32);
+  }
+
   /** sim.state → 화면 동기화. 읽기만 한다. */
   private syncVisuals() {
     const s = this.sim.state;
@@ -652,35 +859,57 @@ export class GameScene extends Phaser.Scene {
     const aliveGhost = this.spectating ? this.ghosts.find((g) => !g.finished) : undefined;
     const world = aliveGhost !== undefined ? aliveGhost.sim.state : s;
 
-    // 플레이어 (무적 중엔 시뮬 프레임 기반 깜빡임, 죽으면 그 자리에서 디밍)
-    this.playerRect.setY(boxCenterScreenY(s.player.y, C.PLAYER_H));
-    this.playerRect.setAlpha(
-      s.gameOver ? DEAD_PLAYER_ALPHA : s.invincibleFrames > 0 ? (s.frame % 8 < 4 ? 0.35 : 0.85) : 1,
-    );
+    // 배경 패럴랙스 (렌더 전용): worldPx = 누적 진행 픽셀 = distance(m) × UNITS_PER_METER.
+    // 장애물 스크롤과 같은 기준이라 깊이감이 일관되고, sim은 전혀 건드리지 않는다.
+    const worldPx = world.distance * C.UNITS_PER_METER;
+    this.bgSkylineFar.x = -((worldPx * SKYLINE_PARALLAX) % DESIGN_W);
+    this.drawGroundGrid(worldPx);
 
-    // 고스트들: 위치만 그린다 (장애물은 코스 공유라 불필요).
-    for (let i = 0; i < GHOST_TOP_N; i++) {
-      const rect = this.ghostRects[i]!;
-      const g = this.ghosts[i];
-      rect.setVisible(g !== undefined && !g.finished);
-      if (g !== undefined) {
-        rect.setY(boxCenterScreenY(g.sim.state.player.y, C.PLAYER_H));
-      }
+    // 플레이어 (무적 중엔 시뮬 프레임 기반 깜빡임, 죽으면 그 자리에서 디밍).
+    // 아트 origin이 하단이므로 y = 히트박스 바닥의 화면 y = toScreenY(player.y).
+    const playerAlpha = s.gameOver
+      ? DEAD_PLAYER_ALPHA
+      : s.invincibleFrames > 0
+        ? (s.frame % 8 < 4 ? 0.3 : 0.9)
+        : 1;
+    this.playerRect.setY(toScreenY(s.player.y)).setAlpha(playerAlpha);
+    // 상태별 컷 전환: 사망 > 피격(무적) > 공중(점프) > 기본 주행
+    const playerTex = s.gameOver
+      ? 'player-dead'
+      : s.invincibleFrames > 0
+        ? 'player-hit'
+        : s.player.y > 2
+          ? 'player-jump'
+          : 'player-ride';
+    if (this.playerRect.texture.key !== playerTex) {
+      this.playerRect.setTexture(playerTex);
+      this.playerRect.setDisplaySize(
+        (this.playerRect.width / this.playerRect.height) * PLAYER_ART_H, PLAYER_ART_H,
+      );
     }
 
-    // 장애물/포션: active만 보이게, 위치 갱신 (객체 생성/파괴 없음)
+    // 고스트들: 위치 갱신. origin 하단이라 y = toScreenY(ghost.y).
+    for (let i = 0; i < GHOST_TOP_N; i++) {
+      const sprite = this.ghostRects[i]!;
+      const g = this.ghosts[i];
+      const visible = g !== undefined && !g.finished;
+      sprite.setVisible(visible);
+      if (g !== undefined) sprite.setY(toScreenY(g.sim.state.player.y));
+    }
+
+    // 장애물(건물)/연료통: active만 보이게, 위치·높이 갱신 (객체 생성/파괴 없음).
     for (let i = 0; i < C.MAX_OBSTACLES; i++) {
       const o = world.obstacles[i]!;
       const r = this.obstacleRects[i]!;
       r.setVisible(o.active);
       if (o.active) {
-        r.setDisplaySize(o.w, o.h);
-        r.setPosition(toScreenX(o.x), boxCenterScreenY(0, o.h));
+        r.setDisplaySize(BUILDING_ART_W, o.h); // 폭 고정, 높이만 가변
+        r.setPosition(toScreenX(o.x), GROUND_Y_PX); // origin 하단 → 바닥 접지
       }
     }
     for (let i = 0; i < C.MAX_POTIONS; i++) {
       const p = world.potions[i]!;
-      const c = this.potionCircles[i]!;
+      const c = this.fuelSprites[i]!;
       c.setVisible(p.active);
       if (p.active) c.setPosition(toScreenX(p.x), toScreenY(p.y));
     }
