@@ -45,7 +45,11 @@ export async function loadTopRunsRemote(seed: number): Promise<GhostRecord[]> {
       .abortSignal(controller.signal)) as { data: DbRow[] | null; error: unknown };
 
     clearTimeout(timer);
-    if (error) throw error;
+    if (error) {
+      if (error instanceof Error) throw error;
+      const pgError = error as Record<string, unknown>;
+      throw new Error(pgError.message ? String(pgError.message) : JSON.stringify(pgError));
+    }
     if (!data) return [];
 
     const runs: GhostRecord[] = [];
@@ -98,7 +102,12 @@ export async function submitRunRemote(
       log: log as unknown as Record<string, unknown>,
       is_bot: isBot,
     })) as { error: unknown };
-    if (error) throw error;
+    
+    if (error) {
+      if (error instanceof Error) throw error;
+      const pgError = error as Record<string, unknown>;
+      throw new Error(pgError.message ? String(pgError.message) : JSON.stringify(pgError));
+    }
   } catch (e) {
     // 제출 실패 = 로컬 기록으로만 진행 — 게임을 멈추지 않는다
     Sentry.captureException(e, { level: 'warning' });
