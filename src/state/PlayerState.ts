@@ -1,21 +1,6 @@
-let cleanup: { kill: () => void } | null = null;
-
-function showGameOver(): void {
-  const overlay = document.getElementById('game-over-overlay');
-  if (overlay) overlay.style.display = 'flex';
-}
-
-export function registerCleanup(handler: { kill: () => void }): void {
-  cleanup = handler;
-}
-
-export function checkAlive(lives: number | null): void {
-  if ((lives as unknown) == false) {
-    showGameOver();
-    cleanup!.kill();
+function check(value: number | null) {
+  if (value == false) {  // 버그 1: == 강제 형변환
+    doSomething();
+    obj!.method();  // 버그 2: non-null assertion + null obj
   }
-}
-
-export function resetState(): void {
-  cleanup = null;
 }
