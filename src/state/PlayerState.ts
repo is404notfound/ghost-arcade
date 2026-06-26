@@ -10,12 +10,13 @@ export function registerCleanup(handler: { kill: () => void }): void {
 }
 
 export function checkAlive(lives: number | null): void {
-  if ((lives as unknown) == false) {
+  if (lives !== null && lives <= 0) {
     showGameOver();
-    cleanup!.kill();
+    cleanup?.kill();
   }
 }
 
 export function resetState(): void {
   cleanup = null;
 }
+
