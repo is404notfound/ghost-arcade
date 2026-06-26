@@ -43,9 +43,10 @@ async function getGetSupabaseClient() {
   return vi.mocked(getSupabaseClient);
 }
 
-// 각 테스트 전에 모듈 캐시를 초기화해서 싱글턴 오염을 방지한다
+// 각 테스트 전에 모듈 캐시와 mock 호출 카운트를 초기화한다
 beforeEach(() => {
   vi.resetModules();
+  vi.clearAllMocks();
 });
 
 // ─────────────────────────────────────────────
@@ -203,6 +204,28 @@ describe('submitRunRemote', () => {
     const { submitRunRemote } = await importRemote();
 
     await expect(submitRunRemote(seed, log, 100)).resolves.toBeUndefined();
+  });
+
+  it('INSERT 타임아웃(5초 초과): 예외 미전파, Sentry AbortError 미보고', async () => {
+    vi.useFakeTimers();
+    const getClient = await getGetSupabaseClient();
+
+    const chain = {
+      // INSERT가 영원히 pending인 상황 시뮬레이션
+      insert: vi.fn().mockReturnValue(new Promise<{ error: unknown }>(() => {})),
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getClient.mockReturnValue({ from: vi.fn().mockReturnValue(chain) } as any);
+    const { submitRunRemote } = await importRemote();
+
+    const resultPromise = submitRunRemote(seed, log, 100);
+    vi.advanceTimersByTime(5001); // REMOTE_TIMEOUT_MS 초과
+    await expect(resultPromise).resolves.toBeUndefined();
+
+    const { captureException } = await import('@sentry/browser');
+    expect(vi.mocked(captureException)).not.toHaveBeenCalled();
+
+    vi.useRealTimers();
   });
 
   it('Supabase 미설정: 예외 없이 반환', async () => {

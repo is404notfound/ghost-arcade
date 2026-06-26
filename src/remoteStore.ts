@@ -90,17 +90,25 @@ export async function submitRunRemote(
   const client = getSupabaseClient();
   if (!client) return;
 
+  const insertPromise = client.from('ghost_runs').insert({
+    seed,
+    sim_version: SIM_VERSION,
+    distance,
+    log: log as unknown as Record<string, unknown>,
+    is_bot: isBot,
+  }) as Promise<{ error: unknown }>;
+  // INSERT hang 방지 — Supabase 장애 시 무한 대기 없이 로컬 기록으로 계속
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new DOMException('INSERT timeout', 'AbortError')), REMOTE_TIMEOUT_MS),
+  );
+
   try {
-    const { error } = (await client.from('ghost_runs').insert({
-      seed,
-      sim_version: SIM_VERSION,
-      distance,
-      log: log as unknown as Record<string, unknown>,
-      is_bot: isBot,
-    })) as { error: unknown };
+    const { error } = await Promise.race([insertPromise, timeoutPromise]);
     if (error) throw error;
   } catch (e) {
-    // 제출 실패 = 로컬 기록으로만 진행 — 게임을 멈추지 않는다
-    Sentry.captureException(e, { level: 'warning' });
+    // AbortError는 의도적 타임아웃 — Sentry 노이즈 제외
+    if (!(e instanceof DOMException && e.name === 'AbortError')) {
+      Sentry.captureException(e, { level: 'warning' });
+    }
   }
 }
