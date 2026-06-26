@@ -96,7 +96,7 @@ export async function submitRunRemote(
     distance,
     log: log as unknown as Record<string, unknown>,
     is_bot: isBot,
-  }) as Promise<{ error: unknown }>;
+  }) as unknown as Promise<{ error: unknown }>;
   // INSERT hang 방지 — Supabase 장애 시 무한 대기 없이 로컬 기록으로 계속
   const timeoutPromise = new Promise<never>((_, reject) =>
     setTimeout(() => reject(new DOMException('INSERT timeout', 'AbortError')), REMOTE_TIMEOUT_MS),
