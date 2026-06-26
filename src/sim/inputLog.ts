@@ -22,7 +22,11 @@
 // 1.6.0: INTERVAL_BASE 1700→2000, INTERVAL_MIN 620→750, INTERVAL_RAMP 22→14 — 간격 에스컬레이션 곡선 변경
 // 1.7.0: INTERVAL_BASE 2000→1800, INTERVAL_MIN 750→680, INTERVAL_RAMP 14→18 — 간격 중간 조정 (~62초)
 // 1.8.0: POTION_Y_MAX 230→150 — 1단 점프 도달 범위 보정, 포션 위치 운빨 제거
-export const SIM_VERSION = '1.8.0';
+// 1.10.0: 장애물 최소 간격 완화 (INTERVAL_MIN 680→980, RAMP 18→11)
+// 1.11.0: 스폰 간격을 speedT(피격 리셋 시계)로 계산 — 피격 후 속도↓+간격 최소값 유지로
+//         생기던 통과 불가 구간 해소. 스폰 타이밍이 달라져 궤적 변경.
+// 1.12.0: INTERVAL_MIN 980→760, RAMP 11→16 — 과도하게 쉬워진 간격 재조정(난이도 복원).
+export const SIM_VERSION = '1.12.0';
 
 export interface InputEvent {
   frame: number;

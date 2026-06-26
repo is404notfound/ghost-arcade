@@ -100,6 +100,8 @@ export class GameSim {
   // RNG 소비 순서를 스폰 스텝에 고정해야 어떤 인터리빙에서도 결정론이 유지된다.
   private potionInFrames = -1;
   private potionPendingY = 0;
+  // 속도 초기화 기준 프레임 — 피격 시 여기서부터 속도 램프를 재시작한다.
+  private speedResetFrame = 0;
 
   constructor(seed: number) {
     this.rng = new Rng(seed);
@@ -147,8 +149,10 @@ export class GameSim {
     s.events = 0;
 
     const t = s.frame * C.DT;
+    // 피격 시 속도 초기화: speedResetFrame 이후 경과 시간으로 속도 재계산.
     // 피버 중: 기본 속도에 배속 적용 (장애물 이동·거리 누적이 자동으로 배속됨)
-    s.speed = speedAtSec(t) * (s.feverFramesLeft > 0 ? C.FEVER_SPEED_MULT : 1);
+    const speedT = (s.frame - this.speedResetFrame) * C.DT;
+    s.speed = speedAtSec(speedT) * (s.feverFramesLeft > 0 ? C.FEVER_SPEED_MULT : 1);
 
     // 1) 피버/유예 카운트다운
     // 유예를 먼저 감소시켜 피버 종료 시 설정한 값이 이번 스텝에 바로 반영되게 한다
@@ -188,10 +192,14 @@ export class GameSim {
     }
 
     // 4) 장애물 스폰 (간격은 매번 현재 난이도로 재계산)
+    //    ★ 간격은 speedT(피격 시 리셋되는 시계)로 계산 — 속도와 같은 시계.
+    //    절대시간 t를 쓰면 피격으로 속도가 340으로 떨어져도 간격은 최소값(980ms)에
+    //    머물러, 공간상 간격(속도×시간)이 붕괴해 통과 불가 구간이 생겼다. speedT를
+    //    쓰면 속도·간격이 함께 리셋·재가속 → 항상 통과 가능한 간격 보장.
     this.framesUntilSpawn--;
     if (this.framesUntilSpawn <= 0) {
-      this.spawnObstacle(t);
-      this.framesUntilSpawn = intervalFramesAtSec(t);
+      this.spawnObstacle(t, speedT);
+      this.framesUntilSpawn = intervalFramesAtSec(speedT);
     }
 
     // 5) 포션 스폰 예약 소화 (장애물과 장애물 사이 시점)
@@ -253,6 +261,7 @@ export class GameSim {
           if (s.combo > 0) s.events |= C.EV_COMBO_BREAK; // 콤보가 있었을 때만
           s.combo = 0;
           s.feverTimerFrames = 0;
+          this.speedResetFrame = s.frame; // 속도를 SPEED_BASE로 되돌리고 다시 램프업
           break; // 한 스텝에 한 번만
         }
       }
@@ -291,7 +300,9 @@ export class GameSim {
     this.state.hp = Math.min(C.HP_MAX, this.state.hp + amount);
   }
 
-  private spawnObstacle(t: number): void {
+  private spawnObstacle(t: number, speedT: number): void {
+    // t        = 절대 경과 시간 → 온보딩 패턴 램프(초반 난이도 해금)에 사용.
+    // speedT   = 피격 리셋 시계 → 포션 스폰 타이밍(장애물 사이)에 사용해 간격과 동기.
     // RNG 소비 순서 고정 (패턴 종류에 무관하게 항상 동일):
     // (1) 패턴 ID, (2) 랜덤 높이, (3) 포션 여부, (4) 포션 Y (조건부)
     let patIdx = this.rng.nextInt(0, OBS_PATTERNS.length - 1);
@@ -308,7 +319,8 @@ export class GameSim {
     const heightRoll = this.rng.nextInt(C.OBS_H_MIN, C.OBS_H_MAX);
     if (this.rng.next() < C.POTION_CHANCE) {
       this.potionPendingY = this.rng.nextInt(C.POTION_Y_MIN, C.POTION_Y_MAX);
-      this.potionInFrames = Math.max(1, Math.floor(intervalFramesAtSec(t) / 2));
+      // 포션은 장애물 사이 절반 지점 — 간격과 같은 speedT 시계로 계산
+      this.potionInFrames = Math.max(1, Math.floor(intervalFramesAtSec(speedT) / 2));
     }
 
     const specs = OBS_PATTERNS[patIdx]!;

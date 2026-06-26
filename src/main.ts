@@ -57,10 +57,18 @@ try {
     height: DESIGN_H,
     backgroundColor: '#1a1a2e',
     scene: GameScene,
+    // 렌더러 품질 설정.
+    // antialias: true → WebGL 텍스처를 NEAREST 대신 LINEAR 필터링.
+    //   없으면 스프라이트 에지가 도트처럼 자글자글해 보임.
+    antialias: true,
+    roundPixels: false,
     // Phaser 물리는 안 쓴다 — 충돌/중력은 전부 src/sim/ 안 (D1)
     scale: {
       mode: Phaser.Scale.FIT, // 논리 해상도 고정 → viewport 매핑이 어느 화면에서나 유효
       autoCenter: Phaser.Scale.CENTER_BOTH,
+      // 레티나(DPR≥2) 기기: zoom = devicePixelRatio 로 캔버스를 물리 픽셀 배율로 키워
+      // CSS Scale.FIT이 줄여서 표시 → 네이티브 해상도로 렌더되어 선명해짐.
+      zoom: window.devicePixelRatio || 1,
     },
   });
 } catch (e) {

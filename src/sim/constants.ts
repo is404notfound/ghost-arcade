@@ -27,8 +27,9 @@ export const SPEED_RAMP = 15; // 초당 증가량
 // Phase 0 학습 #2: 속도+간격 이중 가속은 어느 순간 벽이 된다 → 상한 필수
 export const SPEED_MAX = 660;
 export const INTERVAL_BASE_MS = 1800; // 1.7.0: 중간 조정 (2000→1800 — 1.6.0보단 빡빡, 1.5.0보단 넓음)
-export const INTERVAL_MIN_MS = 680;   // 1.7.0: 중간 조정 (750→680)
-export const INTERVAL_RAMP_MS = 18;   // 1.7.0: 초당 단축량(ms) — 최소 간격 도달을 ~62초로 조정
+export const INTERVAL_MIN_MS = 760;   // 1.12.0: 980→760 — speedT 시계 도입으로 후반 통과불가 버그 해소됨,
+                                       //         과도하게 넓어 쉬워진 간격을 다시 조여 난이도 복원.
+export const INTERVAL_RAMP_MS = 16;    // 1.12.0: 11→16 — 최소 간격 도달 ~65s로 단축
 
 // 체력
 export const HP_MAX = 100;

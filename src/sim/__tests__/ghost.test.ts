@@ -83,17 +83,26 @@ describe('GhostDriver — lockstep 재생', () => {
     });
   });
 
-  test('라이브 sim과 같은 시드면 장애물 코스가 프레임 단위로 일치한다', () => {
+  test('같은 입력이면 장애물 코스가 프레임 단위로 일치한다 (결정론)', () => {
+    // 주의: 피격-속도리셋(speedResetFrame) 도입 후 속도가 입력 의존적이 되어
+    // 장애물 위치·스폰 타이밍도 입력에 따라 달라진다. 따라서 '무입력 라이브'와
+    // '탭 있는 고스트'는 더 이상 같은 코스가 아니다(의도된 설계). 대신 보존되는
+    // 불변식은 "같은 시드 + 같은 입력 → 완전히 같은 코스"(골든 리플레이의 코스 측면).
     const { log } = playAndRecord(555);
-    const live = new GameSim(555);
-    const ghost = new GhostDriver(log);
-    // 입력이 달라도(라이브는 무입력) 장애물 스폰은 시드+프레임만의 함수여야 한다
-    for (let i = 0; i < 300; i++) {
-      live.step();
-      ghost.step();
-    }
-    const liveObs = live.state.obstacles.map((o) => ({ a: o.active, x: o.x, h: o.h }));
-    const ghostObs = ghost.sim.state.obstacles.map((o) => ({ a: o.active, x: o.x, h: o.h }));
-    expect(ghostObs).toEqual(liveObs);
+    const a = new GhostDriver(log);
+    const b = replay(log, 300);
+    for (let i = 0; i < 300; i++) a.step();
+    const aObs = a.sim.state.obstacles.map((o) => ({ a: o.active, x: o.x, h: o.h }));
+    const bObs = b.state.obstacles.map((o) => ({ a: o.active, x: o.x, h: o.h }));
+    expect(aObs).toEqual(bObs);
+  });
+
+  test('무입력 두 sim은 같은 시드면 코스가 완전히 일치한다 (입력 동일 → 결정론)', () => {
+    const s1 = new GameSim(555);
+    const s2 = new GameSim(555);
+    for (let i = 0; i < 300; i++) { s1.step(); s2.step(); }
+    const o1 = s1.state.obstacles.map((o) => ({ a: o.active, x: o.x, h: o.h }));
+    const o2 = s2.state.obstacles.map((o) => ({ a: o.active, x: o.x, h: o.h }));
+    expect(o1).toEqual(o2);
   });
 });

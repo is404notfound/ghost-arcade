@@ -158,4 +158,23 @@ if __name__ == "__main__":
     process_single("building-kit-cap.png", "building-cap.png", target_h=360)
     process_single("building-kit-floor.png", "building-floor.png", target_h=360)
     process_single("bg-sun.png", "bg-sun.png", target_h=300)
+    print("[meteors]")
+    # 원본: assets/images/meteors/ — 흰 배경 제거 + RGBA 변환 + 리사이즈.
+    # 표시 크기(@3x 기준): lg≈180px, mid≈120px, sm≈75px → setDisplaySize로 최종 조정.
+    for src_name, out_name, th in [
+        ("fx-meteor-lg.png", "fx-meteor-lg.png", 180),
+        ("fx-meteor-mid.png", "fx-meteor-mid.png", 120),
+        ("fx-meteor-sm.png", "fx-meteor-sm.png", 75),
+    ]:
+        src_path = os.path.join(SRC, "meteors", src_name)
+        im = remove_bg(Image.open(src_path))
+        im = drop_small_islands(im)
+        bb = im.getbbox()
+        if bb:
+            im = im.crop(bb)
+        cw, ch = im.size
+        scale = th / ch
+        out = im.resize((max(1, round(cw * scale)), th), Image.LANCZOS)
+        out.save(os.path.join(OUT, out_name), "PNG")
+        print(f"  {out_name:24s} {out.size}")
     print("done.")
