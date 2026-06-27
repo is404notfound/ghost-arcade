@@ -822,9 +822,13 @@ export class GameScene extends Phaser.Scene {
     }
     // 재시작 시 다시하기 버튼 반드시 숨김 (일시정지 해제 경로와 별도)
     setRestartButtonVisible(false);
-    // 플레이어 사망 페이드 플래그 리셋 + alpha 복원
+    // 플레이어 사망 페이드 리셋 — 잔여 트윈 제거 + alpha/visible 모두 복원.
+    // (사망 페이드 onComplete가 setVisible(false)를 남기므로 visible 복원 필수)
     this.playerDeadFadeStarted = false;
-    this.playerRect?.setAlpha(1);
+    if (this.playerRect) {
+      this.tweens.killTweensOf(this.playerRect);
+      this.playerRect.setAlpha(1).setVisible(true);
+    }
     this.seed = dailySeed(); // 같은 날 = 같은 코스 (TODOS 시드 공유 → 데일리 시드로 결정)
     this.sim = new GameSim(this.seed);
     this.log = createInputLog(this.seed);
