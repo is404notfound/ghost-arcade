@@ -61,6 +61,11 @@ import signShinyaUrl from "../../assets/images/signage/signage-shinya.png";
 
 const COLOR_GHOST = 0xb39ddb; // 고스트 — 보라 계열 반투명(스프라이트 틴트)
 
+// 텍스트 렌더 해상도 — Phaser Text는 기본 1x라 작은/저DPR 화면에서 자글거린다.
+// 최소 2x 슈퍼샘플링을 강제하고 고DPR은 3x까지만(메모리/성능 상한). config.resolution이
+// Phaser 3.90에서 제거되어 텍스트마다 개별 지정해야 하므로 단일 상수로 통일한다.
+const TXT_RES = Math.min(Math.max(window.devicePixelRatio || 1, 2), 3);
+
 // 배경(코드 스킨) 팔레트 — docs/design/asset-guide.md §3 컬러 토큰. 전부 렌더 전용.
 const COLOR_SKY_TOP = 0x170a2e; // 하늘 상단(딥 인디고)
 const COLOR_SKY_LOW = 0x6b1248; // 지평선(마젠타-퍼플)
@@ -461,7 +466,7 @@ export class GameScene extends Phaser.Scene {
         fontFamily: "'Orbitron', monospace",
         fontStyle: "bold",
         color: "#00e5ff",
-        resolution: Math.min(window.devicePixelRatio || 1, 3),
+        resolution: TXT_RES,
       })
       .setOrigin(1, 0.5)
       .setDepth(22)
@@ -503,7 +508,7 @@ export class GameScene extends Phaser.Scene {
           color: isMe ? "#00e5ff" : "#484848",
           fontFamily: "'Orbitron', monospace",
           fontStyle: "bold",
-          resolution: Math.min(window.devicePixelRatio || 1, 3),
+          resolution: TXT_RES,
         })
         .setOrigin(0, 0.5);
       const children: Phaser.GameObjects.GameObject[] = deco ? [bg, deco, txt] : [bg, txt];
@@ -522,7 +527,7 @@ export class GameScene extends Phaser.Scene {
         fontFamily: "'Orbitron', monospace",
         fontStyle: "bold",
         color: "#ffd166",
-        resolution: Math.min(window.devicePixelRatio || 1, 3),
+        resolution: TXT_RES,
       })
       .setOrigin(0.5)
       .setAlpha(0.8)
@@ -544,7 +549,7 @@ export class GameScene extends Phaser.Scene {
         color: "#ff2d55",
         fontFamily: "'Orbitron', monospace",
         fontStyle: "bold",
-        resolution: Math.min(window.devicePixelRatio || 1, 3),
+        resolution: TXT_RES,
       })
       .setOrigin(0.5)
       .setStroke("#2a0010", 5);
@@ -553,7 +558,7 @@ export class GameScene extends Phaser.Scene {
         fontSize: "19px",
         color: "#e0e0e0",
         fontFamily: "'Orbitron', monospace",
-        resolution: Math.min(window.devicePixelRatio || 1, 3),
+        resolution: TXT_RES,
       })
       .setOrigin(0.5);
     this.comparisonText = this.add
@@ -562,7 +567,7 @@ export class GameScene extends Phaser.Scene {
         color: "#ffd166",
         fontStyle: "bold",
         fontFamily: "'Orbitron', monospace",
-        resolution: Math.min(window.devicePixelRatio || 1, 3),
+        resolution: TXT_RES,
       })
       .setOrigin(0.5);
     this.overtakeText = this.add
@@ -570,7 +575,7 @@ export class GameScene extends Phaser.Scene {
         fontSize: "13px",
         color: "#b39ddb",
         fontFamily: "'Orbitron', monospace",
-        resolution: Math.min(window.devicePixelRatio || 1, 3),
+        resolution: TXT_RES,
       })
       .setOrigin(0.5);
     this.hintText = this.add
@@ -578,7 +583,7 @@ export class GameScene extends Phaser.Scene {
         fontSize: "11px",
         color: "#00e5ff",
         fontFamily: "'Orbitron', monospace",
-        resolution: Math.min(window.devicePixelRatio || 1, 3),
+        resolution: TXT_RES,
       })
       .setOrigin(0.5)
       .setAlpha(0.75);
@@ -752,6 +757,58 @@ export class GameScene extends Phaser.Scene {
         this.onTap();
       }
     });
+
+    // 모든 정적 텍스트에 고해상도 적용 — 컨테이너(랭킹/게임오버/일시정지/시작/피버) 내부까지
+    // 재귀적으로 순회. 개별 .text() 호출마다 resolution을 지정하는 누락을 방지(작은 화면 자글거림).
+    this.applyTextResolution(this.children.list);
+  }
+
+  /** 표시 리스트를 재귀 순회하며 모든 Text의 렌더 해상도를 TXT_RES로 올린다. */
+  private applyTextResolution(
+    objects: Phaser.GameObjects.GameObject[],
+  ): void {
+    for (const obj of objects) {
+      if (obj instanceof Phaser.GameObjects.Text) {
+        obj.setResolution(TXT_RES);
+      } else if (obj instanceof Phaser.GameObjects.Container) {
+        this.applyTextResolution(obj.list);
+      }
+    }
+  }
+
+  /**
+   * 원격(타 유저) + 로컬(봇/셀프) 기록을 합쳐 거리순 상위 N개를 고른다.
+   * 봇은 로컬에 저장돼 있으므로(콜드스타트), 이 병합으로 봇과 유저가 거리순으로
+   * 같은 필드에서 경쟁한다 → 봇 기록이 유저보다 높으면 자연히 상단 랭킹에 노출.
+   * 봇 로그는 시드별 결정론이라 원격·로컬 양쪽에 같은 사본이 있을 수 있어 dedup.
+   */
+  private mergeGhostRecords(
+    remote: GhostRecord[],
+    local: GhostRecord[],
+  ): GhostRecord[] {
+    const seen = new Set<string>();
+    const out: GhostRecord[] = [];
+    for (const r of [...remote, ...local]) {
+      const evs = r.log.events;
+      // 결정론 봇/리플레이 dedup 키: 거리 + 입력 수 + 마지막 입력 프레임
+      const key = `${Math.round(r.distance)}:${evs.length}:${evs[evs.length - 1]?.frame ?? -1}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(r);
+    }
+    out.sort((a, b) => b.distance - a.distance);
+    return out.slice(0, GHOST_TOP_N);
+  }
+
+  /** 고스트 레코드 배열을 현재 세션 필드(ghosts/distances/top3)에 반영. */
+  private applyGhostField(records: GhostRecord[], areOwn: boolean): void {
+    this.ghosts = records.map((r) => new GhostDriver(r.log));
+    this.ghostDistances = records.map((r) => r.distance);
+    this.top3GhostDists = [...this.ghostDistances]
+      .sort((a, b) => b - a)
+      .slice(0, 3);
+    this.ghostsAreOwnRecords = areOwn;
+    this.prevRank = this.ghosts.length + 1;
   }
 
   /** 새 판 시작 — 데일리 시드(오늘의 코스) + 저장된 최고 기록 유령 로드.
@@ -773,21 +830,14 @@ export class GameScene extends Phaser.Scene {
     this.log = createInputLog(this.seed);
     this.timestep = new FixedTimestep(C.DT * 1000);
 
-    // 원격 → 로컬 순서로 폴백: 크로스유저 고스트 우선, 없으면 셀프 고스트
+    // 원격(타 유저) + 로컬(봇/셀프)을 병합해 거리순 상위 N → 봇이 유저보다 높으면 상단 노출.
     const localRecords = loadTopRuns(window.localStorage, this.seed);
-    const records = this.remoteRuns.length > 0 ? this.remoteRuns : localRecords;
-    this.ghosts = records.map((r) => new GhostDriver(r.log));
-    this.ghostDistances = records.map((r) => r.distance);
-    // 상위 3 고스트 최종거리 캐시 — 랭킹 패널의 고정 타깃 값
-    this.top3GhostDists = [...this.ghostDistances]
-      .sort((a, b) => b - a)
-      .slice(0, 3);
-    // 원격 기록 없음 = 로컬 저장 = 내 기록 → 랭킹 패널에서 G# 대신 YOU 표시
-    this.ghostsAreOwnRecords = this.remoteRuns.length === 0;
+    const merged = this.mergeGhostRecords(this.remoteRuns, localRecords);
+    // 원격이 하나도 없으면 전부 내 로컬 기록(셀프/봇) → 랭킹 패널 G# 대신 YOU 표시
+    this.applyGhostField(merged, this.remoteRuns.length === 0);
     this.overtakenLive = 0;
     this.spectating = false;
     this.prevCombo = 0;
-    this.prevRank = this.ghosts.length + 1;
     this.feverCount = 0;
     console.log(
       `[ghost-arcade] 시드 ${this.seed}, 유령 ${this.ghosts.length}기 로드 (원격 ${this.remoteRuns.length}기)`,
@@ -804,21 +854,21 @@ export class GameScene extends Phaser.Scene {
     const currentSeed = this.seed;
     void loadTopRunsRemote(currentSeed).then((remote) => {
       this.remoteRuns = remote;
-      // 새 기기 첫 판 UX: 고스트 없이 시작했고(ghosts.length===0) 원격 데이터가
-      // 게임 시작 3초 이내(SIM_FPS*3 프레임)에 도착했으면 현재 판에도 즉시 적용.
-      // Supabase 왕복이 보통 <1s이므로 대부분의 첫 판에서 고스트가 출현한다.
+      // 원격 도착 시 원격+로컬을 다시 병합 — 봇/유저가 거리순으로 같은 필드에서 경쟁.
+      const freshMerged = this.mergeGhostRecords(remote, localRecords);
+      // 새 기기 첫 판 UX: 고스트 없이 시작했고 게임 시작 3초 이내면 현재 판에도 즉시 적용.
+      // (Supabase 왕복 보통 <1s → 대부분의 첫 판에서 고스트 출현)
       if (
-        remote.length > 0 &&
+        freshMerged.length > 0 &&
         this.ghosts.length === 0 &&
         this.sim.state.frame < C.SIM_FPS * 3
       ) {
-        this.ghosts = remote.map((r) => new GhostDriver(r.log));
-        this.ghostDistances = remote.map((r) => r.distance);
-        this.prevRank = this.ghosts.length + 1;
+        this.applyGhostField(freshMerged, remote.length === 0);
       }
-      // 원격·로컬 모두 비어있으면 봇 콜드스타트 업로드 (B4)
-      if (remote.length === 0 && localRecords.length === 0) {
-        void this.uploadBotColdStart(currentSeed);
+      // 병합 필드가 N보다 적으면 봇으로 보충 — 유저가 적어도 경쟁 필드를 가득 채우고,
+      // 봇이 유저보다 빠르면 상단 랭킹에 노출된다. (원격 비었을 때만 원격에도 시딩)
+      if (freshMerged.length < GHOST_TOP_N) {
+        void this.uploadBotColdStart(currentSeed, remote.length === 0);
       }
     });
 
@@ -866,18 +916,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 원격·로컬 모두 비어있을 때 봇 고스트를 생성한다.
+   * 봇 고스트로 경쟁 필드를 채운다 — 유저가 적거나 없을 때 호출(콜드스타트 + 보충).
    *
-   * 왜 기존 코드가 첫 판에 봇이 안 보였는가:
-   *   1) 봇을 Supabase에만 업로드하고 localStorage엔 저장 안 함.
-   *   2) 업로드 후 현재 게임에 즉시 적용하지 않음 → 다음 세션 fetch 때 처음 보임.
-   *   3) Supabase 미설정/네트워크 실패 시 업로드 자체가 안 되어 영구 미노출.
+   * 동작:
+   *   - 시드별 1회만 생성(플래그 가드) → 봇 로그는 localStorage에 영속 저장.
+   *   - 현재 판이 살아있으면 원격+로컬+봇을 병합해 즉시 세션 필드에 반영
+   *     (봇이 유저보다 빠르면 거리순 정렬로 상단 랭킹에 노출).
+   *   - allowRemoteUpload=true(원격이 비었을 때)에만 원격에도 시딩 → 원격 오염 방지.
    *
-   * 수정:
-   *   - localStorage에도 saveRun으로 저장 → 다음 판은 네트워크 없이도 보임.
-   *   - 현재 판이 아직 진행 중이고 고스트가 없으면 즉시 적용.
+   * 왜 봇이 안 보였었나(과거 버그): 봇을 원격에만 올리고 로컬 미저장 + 현재 판 미적용이라
+   * 다음 세션에야 처음 보였다. 로컬 저장 + 즉시 병합 적용으로 해소.
    */
-  private async uploadBotColdStart(seed: number): Promise<void> {
+  private async uploadBotColdStart(
+    seed: number,
+    allowRemoteUpload = true,
+  ): Promise<void> {
     const flagKey = `ga:bots:v${SIM_VERSION}:${seed}`;
     try {
       if (window.localStorage.getItem(flagKey)) return;
@@ -887,23 +940,24 @@ export class GameScene extends Phaser.Scene {
     const { recordAllBotRuns } = await import("../botRecorder");
     const botRuns = recordAllBotRuns(seed);
 
-    // 로컬 저장 먼저 — 네트워크 실패해도 다음 판부터 보임
+    // 로컬 저장 먼저 — 네트워크 실패해도 다음 판부터 보임. saveRun이 거리순 top-N 유지.
     for (const { log, distance } of botRuns) {
       saveRun(window.localStorage, seed, log, distance);
     }
 
-    // 현재 판이 아직 살아있고 고스트 없으면 즉시 적용 (첫 판 UX)
-    if (!this.sim.state.gameOver && this.ghosts.length === 0 && this.seed === seed) {
-      const { GhostDriver } = await import("../sim/ghost");
-      this.ghosts = botRuns.map((r) => new GhostDriver(r.log));
-      this.ghostDistances = botRuns.map((r) => r.distance);
-      this.top3GhostDists = [...this.ghostDistances].sort((a, b) => b - a).slice(0, 3);
-      this.prevRank = this.ghosts.length + 1;
+    // 현재 판이 살아있고 시드가 일치하면 원격+로컬(봇 포함)을 병합해 즉시 반영.
+    // ghosts가 이미 가득 차 있어도 봇이 더 빠르면 상단에 끼어들 수 있게 재병합.
+    if (!this.sim.state.gameOver && this.seed === seed) {
+      const localNow = loadTopRuns(window.localStorage, seed);
+      const mergedNow = this.mergeGhostRecords(this.remoteRuns, localNow);
+      this.applyGhostField(mergedNow, this.remoteRuns.length === 0);
     }
 
-    // 원격 업로드는 fire-and-forget (실패해도 로컬은 보존)
-    for (const { log, distance } of botRuns) {
-      void submitRunRemote(seed, log, distance, true);
+    // 원격 시딩은 원격이 비었을 때만 — 실제 유저가 있는 보드에 봇을 섞지 않는다.
+    if (allowRemoteUpload) {
+      for (const { log, distance } of botRuns) {
+        void submitRunRemote(seed, log, distance, true);
+      }
     }
     try {
       window.localStorage.setItem(flagKey, "1");
@@ -1050,6 +1104,7 @@ export class GameScene extends Phaser.Scene {
           fontSize: "90px",
           color: "#ffd700",
           fontStyle: "bold",
+          resolution: TXT_RES,
         })
         .setOrigin(0.5)
         .setStroke("#1a1a2e", 12);
@@ -1220,7 +1275,7 @@ export class GameScene extends Phaser.Scene {
         fontFamily: "'Orbitron', monospace",
         fontStyle: "bold",
         color: "#ffd700",
-        resolution: Math.min(window.devicePixelRatio || 1, 3),
+        resolution: TXT_RES,
       })
       .setOrigin(0.5)
       .setStroke("#1a0010", 5)
@@ -1943,7 +1998,7 @@ export class GameScene extends Phaser.Scene {
     const x = toScreenX(C.PLAYER_X);
     const y = boxCenterScreenY(this.sim.state.player.y, C.PLAYER_H) - 44;
     const t = this.add
-      .text(x, y, msg, { fontSize: "20px", color, fontStyle: "bold" })
+      .text(x, y, msg, { fontSize: "20px", color, fontStyle: "bold", resolution: TXT_RES })
       .setOrigin(0.5);
     this.tweens.add({
       targets: t,
@@ -1973,7 +2028,7 @@ export class GameScene extends Phaser.Scene {
     ];
     const msg = phrases[Math.floor(Math.random() * phrases.length)]!;
     const label = this.add
-      .text(0, 0, msg, { fontSize: "11px", color: "#ffffff", align: "center" })
+      .text(0, 0, msg, { fontSize: "11px", color: "#ffffff", align: "center", resolution: TXT_RES })
       .setOrigin(0.5);
     const padX = 8;
     const padY = 5;
@@ -2024,7 +2079,7 @@ export class GameScene extends Phaser.Scene {
         align: "center",
         lineSpacing: 4,
         // devicePixelRatio 해상도로 텍스처 렌더 → 레티나에서 흐릿함 방지
-        resolution: Math.min(window.devicePixelRatio || 1, 3),
+        resolution: TXT_RES,
       })
       .setOrigin(0.5);
     const padX = 9;
@@ -2061,7 +2116,7 @@ export class GameScene extends Phaser.Scene {
     const x = toScreenX(C.PLAYER_X);
     const y = boxCenterScreenY(this.sim.state.player.y, C.PLAYER_H) - 50;
     const t = this.add
-      .text(x, y, msg, { fontSize: "30px", color, fontStyle: "bold" })
+      .text(x, y, msg, { fontSize: "30px", color, fontStyle: "bold", resolution: TXT_RES })
       .setOrigin(0.5)
       .setStroke("#1a1a2e", 6);
     this.tweens.add({
