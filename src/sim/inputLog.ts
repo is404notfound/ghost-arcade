@@ -26,6 +26,7 @@
 // 1.11.0: 스폰 간격을 speedT(피격 리셋 시계)로 계산 — 피격 후 속도↓+간격 최소값 유지로
 //         생기던 통과 불가 구간 해소. 스폰 타이밍이 달라져 궤적 변경.
 // 1.12.0: INTERVAL_MIN 980→760, RAMP 11→16 — 과도하게 쉬워진 간격 재조정(난이도 복원).
+// 1.13.0: FEVER_TAP_HEAL 3→1 — 피버 중 체력 회복 과도 보정.
 export const SIM_VERSION = '1.13.0';
 
 export interface InputEvent {
@@ -33,10 +34,59 @@ export interface InputEvent {
   type: 'tap';
 }
 
+// ─── Forward-design 메타데이터 슬롯 ───────────────────────────────────────
+// 닉네임·캐릭터·부스터 기능을 나중에 *버전 업 없이 가법적으로* 추가하기 위한 예약 필드.
+// InputLog.meta 가 없거나 필드가 빠진 레코드 → DEFAULT_META 값으로 관대하게 처리.
+// 이렇게 해두면 기능 추가 시점의 기존 고스트 레코드가 날아가지 않는다.
+
+export interface RunMeta {
+  /**
+   * 캐릭터 식별자. 기본 'base'.
+   * 나중에 캐릭터 선택 기능 추가 시, 그 캐릭터의 스탯으로 시뮬을 재생하려면
+   * 이 필드가 로그에 박혀 있어야 한다. 없으면 'base' 스탯으로 재생.
+   */
+  characterId: string;
+  /**
+   * 플레이어 닉네임. 기본 '' (익명).
+   * 크로스유저 닉네임 기능 구현 시, 랭킹·말풍선·라이벌 표시에 사용.
+   */
+  nickname: string;
+  /**
+   * 이 판에 적용된 부스터/아이템 ID 목록. 기본 [].
+   * 부스터 아이템(체력 증가, 자석 포션 등) 구현 시, 로그에 기록해야
+   * 시뮬 재생 시 같은 효과를 재현할 수 있다.
+   */
+  modifiers: string[];
+}
+
+/** meta 필드 기본값 — 없는 필드는 이 값으로 채운다. */
+export const DEFAULT_META: Readonly<RunMeta> = {
+  characterId: 'base',
+  nickname: '',
+  modifiers: [],
+};
+
+/** meta가 완전하지 않아도 기본값을 채워 RunMeta를 반환한다. */
+export function resolveMeta(partial?: Partial<RunMeta>): RunMeta {
+  if (!partial) return { ...DEFAULT_META };
+  return {
+    characterId: partial.characterId ?? DEFAULT_META.characterId,
+    nickname:    partial.nickname    ?? DEFAULT_META.nickname,
+    modifiers:   partial.modifiers   ?? DEFAULT_META.modifiers,
+  };
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface InputLog {
   version: string;
   seed: number;
   events: InputEvent[];
+  /**
+   * 게임플레이 메타데이터 슬롯 (Forward-design).
+   * 선택적 — 없거나 부분 기입인 레코드는 DEFAULT_META로 보완.
+   * SIM_VERSION 업 없이 필드를 추가/확장 가능(가법적 변경 원칙).
+   */
+  meta?: Partial<RunMeta>;
 }
 
 /**
@@ -84,5 +134,12 @@ export function parseLog(raw: string): InputLog {
       throw new Error('입력 로그 형식 오류: 이벤트 스키마 위반');
     }
   }
-  return { version: obj.version, seed: obj.seed, events: obj.events as InputEvent[] };
+  // meta 슬롯: 없거나 부분 기입이어도 허용 (Forward-design — 가법적 추가 원칙)
+  const rawMeta = obj.meta as Partial<RunMeta> | undefined;
+  return {
+    version: obj.version,
+    seed: obj.seed,
+    events: obj.events as InputEvent[],
+    ...(rawMeta !== undefined ? { meta: rawMeta } : {}),
+  };
 }

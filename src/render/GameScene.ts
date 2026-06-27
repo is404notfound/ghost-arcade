@@ -36,7 +36,7 @@ import {
   toScreenY,
   boxCenterScreenY,
 } from "./viewport";
-import { registerPauseToggle, setPauseButtonState } from "../controls";
+import { registerPauseToggle, setPauseButtonState, registerRestart, setRestartButtonVisible } from "../controls";
 import { track } from "../analytics";
 
 // 게임 에셋(전처리본 assets/game/*) — Vite가 해시 URL로 번들. scripts/prep-assets.py 산출물.
@@ -607,8 +607,17 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setStroke("#1a1a2e", 6);
+    // 다시하기 버튼 안내 — 우상단 DOM 버튼(↺)과 연동
+    const poRestartHint = this.add
+      .text(DESIGN_W / 2, DESIGN_H / 2 + 54, "↺  우상단 버튼으로 처음부터", {
+        fontSize: "13px",
+        color: "#00e5ff",
+        align: "center",
+      })
+      .setOrigin(0.5)
+      .setAlpha(0.7);
     this.pauseOverlay = this.add
-      .container(0, 0, [poBg, poText])
+      .container(0, 0, [poBg, poText, poRestartHint])
       .setVisible(false);
 
     // 시작 오버레이 — 판마다 항상 표시. 이력 있으면 최고 등수, 없으면 조작 안내.
@@ -709,6 +718,13 @@ export class GameScene extends Phaser.Scene {
     registerPauseToggle(() => {
       this.togglePause();
     });
+    // 다시하기 버튼 — 일시정지 중에만 보임. startRun(true) 호출 + 오버레이 닫기.
+    registerRestart(() => {
+      this.pauseOverlay.setVisible(false);
+      this.gamePaused = false;
+      setRestartButtonVisible(false);
+      this.startRun(true);
+    });
 
     // 화면 어디를 탭해도 점프 — 캔버스 밖 빈 공간(좌우 기둥)도 포함
     // #fs-btn은 pointerdown에서 stopPropagation → 이 핸들러까지 버블되지 않음
@@ -741,6 +757,8 @@ export class GameScene extends Phaser.Scene {
       this.resultPanelTimer.remove(false);
       this.resultPanelTimer = null;
     }
+    // 재시작 시 다시하기 버튼 반드시 숨김 (일시정지 해제 경로와 별도)
+    setRestartButtonVisible(false);
     this.seed = dailySeed(); // 같은 날 = 같은 코스 (TODOS 시드 공유 → 데일리 시드로 결정)
     this.sim = new GameSim(this.seed);
     this.log = createInputLog(this.seed);
@@ -926,6 +944,8 @@ export class GameScene extends Phaser.Scene {
     }
     this.pauseOverlay.setVisible(this.gamePaused);
     setPauseButtonState(this.gamePaused, true);
+    // 일시정지 진입 시 다시하기 버튼 표시, 해제 시 숨김
+    setRestartButtonVisible(this.gamePaused);
   }
 
   update(_time: number, delta: number) {
@@ -1048,6 +1068,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (ev & C.EV_GAME_OVER) {
       setPauseButtonState(false, false); // 게임오버 → 일시정지 버튼 숨김
+      setRestartButtonVisible(false);    // 게임오버 → 다시하기 버튼도 숨김
       const myDist = this.sim.state.distance;
       track("game_over", {
         distance: Math.floor(myDist),

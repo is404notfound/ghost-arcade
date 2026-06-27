@@ -30,7 +30,8 @@ canvas {
 }
 
 #fs-btn,
-#pause-btn {
+#pause-btn,
+#restart-btn {
   width: 40px;
   height: 40px;
   background: rgba(0, 0, 0, 0.45);
@@ -47,4 +48,11 @@ canvas {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
   user-select: none;
+}
+
+/* 다시하기 버튼: 시안 네온 테두리로 구분 */
+#restart-btn {
+  border-color: rgba(0, 229, 255, 0.45);
+  color: #00e5ff;
+  font-size: 22px;
 }

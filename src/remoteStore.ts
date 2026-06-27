@@ -7,7 +7,7 @@
 //   - 이상치 필터(B3): 물리 상한 초과 거리는 서버에 기록하지 않는다.
 import * as Sentry from '@sentry/browser';
 import { getSupabaseClient } from './supabaseClient';
-import { SIM_VERSION, parseLog, type InputLog } from './sim/inputLog';
+import { SIM_VERSION, parseLog, type InputLog, type RunMeta } from './sim/inputLog';
 import { GHOST_TOP_N, type GhostRecord } from './ghostStore';
 import { SPEED_MAX, UNITS_PER_METER } from './sim/constants';
 
@@ -18,7 +18,9 @@ const DISTANCE_OUTLIER_CEILING = (SPEED_MAX / UNITS_PER_METER) * 900;
 // SELECT 타임아웃 — Supabase hang 시 무한 대기 방지 (로컬 폴백 보장)
 const REMOTE_TIMEOUT_MS = 5000;
 
-type DbRow = { distance: number; log: unknown };
+// ghost_runs 테이블 컬럼 타입.
+// meta 컬럼은 Forward-design 슬롯 — 아직 DB에 없어도 클라에서 null-safe하게 처리.
+type DbRow = { distance: number; log: unknown; meta?: Partial<RunMeta> | null };
 
 /**
  * 오늘 시드 기준 원격 상위 N 기록을 가져온다.
@@ -37,7 +39,8 @@ export async function loadTopRunsRemote(seed: number): Promise<GhostRecord[]> {
   try {
     const { data, error } = (await client
       .from('ghost_runs')
-      .select('distance, log')
+      // meta 컬럼은 Forward-design 슬롯 — DB에 없으면 undefined로 조용히 처리됨
+      .select('distance, log, meta')
       .eq('seed', seed)
       .eq('sim_version', SIM_VERSION)
       .order('distance', { ascending: false })
@@ -57,6 +60,8 @@ export async function loadTopRunsRemote(seed: number): Promise<GhostRecord[]> {
           console.warn('[remoteStore] 시드 불일치 스킵 — row.seed:', parsed.seed, '기대:', seed);
           continue;
         }
+        // DB meta 컬럼이 있으면 log.meta에 병합 (Forward-design 슬롯)
+        if (row.meta) parsed.meta = { ...row.meta, ...parsed.meta };
         runs.push({ distance: row.distance, log: parsed });
       } catch (e) {
         console.warn('[remoteStore] parseLog 스킵 —', (e as Error).message);
@@ -83,6 +88,7 @@ export async function submitRunRemote(
   log: InputLog,
   distance: number,
   isBot = false,
+  meta?: Partial<RunMeta>,
 ): Promise<void> {
   // 이상치 필터 (B3) — 물리 상한 초과·음수는 서버에 기록하지 않는다
   if (distance > DISTANCE_OUTLIER_CEILING || distance < 0) return;
@@ -90,12 +96,17 @@ export async function submitRunRemote(
   const client = getSupabaseClient();
   if (!client) return;
 
+  // meta 슬롯: log.meta 우선, 파라미터 meta로 보완 (Forward-design)
+  // DB meta 컬럼이 아직 없어도 insert는 조용히 무시됨 (Supabase 기본 동작)
+  const mergedMeta = meta ?? log.meta ?? undefined;
+
   const insertPromise = client.from('ghost_runs').insert({
     seed,
     sim_version: SIM_VERSION,
     distance,
     log: log as unknown as Record<string, unknown>,
     is_bot: isBot,
+    ...(mergedMeta ? { meta: mergedMeta } : {}),
   }) as unknown as Promise<{ error: unknown }>;
   // INSERT hang 방지 — Supabase 장애 시 무한 대기 없이 로컬 기록으로 계속
   const timeoutPromise = new Promise<never>((_, reject) =>
