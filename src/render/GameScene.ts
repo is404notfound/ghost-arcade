@@ -181,6 +181,8 @@ export class GameScene extends Phaser.Scene {
   private feverCount = 0; // 이번 판 피버 발동 횟수 — game_over 이벤트용
   // 결과 패널 딜레이 타이머 — 재시작 시 반드시 취소해야 새 게임 중에 패널이 안 뜸
   private resultPanelTimer: Phaser.Time.TimerEvent | null = null;
+  // 플레이어 사망 페이드아웃 — 트윈을 한 번만 시작하기 위한 플래그 (렌더 전용)
+  private playerDeadFadeStarted = false;
   private crashed = false; // 렌더 루프 예외 발생 시 1회만 보고하고 정지 (이벤트 폭주 방지)
   private gamePaused = false;
   // 인게임 안내
@@ -295,11 +297,15 @@ export class GameScene extends Phaser.Scene {
 
     // laserGraphics는 createBackground() 안에서 태양보다 먼저 생성됨 (Z-order 보장)
 
-    // 고스트 텍스처에 LINEAR 필터를 명시 — 전역 antialias:true 와 belt-and-suspenders.
-    // 스프라이트시트는 로드 직후 GPU에 올라가므로 create()에서 한 번만 설정하면 충분.
+    // 텍스처에 LINEAR 필터 명시 — 전역 antialias:true 와 belt-and-suspenders.
+    // zoom(DPR) 확대 환경에서 NEAREST 필터는 도트 계단이 생기므로 명시적으로 LINEAR.
     [
       "ghost-run",
       "ghost-collapse",
+      "player-ride",
+      "player-jump",
+      "player-hit",
+      "player-dead",
     ].forEach((key) => {
       const tex = this.textures.get(key);
       if (tex) tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
@@ -759,6 +765,9 @@ export class GameScene extends Phaser.Scene {
     }
     // 재시작 시 다시하기 버튼 반드시 숨김 (일시정지 해제 경로와 별도)
     setRestartButtonVisible(false);
+    // 플레이어 사망 페이드 플래그 리셋 + alpha 복원
+    this.playerDeadFadeStarted = false;
+    this.playerRect?.setAlpha(1);
     this.seed = dailySeed(); // 같은 날 = 같은 코스 (TODOS 시드 공유 → 데일리 시드로 결정)
     this.sim = new GameSim(this.seed);
     this.log = createInputLog(this.seed);
@@ -1133,9 +1142,29 @@ export class GameScene extends Phaser.Scene {
 
   /** 보류됐던 결과 패널 채우기 + 표시 (사망 즉시 or 구경 종료 후) */
   private showResultPanel(cmp: GhostComparison, myDist: number) {
-    this.gameOverDistText.setText(`거리  ${Math.floor(myDist)}M`);
+    // ── 개인 최고 거리 비교 ──────────────────────────────────────────────────
+    // ga:best-dist: 이전까지 달성한 개인 최고 미터(localStorage 영속).
+    let prevBestM = 0;
+    let isPersonalBest = false;
+    try {
+      prevBestM = parseInt(window.localStorage.getItem("ga:best-dist") ?? "0", 10);
+      isPersonalBest = Math.floor(myDist) > prevBestM;
+      if (isPersonalBest) {
+        window.localStorage.setItem("ga:best-dist", String(Math.floor(myDist)));
+      }
+    } catch { /* localStorage 차단 환경 — 무시 */ }
 
-    // 최고 등수 저장 (고스트 있을 때만 의미있는 등수)
+    // 거리 텍스트 — 개인 신기록이면 골드 강조
+    this.gameOverDistText
+      .setText(`거리  ${Math.floor(myDist)}M`)
+      .setColor(isPersonalBest ? "#ffd700" : "#e0e0e0");
+
+    // 개인 신기록 팝업 — 화면 중앙에서 위로 올라가며 사라짐
+    if (isPersonalBest) {
+      this.showPersonalBestPopup(prevBestM, Math.floor(myDist));
+    }
+
+    // ── 최고 등수 저장 (고스트 있을 때만 의미있는 등수) ─────────────────────
     if (cmp.hasGhosts) {
       const finalRankForSave = cmp.total - cmp.overtaken + 1;
       try {
@@ -1146,25 +1175,22 @@ export class GameScene extends Phaser.Scene {
         if (finalRankForSave < stored) {
           window.localStorage.setItem("ga:best-rank", String(finalRankForSave));
         }
-      } catch {
-        /* 무시 */
-      }
+      } catch { /* 무시 */ }
     }
 
     if (!cmp.hasGhosts) {
-      // 그날 첫 판 — 비교할 상대가 없다
-      this.comparisonText.setText("");
+      this.comparisonText.setText("").setColor("#ffd166");
       this.overtakeText.setText("");
-      this.hintText.setText("탭하여 재시작");
+      this.hintText.setText("TAP TO RESTART");
     } else if (cmp.isRecord) {
       this.comparisonText
-        .setText(`🏆 신기록! 이전 최고 +${cmp.diffM}M`)
+        .setText(`고스트 +${cmp.diffM}M 앞`)
         .setColor("#ffd166");
       const finalRank1 = cmp.total - cmp.overtaken + 1;
       this.overtakeText.setText(
         `최종 ${finalRank1}/${cmp.total + 1}등  ·  제침 ${cmp.overtaken}/${cmp.total}`,
       );
-      this.hintText.setText("탭하여 재시작");
+      this.hintText.setText("TAP TO RESTART");
     } else {
       this.comparisonText
         .setText(`고스트에게 ${cmp.diffM}M 뒤짐`)
@@ -1173,11 +1199,49 @@ export class GameScene extends Phaser.Scene {
       this.overtakeText.setText(
         `최종 ${finalRank2}/${cmp.total + 1}등  ·  제침 ${cmp.overtaken}/${cmp.total}`,
       );
-      // 박빙이면 재시도를 직접 꼬신다
-      this.hintText.setText(cmp.isClose ? "한 판 더?" : "탭하여 재시작");
+      this.hintText.setText(cmp.isClose ? "ONE MORE RUN?" : "TAP TO RESTART");
     }
 
     this.gameOverPanel.setVisible(true);
+  }
+
+  /** 개인 신기록 달성 팝업 — 화면 중앙에서 위로 올라가며 사라짐 */
+  private showPersonalBestPopup(prevBestM: number, nowM: number): void {
+    const cx = DESIGN_W / 2;
+    const cy = DESIGN_H * 0.28;
+    const diff = nowM - prevBestM;
+    const label = prevBestM > 0
+      ? `✨ PERSONAL BEST  +${diff}M`
+      : "✨ PERSONAL BEST";
+
+    const txt = this.add
+      .text(cx, cy, label, {
+        fontSize: "22px",
+        fontFamily: "'Orbitron', monospace",
+        fontStyle: "bold",
+        color: "#ffd700",
+        resolution: Math.min(window.devicePixelRatio || 1, 3),
+      })
+      .setOrigin(0.5)
+      .setStroke("#1a0010", 5)
+      .setDepth(60)
+      .setAlpha(0);
+
+    this.tweens.add({
+      targets: txt,
+      alpha: 1,
+      duration: 180,
+      ease: "Cubic.out",
+    });
+    this.tweens.add({
+      targets: txt,
+      y: cy - 55,
+      alpha: 0,
+      delay: 900,
+      duration: 700,
+      ease: "Cubic.in",
+      onComplete: () => txt.destroy(),
+    });
   }
 
   /**
@@ -1661,6 +1725,20 @@ export class GameScene extends Phaser.Scene {
         (this.playerRect.width / this.playerRect.height) * artH,
         artH,
       );
+    }
+    // 사망 컷 페이드아웃 — 고스트와 동일 방식(트윈 1회). 결과 패널(900ms) 전에 소멸.
+    // 200ms 띄운 후 580ms에 걸쳐 투명화 → ~780ms 완료, 패널과 겹치지 않음.
+    if (playerTex === "player-dead" && !this.playerDeadFadeStarted) {
+      this.playerDeadFadeStarted = true;
+      this.tweens.killTweensOf(this.playerRect);
+      this.tweens.add({
+        targets: this.playerRect,
+        alpha: 0,
+        delay: 200,
+        duration: 580,
+        ease: "Quad.in",
+        onComplete: () => { this.playerRect.setVisible(false); },
+      });
     }
 
     // 고스트들: 위치 갱신. 피버 중엔 숨김(화면이 정신없어 가독성↓).
