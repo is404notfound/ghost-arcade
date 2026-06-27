@@ -50,6 +50,11 @@ if (import.meta.env.DEV) {
 initAnalytics();
 initGameControls();
 
+// Google Fonts 로드 완료 후 게임 시작 — 폰트 미로드 상태로 첫 텍스트가 렌더되면
+// fallback 폰트로 캐싱되어 게임 내내 깨진 폰트로 보인다.
+// fonts.ready는 이미 로드된 환경에서 즉시 resolve하므로 딜레이 없음.
+void document.fonts.ready.then(() => {
+
 try {
   new Phaser.Game({
     type: Phaser.AUTO,
@@ -76,3 +81,5 @@ try {
   Sentry.captureException(e);
   throw e;
 }
+
+}); // document.fonts.ready

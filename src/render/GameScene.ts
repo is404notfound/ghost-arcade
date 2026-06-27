@@ -452,9 +452,10 @@ export class GameScene extends Phaser.Scene {
     this.add
       .text(DESIGN_W / 2 - barW / 2 - 10, barY, "HP", {
         fontSize: "11px",
-        fontFamily: "monospace",
+        fontFamily: "'Orbitron', monospace",
         fontStyle: "bold",
         color: "#00e5ff",
+        resolution: Math.min(window.devicePixelRatio || 1, 3),
       })
       .setOrigin(1, 0.5)
       .setDepth(22)
@@ -494,8 +495,9 @@ export class GameScene extends Phaser.Scene {
         .text(10, RP_H / 2, rpLabels[i]!, {
           fontSize: isMe ? "13px" : "11px",
           color: isMe ? "#00e5ff" : "#484848",
-          fontFamily: "monospace",
+          fontFamily: "'Orbitron', monospace",
           fontStyle: "bold",
+          resolution: Math.min(window.devicePixelRatio || 1, 3),
         })
         .setOrigin(0, 0.5);
       const children: Phaser.GameObjects.GameObject[] = deco ? [bg, deco, txt] : [bg, txt];
@@ -511,8 +513,10 @@ export class GameScene extends Phaser.Scene {
     this.comboDisplay = this.add
       .text(DESIGN_W / 2, 130, "", {
         fontSize: "50px",
-        color: "#ffd166",
+        fontFamily: "'Orbitron', monospace",
         fontStyle: "bold",
+        color: "#ffd166",
+        resolution: Math.min(window.devicePixelRatio || 1, 3),
       })
       .setOrigin(0.5)
       .setAlpha(0.8)
@@ -532,38 +536,43 @@ export class GameScene extends Phaser.Scene {
       .text(0, -72, "YOU LOSE", {
         fontSize: "30px",
         color: "#ff2d55",
-        fontFamily: "monospace",
+        fontFamily: "'Orbitron', monospace",
         fontStyle: "bold",
+        resolution: Math.min(window.devicePixelRatio || 1, 3),
       })
       .setOrigin(0.5)
       .setStroke("#2a0010", 5);
     this.gameOverDistText = this.add
       .text(0, -32, "", {
-        fontSize: "20px",
+        fontSize: "19px",
         color: "#e0e0e0",
-        fontFamily: "monospace",
+        fontFamily: "'Orbitron', monospace",
+        resolution: Math.min(window.devicePixelRatio || 1, 3),
       })
       .setOrigin(0.5);
     this.comparisonText = this.add
       .text(0, 0, "", {
-        fontSize: "16px",
+        fontSize: "15px",
         color: "#ffd166",
         fontStyle: "bold",
-        fontFamily: "monospace",
+        fontFamily: "'Orbitron', monospace",
+        resolution: Math.min(window.devicePixelRatio || 1, 3),
       })
       .setOrigin(0.5);
     this.overtakeText = this.add
       .text(0, 26, "", {
-        fontSize: "14px",
+        fontSize: "13px",
         color: "#b39ddb",
-        fontFamily: "monospace",
+        fontFamily: "'Orbitron', monospace",
+        resolution: Math.min(window.devicePixelRatio || 1, 3),
       })
       .setOrigin(0.5);
     this.hintText = this.add
-      .text(0, 68, "탭하여 재시작", {
-        fontSize: "13px",
+      .text(0, 68, "TAP TO RESTART", {
+        fontSize: "11px",
         color: "#00e5ff",
-        fontFamily: "monospace",
+        fontFamily: "'Orbitron', monospace",
+        resolution: Math.min(window.devicePixelRatio || 1, 3),
       })
       .setOrigin(0.5)
       .setAlpha(0.75);
@@ -950,7 +959,7 @@ export class GameScene extends Phaser.Scene {
         this.bubbleMs -= delta;
         if (this.bubbleMs <= 0) {
           this.showSpeechBubble();
-          this.bubbleMs = 12000 + Math.random() * 8000; // 12~20초마다
+          this.bubbleMs = 20000 + Math.random() * 12000; // 20~32초마다 (더 드물게)
         }
       }
       // 메테오 스포너 — 렌더 타이머(delta 기반), sim 무관. 게임 진행 중에만 스폰.
@@ -1910,10 +1919,13 @@ export class GameScene extends Phaser.Scene {
 
     const label = this.add
       .text(0, 0, msg, {
-        fontSize: "12px",
+        fontSize: "13px",
+        fontFamily: "'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif",
         color: "#ffffff",
         align: "center",
-        lineSpacing: 3,
+        lineSpacing: 4,
+        // devicePixelRatio 해상도로 텍스처 렌더 → 레티나에서 흐릿함 방지
+        resolution: Math.min(window.devicePixelRatio || 1, 3),
       })
       .setOrigin(0.5);
     const padX = 9;
