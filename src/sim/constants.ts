@@ -75,7 +75,8 @@ export const FEVER_SPEED_MULT = 2.5; // 피버 중 스크롤 배속
 export const PLAYER_Y_MAX = 376;
 
 // 피버 탭 회복 — 피버 중 탭(점프)할 때마다 회복되는 HP량
-export const FEVER_TAP_HEAL = 3;
+// 1.13.0: 3→1 (피버 중 체력 회복이 너무 강해 난이도 지나치게 쉬움)
+export const FEVER_TAP_HEAL = 1;
 
 // 피버 종료 후 충돌 유예 — 피버가 끝난 직후 이 시간(초)만큼 장애물 충돌 면역 유지
 export const FEVER_GRACE_SEC = 2;

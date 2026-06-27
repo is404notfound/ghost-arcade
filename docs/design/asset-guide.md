@@ -152,6 +152,28 @@ overload, photo, face close-up, rider standing, car, three wheels
 > 추가 컷(동일 스타일·baseline·글로우): `jump`(앞바퀴 들린 버니홉), `hit`(1컷, 깜빡임은 코드),
 > `dead`(라이더가 튕겨 나가 머리 위 골드 헤일로가 생기는 컷 — "죽으면 나도 고스트가 된다" 루프 핵심).
 
+#### ★ player-jump2 — 2단 점프 컷 (신규 에셋 필요)
+
+2단 점프 시(`player.jumpCount === 2`) 현재 `player-jump`와 다른 별도 컷으로 교체 → 더 강하게 꺾인 느낌.
+
+```
+SAME neon hooded rider and cyan motorcycle as player-rider (identical palette, glow, scarf, style)
+— but captured at the peak of a SECOND mid-air jump: the front wheel kicked up sharply about
+80 degrees above horizontal, rear wheel angled down, rider body thrown backward with the scarf
+lashing forward dramatically, strong tilt and air, the whole bike reads as "punched upward" with
+an urgent reckless energy. Side view facing right, full side profile, same baseline anchor (bottom
+of rear wheel), isolated on a transparent background, no scene, no ground, no shadow, no text,
+game asset.
+```
+
+```
+NEGATIVE: front wheel down, casual hover, flat angle, 3D, realistic, photo, text, watermark,
+white background, ground shadow, standing rider, car, three wheels
+```
+
+> **구현 노트(렌더 전용):** `src/sim/sim.ts`에서 `s.player.jumpCount`가 `2`이면 `player-jump2`
+> 텍스처로 전환. `player-jump`와 동일 `displaySize` 사용. sim 히트박스는 동일 → 버전 업 없음.
+
 ---
 
 ### 5.2 ghost-runner — 발로 뛰는 헤일로 고스트 + ★엎어짐(신규)

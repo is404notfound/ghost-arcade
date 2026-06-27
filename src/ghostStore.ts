@@ -14,7 +14,7 @@ import {
 } from './sim/inputLog';
 
 /** 보관/재생할 상위 기록 수 — 렌더 고스트 풀 크기와 동일 */
-export const GHOST_TOP_N = 15;
+export const GHOST_TOP_N = 8;
 
 export interface KVStore {
   getItem(key: string): string | null;

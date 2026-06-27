@@ -50,8 +50,7 @@ import fuelCanUrl from "../../assets/game/fuel-can.png";
 import obsCarUrl from "../../assets/game/obs-car.png";
 import obsBarrelUrl from "../../assets/game/obs-barrel.png";
 import obsDebrisUrl from "../../assets/game/obs-debris.png";
-import flamePilar1Url from "../../assets/game/flame-pilar-1.png";
-import flamePilar2Url from "../../assets/game/flame-pilar-2.png";
+// flame-pilar 이미지 제거됨 — 코드 드로우 화염분수(code-flame-*)로 교체
 // bg-sun 이미지는 코드 태양(createCodeSun)으로 대체 — import 제거
 // fx-meteor-*: 코드 드로우 메테오(drawCodeMeteor)로 대체 — import 제거
 // 일본어 네온 간판 데코 (배경 패럴랙스 레이어)
@@ -71,9 +70,7 @@ const COLOR_SKYLINE_WIN = 0xff6fb0; // 실루엣 창문 점
 const COLOR_GROUND_DARK = 0x0a0612; // 지면(지평선 아래)
 const SKYLINE_PARALLAX = 0.2; // 먼 스카이라인 스크롤 배수(월드속도 대비)
 const GRID_SPACING = 70; // 바닥 그리드 수직선 간격(px)
-const DEAD_PLAYER_ALPHA = 0.25; // 사망 후 구경 모드에서 내 캐릭터 디밍
-const SPECTATE_MAX_SEC = 3; // 사망 후 구경 최대 시간
-const SPECTATE_SPEED_MULT = 3; // 구경 모드에서 고스트 재생 배속
+const DEAD_PLAYER_ALPHA = 0.25; // 사망 후 내 캐릭터 디밍
 
 // 스프라이트 표시 튜닝 — 아트는 풋프린트(히트박스)보다 크게 overhang 허용(스펙 §1).
 // 충돌은 sim의 직사각형 풋프린트로만 판정되므로 아래 값은 '보이는 크기'일 뿐이다.
@@ -92,8 +89,8 @@ const MAX_METEORS = 6; // 동시 메테오 상한(스폰당 1~3개가 누적)
 
 // 장애물 아트 텍스처 키(렌더 전용·결정론 무관). 건물은 더 이상 쓰지 않는다.
 const OBS_LOW = ["obs-car", "obs-debris"] as const; // 낮고 넓음
-const OBS_MID = ["obs-barrel"] as const; // 중간(드럼통)
-const OBS_TALL = ["flame-pilar-1", "flame-pilar-2"] as const; // 높은 불기둥
+const OBS_MID = ["obs-barrel", "code-sludge"] as const; // 중간 — 드럼통 or 오염수 분수
+const OBS_TALL = ["code-flame-s", "code-flame-m", "code-flame-l"] as const; // 코드 드로우 화염분수 3종
 
 // 장애물 아트 폭/높이 상수 (렌더 전용)
 const OBSTACLE_ART_SCALE = 1.2; // 시각 크기 살짝 키움(히트박스는 sim의 o.h 유지)
@@ -135,9 +132,12 @@ function smokeProfile(key: string): SmokeProfile {
       return { color: 0x9b8f86, strands: 3, height: 30, baseW: 5.5, alpha: 0.3, spread: 11, sway: 16, freq: 1.5, ember: false, glow: 0xff5a7a, fire: false };
     case "obs-barrel": // 드럼통: 검고 높은 매연 + 불씨 밑동
       return { color: 0x655e6c, strands: 2, height: 56, baseW: 5, alpha: 0.42, spread: 6, sway: 12, freq: 2.2, ember: true, glow: 0xff7a3c, fire: true };
-    case "flame-pilar-1":
-    case "flame-pilar-2": // 불기둥: 화염 위 옅은 열기 연기 한 가닥
-      return { color: 0x7a6a72, strands: 1, height: 40, baseW: 3.5, alpha: 0.22, spread: 0, sway: 11, freq: 2.6, ember: true, glow: 0xff9a3c, fire: true };
+    case "code-flame-s":
+    case "code-flame-m":
+    case "code-flame-l": // 코드 드로우 화염분수 — 연기는 거의 없고 빛이 강함
+      return { color: 0x7a6a72, strands: 1, height: 30, baseW: 3, alpha: 0.18, spread: 0, sway: 9, freq: 2.8, ember: true, glow: 0xff9a3c, fire: true };
+    case "code-sludge": // 오염수 분수 — 회색/녹색 연기
+      return { color: 0x5a6655, strands: 2, height: 38, baseW: 4, alpha: 0.28, spread: 5, sway: 10, freq: 1.8, ember: false, glow: 0x7fff6a, fire: false };
     case "obs-car": // 부서진 차: 엔진룸 회색 연기 + 시안 네온 잔광
     default:
       return { color: 0xb8b2c0, strands: 2, height: 42, baseW: 4.5, alpha: 0.32, spread: 8, sway: 13, freq: 2.0, ember: false, glow: 0x2de1ff, fire: false };
@@ -170,11 +170,8 @@ export class GameScene extends Phaser.Scene {
   // 마지막으로 완료된 원격 로드 결과 — 다음 판 startRun()에서 사용
   private remoteRuns: GhostRecord[] = [];
 
-  // 구경 모드: 내가 죽어도 살아있는 유령들이 격차를 벌리는 걸 보여주는 구간
+  // 구경 모드 제거됨: 게임오버 시 모든 고스트가 함께 쓰러지고 즉시 결과로 전환.
   private spectating = false;
-  private spectateFramesLeft = 0;
-  private pendingCmp: GhostComparison | null = null; // 보류된 결과 패널 데이터
-  private pendingMyDist = 0;
 
   private paceText!: Phaser.GameObjects.Text; // 현재 등수 "N / M등"
   private overtakeHudText!: Phaser.GameObjects.Text; // "제침 X/N"
@@ -225,6 +222,13 @@ export class GameScene extends Phaser.Scene {
   // 레이저 경고 이펙트 — 렌더 전용 Graphics 레이어
   private laserGraphics!: Phaser.GameObjects.Graphics;
   private renderTimeMs = 0; // 렌더 전용 시계 (sim 무관, Math.sin 연출용)
+  // 오글거리는 랜덤 말풍선 — 일정 간격마다 표시 (렌더 전용)
+  private bubbleMs = 0; // 다음 말풍선까지 남은 ms
+  private bubble?: Phaser.GameObjects.Container;
+  // 네온 트레일 — 바이크 뒤 수평 속도선 (렌더 전용)
+  private trailGfx!: Phaser.GameObjects.Graphics;
+  // 코드 드로우 장애물(화염분수·오염수) 전용 Graphics
+  private codeObsGfx!: Phaser.GameObjects.Graphics;
   // 바이크 네온 글로우 FX (WebGL postFX — 비지원 기기에서는 null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private playerGlow: any = null;
@@ -268,8 +272,7 @@ export class GameScene extends Phaser.Scene {
     this.load.image("obs-car", obsCarUrl);
     this.load.image("obs-barrel", obsBarrelUrl);
     this.load.image("obs-debris", obsDebrisUrl);
-    this.load.image("flame-pilar-1", flamePilar1Url);
-    this.load.image("flame-pilar-2", flamePilar2Url);
+    // flame-pilar-1/2 이미지 사용 안 함 — 코드 드로우 화염분수로 교체
     // bg-sun: 코드 태양으로 대체, 이미지 로드 불필요
     // fx-meteor-*: 코드 드로우(drawCodeMeteor)로 대체, 이미지 로드 불필요
     this.load.image("sign-yakou", signYakouUrl);
@@ -289,6 +292,16 @@ export class GameScene extends Phaser.Scene {
     this.meteorSpawnMs = 0; // 게임 시작 즉시 첫 스폰
 
     // laserGraphics는 createBackground() 안에서 태양보다 먼저 생성됨 (Z-order 보장)
+
+    // 고스트 텍스처에 LINEAR 필터를 명시 — 전역 antialias:true 와 belt-and-suspenders.
+    // 스프라이트시트는 로드 직후 GPU에 올라가므로 create()에서 한 번만 설정하면 충분.
+    [
+      "ghost-run",
+      "ghost-collapse",
+    ].forEach((key) => {
+      const tex = this.textures.get(key);
+      if (tex) tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    });
 
     // 고스트 달리기 애니메이션(6프레임 스프라이트시트) — 렌더 전용, 씬당 1회 등록
     if (!this.anims.exists("ghost-run")) {
@@ -332,6 +345,9 @@ export class GameScene extends Phaser.Scene {
       this.ghostTumbleState.push("run");
     }
 
+    // 네온 트레일 — 플레이어보다 먼저 add → 플레이어 스프라이트 뒤에서 그려짐.
+    this.trailGfx = this.add.graphics();
+
     // 플레이어: 후드 라이더 + 네온 오토바이. 아트는 히트박스보다 넓다(overhang).
     this.playerRect = this.add
       .image(toScreenX(C.PLAYER_X), GROUND_Y_PX, "player-ride")
@@ -358,6 +374,8 @@ export class GameScene extends Phaser.Scene {
 
     // 장애물 연기 레이어 — 장애물 풀보다 먼저 add → 장애물 스프라이트 뒤에서 피어오름.
     this.smokeGfx = this.add.graphics();
+    // 코드 드로우 장애물(화염분수·오염수) — smoke 뒤, image 장애물 앞
+    this.codeObsGfx = this.add.graphics();
 
     // 장애물 풀 — sim 풀 인덱스와 1:1. 텍스처(차/잔해/드럼통/불기둥)·크기는 syncVisuals에서 갱신.
     for (let i = 0; i < C.MAX_OBSTACLES; i++) {
@@ -382,18 +400,8 @@ export class GameScene extends Phaser.Scene {
       .setAlpha(0.12)
       .setVisible(false);
 
-    // 피버 중 점프=회복 안내 — 피버 활성 시 표시, 끝나면 사라짐
-    this.infiniteJumpText = this.add
-      .text(DESIGN_W / 2, 178, "클릭시 무한 회복!", {
-        fontSize: "22px",
-        color: "#ffd700",
-        fontStyle: "bold",
-      })
-      .setOrigin(0.5)
-      .setStroke("#1a1a2e", 5)
-      .setAlpha(0.9)
-      .setVisible(false)
-      .setDepth(10);
+    // infiniteJumpText: 제거됨 — "클릭시 무한 회복!" 문구 불필요
+    this.infiniteJumpText = this.add.text(0, 0, "").setVisible(false);
 
     // 구경 모드 안내 — 내가 죽은 뒤 유령들이 계속 달리는 동안 탭으로 건너뛸 수 있음을 알림
     this.spectateHintText = this.add
@@ -686,7 +694,6 @@ export class GameScene extends Phaser.Scene {
     this.ghostsAreOwnRecords = this.remoteRuns.length === 0;
     this.overtakenLive = 0;
     this.spectating = false;
-    this.pendingCmp = null;
     this.prevCombo = 0;
     this.prevRank = this.ghosts.length + 1;
     this.feverCount = 0;
@@ -730,6 +737,13 @@ export class GameScene extends Phaser.Scene {
     // 코드 메테오 리셋 (재시작 시 이전 메테오 제거)
     this.codeMeteors = [];
     this.meteorSpawnMs = 0;
+    // trailGfx는 drawNeonTrail에서 매 프레임 clear — 별도 리셋 불필요
+    // 말풍선 리셋 — 시작 직후엔 안 뜨게 첫 발화를 4~7초 뒤로
+    if (this.bubble) {
+      this.bubble.destroy();
+      this.bubble = undefined;
+    }
+    this.bubbleMs = 4000 + Math.random() * 3000;
 
     // 고스트 스프라이트 리셋 — 엎어짐 텀블 상태/변형 초기화 후 다시 달리기 재생.
     for (let i = 0; i < this.ghostRects.length; i++) {
@@ -759,7 +773,18 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** 원격에 기록이 없을 때 봇 로그를 1회 업로드한다 — localStorage 플래그로 중복 방지 */
+  /**
+   * 원격·로컬 모두 비어있을 때 봇 고스트를 생성한다.
+   *
+   * 왜 기존 코드가 첫 판에 봇이 안 보였는가:
+   *   1) 봇을 Supabase에만 업로드하고 localStorage엔 저장 안 함.
+   *   2) 업로드 후 현재 게임에 즉시 적용하지 않음 → 다음 세션 fetch 때 처음 보임.
+   *   3) Supabase 미설정/네트워크 실패 시 업로드 자체가 안 되어 영구 미노출.
+   *
+   * 수정:
+   *   - localStorage에도 saveRun으로 저장 → 다음 판은 네트워크 없이도 보임.
+   *   - 현재 판이 아직 진행 중이고 고스트가 없으면 즉시 적용.
+   */
   private async uploadBotColdStart(seed: number): Promise<void> {
     const flagKey = `ga:bots:v${SIM_VERSION}:${seed}`;
     try {
@@ -769,8 +794,24 @@ export class GameScene extends Phaser.Scene {
     }
     const { recordAllBotRuns } = await import("../botRecorder");
     const botRuns = recordAllBotRuns(seed);
+
+    // 로컬 저장 먼저 — 네트워크 실패해도 다음 판부터 보임
     for (const { log, distance } of botRuns) {
-      await submitRunRemote(seed, log, distance, true);
+      saveRun(window.localStorage, seed, log, distance);
+    }
+
+    // 현재 판이 아직 살아있고 고스트 없으면 즉시 적용 (첫 판 UX)
+    if (!this.sim.state.gameOver && this.ghosts.length === 0 && this.seed === seed) {
+      const { GhostDriver } = await import("../sim/ghost");
+      this.ghosts = botRuns.map((r) => new GhostDriver(r.log));
+      this.ghostDistances = botRuns.map((r) => r.distance);
+      this.top3GhostDists = [...this.ghostDistances].sort((a, b) => b - a).slice(0, 3);
+      this.prevRank = this.ghosts.length + 1;
+    }
+
+    // 원격 업로드는 fire-and-forget (실패해도 로컬은 보존)
+    for (const { log, distance } of botRuns) {
+      void submitRunRemote(seed, log, distance, true);
     }
     try {
       window.localStorage.setItem(flagKey, "1");
@@ -801,16 +842,6 @@ export class GameScene extends Phaser.Scene {
         }
       }
       this.togglePause();
-      return;
-    }
-    if (this.spectating) {
-      // 구경 중 탭 = 구경 즉시 종료 → 결과 패널 표시 (재시작 아님)
-      this.spectating = false;
-      this.spectateFramesLeft = 0;
-      this.spectateHintText.setVisible(false);
-      this.youDiedText.setVisible(false);
-      if (this.pendingCmp !== null)
-        this.showResultPanel(this.pendingCmp, this.pendingMyDist);
       return;
     }
     if (this.sim.state.gameOver) {
@@ -858,6 +889,14 @@ export class GameScene extends Phaser.Scene {
           (m) => m.elapsed < m.duration,
         );
       }
+      // 오글거리는 말풍선 — 게임 진행 중에만, 일정 간격 랜덤 표시(렌더 전용)
+      if (!this.sim.state.gameOver && !this.spectating) {
+        this.bubbleMs -= delta;
+        if (this.bubbleMs <= 0) {
+          this.showSpeechBubble();
+          this.bubbleMs = 12000 + Math.random() * 8000; // 12~20초마다
+        }
+      }
       // 메테오 스포너 — 렌더 타이머(delta 기반), sim 무관. 게임 진행 중에만 스폰.
       if (!this.sim.state.gameOver && !this.spectating) {
         this.meteorSpawnMs -= delta;
@@ -869,37 +908,19 @@ export class GameScene extends Phaser.Scene {
       // 렌더 fps가 어떻든 시뮬은 DT 단위로만 전진 (결정론 경계)
       this.timestep.update(delta, () => {
         this.sim.step();
-        // 유령들은 라이브와 lockstep. 내가 죽은 뒤에는 '구경 모드'에서만 계속 달리고,
-        // 결과 패널이 뜨면 함께 멈춘다.
-        if (!this.sim.state.gameOver || this.spectating) {
-          const ghostSteps = this.spectating ? SPECTATE_SPEED_MULT : 1;
+        // 유령들은 라이브와 lockstep. 내가 죽으면 게임이 즉시 끝나므로 그 뒤엔 멈춘다.
+        if (!this.sim.state.gameOver) {
           for (const g of this.ghosts) {
             const wasFinished = g.finished;
-            for (let _s = 0; _s < ghostSteps; _s++) g.step();
+            g.step();
             // 유령이 죽는 순간(finished 전환) = 내가 그 기록보다 오래 버팀 = 제침
-            if (!wasFinished && g.finished && !this.sim.state.gameOver) {
+            if (!wasFinished && g.finished) {
               this.overtakenLive++;
               this.popup("고스트 제침!", "#b39ddb");
             }
           }
         }
         this.handleStepEvents(this.sim.state.events);
-
-        // 구경 종료: 유령 전멸 or 시간 만료 → 보류해둔 결과 패널 표시
-        if (this.spectating) {
-          this.spectateFramesLeft--;
-          const allDead = this.ghosts.every((g) => g.finished);
-          if (this.spectateFramesLeft <= 0 || allDead) {
-            console.log(
-              `[ghost-arcade] 구경 종료: ${allDead ? "유령 전멸" : "시간 만료"} (잔여 ${this.spectateFramesLeft}f)`,
-            );
-            this.spectating = false;
-            this.spectateHintText.setVisible(false);
-            this.youDiedText.setVisible(false);
-            if (this.pendingCmp !== null)
-              this.showResultPanel(this.pendingCmp, this.pendingMyDist);
-          }
-        }
       });
     }
     this.syncVisuals();
@@ -977,23 +998,22 @@ export class GameScene extends Phaser.Scene {
       void submitRunRemote(this.seed, this.log, myDist);
       // 골든 리플레이/고스트 재료 — 이 로그와 시드만 있으면 이 판 전체가 복원된다
       console.log("[ghost-arcade] 입력 로그:", serializeLog(this.log));
+      // 재시작 대비: 원격 고스트를 미리 갱신 (Tier 1-2).
+      // 게임오버 시점에 백그라운드로 fetch → 재시작 탭 시점엔 이미 새 데이터로 교체돼 있음.
+      const seedForRefresh = this.seed;
+      void loadTopRunsRemote(seedForRefresh).then((fresh) => {
+        if (fresh.length > 0) this.remoteRuns = fresh;
+      });
 
-      // 살아있는 유령이 있으면 구경 모드: 격차가 벌어지는 걸 보여준 뒤 결과 표시.
-      // 유령이 없거나 전부 제쳤으면(신기록) 바로 결과.
+      // 구경 모드 제거: 게임오버 즉시 모든 고스트가 함께 쓰러지고(연출은 syncVisuals),
+      // 짧게 보여준 뒤 결과 패널을 띄운다. 뒤에 남은 플레이를 보여주지 않는다.
+      this.spectating = false;
       const alive = this.ghosts.filter((g) => !g.finished).length;
       console.log(
-        `[ghost-arcade] 사망 frame=${this.sim.state.frame}, 생존 유령 ${alive}/${this.ghosts.length}`,
+        `[ghost-arcade] 사망 frame=${this.sim.state.frame}, 생존 유령 ${alive}/${this.ghosts.length} → 즉시 종료`,
       );
-      if (alive > 0) {
-        this.spectating = true;
-        this.spectateFramesLeft = SPECTATE_MAX_SEC * C.SIM_FPS;
-        this.pendingCmp = cmp;
-        this.pendingMyDist = myDist;
-        this.spectateHintText.setVisible(true);
-        this.youDiedText.setVisible(true);
-      } else {
-        this.showResultPanel(cmp, myDist);
-      }
+      // 고스트 collapse 연출이 보이도록 ~0.9초 후 결과 패널
+      this.time.delayedCall(900, () => this.showResultPanel(cmp, myDist));
     }
   }
 
@@ -1191,6 +1211,241 @@ export class GameScene extends Phaser.Scene {
    * 동그라미가 아니라 '두꺼운 웨이브 선'으로 표현: 장애물 꼭대기에서 위로 올라가며
    * 좌우로 흔들리는(sin 합성) 선을 세그먼트로 그려 아래는 굵고 위로 갈수록 가늘고 옅게.
    */
+  /**
+   * 코드 드로우 장애물 렌더 (Tier 2-1):
+   *   code-flame-s/m/l  → 바닥에서 솟는 네온 화염분수 (높이 3종)
+   *   code-sludge        → 오염수/구정물 분수 (회색+녹색)
+   * 충돌 박스는 sim의 o.h 직사각형(버전 무관) — 시각만 코드 드로우.
+   */
+  private drawCodeObstacles(world: {
+    obstacles: { active: boolean; x: number; h: number }[];
+  }): void {
+    const g = this.codeObsGfx;
+    g.clear();
+    const t = this.renderTimeMs * 0.001;
+
+    for (let i = 0; i < C.MAX_OBSTACLES; i++) {
+      const o = world.obstacles[i]!;
+      if (!o.active) continue;
+      const key = this.obstacleType[i] ?? "";
+      if (!key.startsWith("code-")) continue;
+
+      const sx = toScreenX(o.x);
+      const baseY = GROUND_Y_PX;
+      const isSludge = key === "code-sludge";
+
+      // 높이 결정: flame-s/m/l → 작게/보통/크게, sludge → 중간
+      const heightMult = key === "code-flame-s" ? 0.85
+        : key === "code-flame-l" ? 1.25 : 1.0;
+      const artH = o.h * OBSTACLE_ART_SCALE * heightMult;
+
+      if (isSludge) {
+        this.drawSludgeFountain(g, sx, baseY, artH, t, i);
+      } else {
+        this.drawFlameFountain(g, sx, baseY, artH, t, i);
+      }
+    }
+  }
+
+  /**
+   * 네온 화염분수 — 바닥에서 솟구치는 활활 타오르는 불꽃.
+   * 아래는 두껍고 위로 갈수록 뾰족하게(채워진 불혀 다발), 가닥 수 많게, 위협적으로.
+   */
+  private drawFlameFountain(
+    g: Phaser.GameObjects.Graphics,
+    sx: number, baseY: number, artH: number,
+    t: number, idx: number,
+  ): void {
+    const phase = idx * 2.3;
+    const baseHalf = Math.max(14, artH * 0.42); // 밑동 반폭 — 두껍게
+
+    // 베이스 글로우 (넓게 깔린 불빛)
+    const pulse = 0.7 + 0.3 * Math.sin(t * 8 + phase);
+    g.fillStyle(0xff5a1c, 0.16 * pulse);
+    g.fillCircle(sx, baseY - 2, baseHalf * 1.5 * pulse);
+    g.fillStyle(0xff9a3c, 0.2 * pulse);
+    g.fillCircle(sx, baseY - 2, baseHalf * 0.9);
+
+    // 불혀(flame tongue) 다발 — 색 레이어별로 안→밖, 키 큰 순서로 겹쳐 그림.
+    // 각 레이어: 바닥에서 시작해 위로 갈수록 뾰족해지는 채워진 형태.
+    const layers = [
+      { color: 0xd62828, hMul: 1.0, wMul: 1.0, tongues: 9, alpha: 0.5 }, // 바깥 빨강(제일 큼)
+      { color: 0xff7a1c, hMul: 0.86, wMul: 0.74, tongues: 7, alpha: 0.6 }, // 주황
+      { color: 0xffb43c, hMul: 0.68, wMul: 0.5, tongues: 5, alpha: 0.7 }, // 노랑주황
+      { color: 0xfff3c0, hMul: 0.46, wMul: 0.28, tongues: 3, alpha: 0.85 }, // 흰노랑 코어
+    ];
+
+    for (const layer of layers) {
+      const layerH = artH * layer.hMul;
+      const layerHalf = baseHalf * layer.wMul;
+      g.fillStyle(layer.color, layer.alpha);
+      for (let s = 0; s < layer.tongues; s++) {
+        // 불혀를 밑동 폭에 고르게 분포
+        const u = layer.tongues === 1 ? 0 : (s / (layer.tongues - 1)) * 2 - 1; // -1..1
+        const rootX = sx + u * layerHalf;
+        const rootW = (layerHalf / layer.tongues) * 1.9; // 밑동 두께(겹치게)
+        // 가닥별로 높이·흔들림 다르게 — 가운데가 가장 높음(분수형)
+        const heightFall = 1 - Math.abs(u) * 0.45;
+        const flick = 0.78 + 0.22 * Math.sin(t * (7 + s) + phase + s * 1.7);
+        const tipH = layerH * heightFall * flick;
+        const sway = Math.sin(t * 5 + s * 0.9 + phase) * artH * 0.1 * (0.4 + Math.abs(u));
+        const tipX = rootX + sway;
+        // 채워진 불혀: 밑변(두꺼움) → 끝(뾰족). 좌우를 살짝 곡선처럼 중간점으로.
+        const midX = (rootX + tipX) / 2 + Math.sin(t * 6 + s) * 2;
+        const midY = baseY - tipH * 0.5;
+        // 좌/우 두 삼각형으로 둥근 불혀 흉내
+        g.fillTriangle(
+          rootX - rootW, baseY,
+          rootX + rootW, baseY,
+          tipX, baseY - tipH,
+        );
+        // 중간 부풀림(아래쪽 더 두껍게)
+        g.fillTriangle(
+          rootX - rootW, baseY,
+          midX, midY,
+          tipX, baseY - tipH,
+        );
+      }
+    }
+
+    // 솟구치는 불씨 — 위로 떠오르는 점들
+    for (let e = 0; e < 5; e++) {
+      const rise = (t * (0.9 + e * 0.12) + e * 0.27) % 1; // 0→1
+      const ex = sx + Math.sin(t * 4 + e * 2) * baseHalf * 0.6;
+      const ey = baseY - rise * artH * 1.1;
+      const ea = (1 - rise) * 0.8;
+      g.fillStyle(e % 2 === 0 ? 0xffd27a : 0xff7a1c, ea);
+      g.fillCircle(ex, ey, (1 - rise) * 2.2 + 0.6);
+    }
+  }
+
+  /**
+   * 오염수/구정물 분수 — 독성 녹색+회색, 두꺼운 덩어리가 솟구쳤다 흘러내리는 느낌.
+   * 화염분수와 같은 fillTriangle 레이어 방식으로 재설계.
+   */
+  private drawSludgeFountain(
+    g: Phaser.GameObjects.Graphics,
+    sx: number, baseY: number, artH: number,
+    t: number, idx: number,
+  ): void {
+    const phase = idx * 1.7;
+    const baseHalf = Math.max(12, artH * 0.38); // 밑동 반폭
+
+    // 바닥 웅덩이 — 독성 녹색 글로우
+    const pulse = 0.65 + 0.35 * Math.sin(t * 4.5 + phase);
+    g.fillStyle(0x4dcc5a, 0.14 * pulse);
+    g.fillCircle(sx, baseY - 2, baseHalf * 1.55 * pulse);
+    g.fillStyle(0x2f9940, 0.2 * pulse);
+    g.fillCircle(sx, baseY - 2, baseHalf * 0.8);
+
+    // 덩어리 레이어 — 화염과 같은 방식이지만 더 뭉툭하고 느린 진폭
+    const layers = [
+      { color: 0x1a4d1a, hMul: 1.0, wMul: 1.0, tongues: 7, alpha: 0.55 }, // 짙은 회록
+      { color: 0x2e7d32, hMul: 0.82, wMul: 0.72, tongues: 5, alpha: 0.65 }, // 어두운 녹
+      { color: 0x4caf50, hMul: 0.60, wMul: 0.48, tongues: 4, alpha: 0.72 }, // 독성 녹
+      { color: 0xb9f6ca, hMul: 0.38, wMul: 0.26, tongues: 2, alpha: 0.80 }, // 밝은 코어
+    ];
+
+    for (const layer of layers) {
+      const lH = artH * layer.hMul;
+      const lHalf = baseHalf * layer.wMul;
+      g.fillStyle(layer.color, layer.alpha);
+      for (let s = 0; s < layer.tongues; s++) {
+        const u = layer.tongues === 1 ? 0 : (s / (layer.tongues - 1)) * 2 - 1;
+        const rootX = sx + u * lHalf;
+        const rootW = (lHalf / layer.tongues) * 2.1;
+        // 오수는 더 뭉툭하게 — 가운데가 살짝 높은 완만한 분수형
+        const heightFall = 1 - Math.abs(u) * 0.35;
+        // 더 느리게 출렁임 (t 계수 작게)
+        const flick = 0.80 + 0.20 * Math.sin(t * (3.5 + s * 0.5) + phase + s * 1.5);
+        const tipH = lH * heightFall * flick;
+        const sway = Math.sin(t * 2.8 + s * 0.8 + phase) * artH * 0.07 * (0.3 + Math.abs(u));
+        const tipX = rootX + sway;
+        g.fillTriangle(rootX - rootW, baseY, rootX + rootW, baseY, tipX, baseY - tipH);
+        // 아래 절반을 더 두껍게 (오수 특유의 뭉침)
+        const midX = (rootX + tipX) / 2;
+        const midY = baseY - tipH * 0.45;
+        g.fillTriangle(rootX - rootW, baseY, midX, midY, tipX, baseY - tipH);
+      }
+    }
+
+    // 솟구치는 독성 방울 — 느리게 올라가며 떨어짐
+    for (let e = 0; e < 4; e++) {
+      const rise = (t * (0.55 + e * 0.08) + e * 0.31) % 1;
+      const ex = sx + Math.sin(t * 2.5 + e * 1.8) * baseHalf * 0.55;
+      const ey = baseY - rise * artH * 0.95;
+      const ea = (1 - rise) * 0.75;
+      g.fillStyle(e % 2 === 0 ? 0x69f07a : 0x2e7d32, ea);
+      g.fillCircle(ex, ey, (1 - rise * 0.6) * 3.2 + 0.8);
+    }
+  }
+
+  /**
+   * 네온 트레일 — 바이크 뒤로 왼쪽 방향 수평 속도선 렌더 (Tier 1-3, 렌더 전용).
+   * 수직이 아닌 수평 베이스라인처럼: 점프해도 항상 지면 기준 고정 높이에서 뻗음.
+   * 속도에 비례해 길이·밝기가 강해지고 반짝임.
+   */
+  private drawNeonTrail(speed: number, gameOver: boolean, playerScreenY: number): void {
+    const g = this.trailGfx;
+    g.clear();
+    if (gameOver) return;
+
+    const SPEED_REF = 300;
+    const intensity = Math.min(speed / SPEED_REF, 1);
+    if (intensity < 0.05) return;
+
+    const t = this.renderTimeMs * 0.001;
+    const baseX = toScreenX(C.PLAYER_X); // 바이크 화면 X (고정)
+    // 바이크 기준(플레이어 화면 Y)에서 위로 띄운 4줄 — 점프하면 함께 올라감.
+    const yLevels = [
+      playerScreenY - PLAYER_ART_H * 0.1, // 뒷바퀴 근처
+      playerScreenY - PLAYER_ART_H * 0.3, // 차체 하부
+      playerScreenY - PLAYER_ART_H * 0.5, // 차체 중간
+      playerScreenY - PLAYER_ART_H * 0.68, // 라이더 허리
+    ];
+    // 줄마다 색을 번갈아 — 시안↔밝은 화이트시안으로 더 화려하게
+    const colors = [0x5efce8, 0x9efff7, 0x5efce8, 0xcaffff];
+
+    for (let li = 0; li < yLevels.length; li++) {
+      const baseY = yLevels[li]!;
+      const phase = li * 1.3;
+      // 고주파 깜빡임 — 더 번쩍이게
+      const flicker = 0.45 + 0.55 * Math.sin(t * 16 + phase);
+      const col = colors[li % colors.length]!;
+
+      // 선 길이: 속도 비례 + 줄마다 살짝 다름
+      const maxLen = (70 + li * 22) * intensity;
+      const segs = 8;
+      for (let s = segs; s >= 1; s--) {
+        const f = s / segs; // 1=바이크 근처, 0=끝
+        const x0 = baseX - (maxLen * (s - 1)) / segs;
+        const x1 = baseX - (maxLen * s) / segs;
+        // 살짝 흐르는 미세 웨이브(수평 기조 유지)
+        const wobble = Math.sin(t * 9 + phase + s * 0.5) * 1.2;
+        const y = baseY + wobble;
+        const alpha = f * f * 0.7 * intensity * flicker;
+        const lineW = (1.0 + f * 3.0) * intensity;
+        g.lineStyle(lineW, col, alpha);
+        g.lineBetween(x0, y, x1, y);
+      }
+
+      // 흐르는 반짝 도트 — 트레일을 따라 좌측으로 흘러감
+      for (let d = 0; d < 3; d++) {
+        const flow = ((t * (1.5 + li * 0.3) + d * 0.33) % 1); // 0→1 반복
+        const dx = baseX - flow * maxLen;
+        const dy = baseY + Math.sin(t * 12 + d + phase) * 1.5;
+        const da = (1 - flow) * 0.8 * intensity * flicker;
+        g.fillStyle(0xffffff, da);
+        g.fillCircle(dx, dy, (1.2 + (1 - flow) * 1.6) * intensity);
+      }
+    }
+
+    // 바이크 바로 뒤 코어 글로우 — 강한 시안 점
+    const coreA = 0.6 * intensity * (0.5 + 0.5 * Math.sin(t * 18));
+    g.fillStyle(0xcaffff, coreA);
+    g.fillCircle(baseX - 6, playerScreenY - PLAYER_ART_H * 0.35, 3 * intensity);
+  }
+
   private drawObstacleSmoke(world: {
     obstacles: { active: boolean; x: number; h: number }[];
   }): void {
@@ -1253,12 +1508,8 @@ export class GameScene extends Phaser.Scene {
   private syncVisuals() {
     const s = this.sim.state;
 
-    // 월드(장애물/포션/거리)의 렌더 기준: 평소엔 내 sim, 구경 모드에선 살아있는
-    // 유령 sim — 같은 시드라 어느 sim이든 코스·거리가 프레임 단위로 동일하다
-    const aliveGhost = this.spectating
-      ? this.ghosts.find((g) => !g.finished)
-      : undefined;
-    const world = aliveGhost !== undefined ? aliveGhost.sim.state : s;
+    // 월드(장애물/포션/거리)의 렌더 기준 = 내 sim (구경 모드 제거됨).
+    const world = s;
 
     // 배경 패럴랙스 (렌더 전용): worldPx = 누적 진행 픽셀 = distance(m) × UNITS_PER_METER.
     // 장애물 스크롤과 같은 기준이라 깊이감이 일관되고, sim은 전혀 건드리지 않는다.
@@ -1284,6 +1535,13 @@ export class GameScene extends Phaser.Scene {
           : 0.9
         : 1;
     this.playerRect.setY(toScreenY(s.player.y)).setAlpha(playerAlpha);
+    // 말풍선: 플레이어 머리 위를 매 프레임 추적 (x는 플레이어와 동일 고정)
+    if (this.bubble) {
+      this.bubble.setY(toScreenY(s.player.y) - PLAYER_ART_H - 42);
+    }
+    // 네온 트레일: 바이크 뒤로 수평으로 뻗는 속도선 (렌더 전용, Tier 1-3)
+    // 플레이어 화면 Y를 넘겨 점프 시 트레일도 함께 따라 올라가게 한다.
+    this.drawNeonTrail(s.speed, s.gameOver, toScreenY(s.player.y));
     // 상태별 컷 전환: 사망 > 피격(무적) > 공중(점프) > 기본 주행
     const playerTex = s.gameOver
       ? "player-dead"
@@ -1294,9 +1552,11 @@ export class GameScene extends Phaser.Scene {
           : "player-ride";
     if (this.playerRect.texture.key !== playerTex) {
       this.playerRect.setTexture(playerTex);
+      // 사망 컷(오토바이에서 날아가는)은 살짝 크게 — 극적이되 과하지 않게.
+      const artH = playerTex === "player-dead" ? PLAYER_ART_H * 1.25 : PLAYER_ART_H;
       this.playerRect.setDisplaySize(
-        (this.playerRect.width / this.playerRect.height) * PLAYER_ART_H,
-        PLAYER_ART_H,
+        (this.playerRect.width / this.playerRect.height) * artH,
+        artH,
       );
     }
 
@@ -1313,19 +1573,29 @@ export class GameScene extends Phaser.Scene {
       }
 
       const xOff = GHOST_X_OFFSETS[i % GHOST_X_OFFSETS.length] ?? 0;
-      if (!g.finished) {
+      // 게임오버면 살아있는 고스트도 함께 쓰러진다(구경 모드 없이 즉시 종료).
+      const shouldCollapse = g.finished || s.gameOver;
+      if (!shouldCollapse) {
         // 살아있는 기록: 평소 주행. 위치 갱신 + 피버 중 숨김.
         sprite.setVisible(showGhosts);
         sprite.setX(toScreenX(C.PLAYER_X) + xOff);
         sprite.setY(toScreenY(g.sim.state.player.y));
+        // 점프(공중)에는 달리기 프레임을 멈춰 고정 — 플레이어 점프 컷과 일관.
+        // 임계값 2는 플레이어 점프 텍스처 전환과 동일(렌더 전용, 결정론 무관).
+        const airborne = g.sim.state.player.y > 2;
+        if (airborne && !sprite.anims.isPaused) sprite.anims.pause();
+        else if (!airborne && sprite.anims.isPaused) sprite.anims.resume();
       } else if (state === "run") {
-        // 기록이 막 끝남 → 엎어짐 collapse 애니 1회 재생(전용 3프레임 에셋).
+        // 기록 끝 or 게임오버 → 엎어짐 collapse 애니 1회 재생(전용 3프레임 에셋).
         this.ghostTumbleState[i] = "tumbling";
         sprite.setVisible(true);
         // 지면 고정: collapse 프레임은 하단 정렬이라 발/몸이 GROUND_Y_PX에 닿음.
         sprite.setX(toScreenX(C.PLAYER_X) + xOff).setY(GROUND_Y_PX);
         this.tweens.killTweensOf(sprite);
         sprite.setAngle(0);
+        sprite.anims.resume(); // 점프 중 멈춰있던 anim 해제
+        // 고스트 쓰러질 때 이모션: 머리 위에 짧게 말풍선 표시 (Tier 1-1)
+        this.showGhostEmotion(toScreenX(C.PLAYER_X) + xOff, GROUND_Y_PX - GHOST_ART_H - 10);
         // play()가 텍스처를 collapse로 전환 — 스케일은 run과 동일(높이300 기준) 유지.
         sprite.play("ghost-collapse");
         sprite.once(
@@ -1367,18 +1637,23 @@ export class GameScene extends Phaser.Scene {
         this.obstacleWasActive[i] = true;
       }
       const key = this.obstacleType[i]!;
-      if (r.texture.key !== key) r.setTexture(key);
-      // 높이는 히트박스(o.h)에 OBSTACLE_ART_SCALE을 곱해 살짝 크게(하단 접지).
-      // 폭은 종횡비 유지하되 [최소,최대]로 클램프 → 너무 얇은 불기둥/너무 넓은 차 보정.
-      const artH = o.h * OBSTACLE_ART_SCALE;
-      const aspect = r.width / r.height;
-      const w = Math.max(OBSTACLE_MIN_W, Math.min(artH * aspect, OBSTACLE_MAX_W));
-      // 불 타입은 가로로 미세하게 일렁이게(불꽃이 흔들리는 느낌). 충돌은 sim의 o.h라 무관.
-      const prof = smokeProfile(key);
-      const flame = prof.fire ? 1 + 0.05 * Math.sin(this.renderTimeMs * 0.012 + i * 2.1) : 1;
-      r.setDisplaySize(w * flame, artH);
-      r.setPosition(toScreenX(o.x), GROUND_Y_PX); // origin 하단 → 바닥 접지
+      const isCodeDrawn = key.startsWith("code-");
+      if (isCodeDrawn) {
+        // 코드 드로우 타입: image 스프라이트 숨기고 drawCodeObstacles()가 처리
+        r.setVisible(false);
+      } else {
+        r.setVisible(true);
+        if (r.texture.key !== key) r.setTexture(key);
+        const artH = o.h * OBSTACLE_ART_SCALE;
+        const aspect = r.width / r.height;
+        const w = Math.max(OBSTACLE_MIN_W, Math.min(artH * aspect, OBSTACLE_MAX_W));
+        const prof = smokeProfile(key);
+        const flicker = prof.fire ? 1 + 0.05 * Math.sin(this.renderTimeMs * 0.012 + i * 2.1) : 1;
+        r.setDisplaySize(w * flicker, artH);
+        r.setPosition(toScreenX(o.x), GROUND_Y_PX);
+      }
     }
+    this.drawCodeObstacles(world);
     this.drawObstacleSmoke(world);
     for (let i = 0; i < C.MAX_POTIONS; i++) {
       const p = world.potions[i]!;
@@ -1446,8 +1721,7 @@ export class GameScene extends Phaser.Scene {
     // 코드 드로우 메테오 (태양 뒤 Graphics 레이어 — displayList 순서로 Z 보장)
     this.drawCodeMeteor();
 
-    // 피버 중 무한 점프 안내 — 게임 진행 중 피버 활성 시에만 표시
-    this.infiniteJumpText.setVisible(s.feverFramesLeft > 0 && !s.gameOver);
+    // infiniteJumpText는 제거됨, 아무것도 안 함
 
     // 등수 HUD: paceText·overtakeHudText는 랭킹 패널로 대체 — 항상 숨김
     const hasGhosts = this.ghosts.length > 0;
@@ -1497,6 +1771,104 @@ export class GameScene extends Phaser.Scene {
       duration: 520,
       ease: "Cubic.out",
       onComplete: () => t.destroy(),
+    });
+  }
+
+  /**
+   * 오글거리는 랜덤 말풍선 — 검은 사각 박스 + 흰 글씨, 주인공 위에 잠깐 떠올랐다 사라짐.
+   * 렌더 전용(sim 무관). {n}은 현재 고스트 수로 치환.
+   */
+  /**
+   * 고스트가 쓰러지는 순간 머리 위에 짧은 이모션 말풍선 표시 (Tier 1-1).
+   * 렌더 전용 — 결정론 무관.
+   */
+  private showGhostEmotion(x: number, y: number): void {
+    const phrases = [
+      "으아아아!",
+      "나는 여기까지다...",
+      "먼저 갈게!",
+      "잠깐... 아니 잠깐만!",
+      "이럴 수가!!",
+    ];
+    const msg = phrases[Math.floor(Math.random() * phrases.length)]!;
+    const label = this.add
+      .text(0, 0, msg, { fontSize: "11px", color: "#ffffff", align: "center" })
+      .setOrigin(0.5);
+    const padX = 8;
+    const padY = 5;
+    const w = label.width + padX * 2;
+    const h = label.height + padY * 2;
+    const box = this.add.graphics();
+    box.fillStyle(0x1a0030, 0.82);
+    box.fillRoundedRect(-w / 2, -h / 2, w, h, 3);
+    box.fillTriangle(-5, h / 2 - 1, 5, h / 2 - 1, 0, h / 2 + 7);
+    const c = this.add.container(x, y, [box, label]).setDepth(48).setAlpha(0);
+    this.tweens.add({ targets: c, alpha: 1, duration: 150, ease: "Quad.out" });
+    this.tweens.add({
+      targets: c,
+      alpha: 0,
+      y: y - 18,
+      delay: 1200,
+      duration: 400,
+      ease: "Quad.in",
+      onComplete: () => c.destroy(),
+    });
+  }
+
+  private showSpeechBubble(): void {
+    if (this.bubble) {
+      this.bubble.destroy();
+      this.bubble = undefined;
+    }
+    const n = this.ghosts.length;
+    const lines = [
+      `${n}명의 러너가 달려온 이 길,\n그 끝은 내가 맺는다`,
+      "너와 함께라면\n지구 끝까지라도 달릴 수 있어!",
+      "이 별의 마지막 빛까지\n내가 지켜낼 거야",
+      "두려움도 함께 달리면\n용기가 되는 법이지",
+      "밤이 깊을수록\n내 질주는 더 빛난다",
+      "여기서 멈추기엔\n우리의 이야기가 너무 찬란해",
+      "재가 된 세상에도\n내일은 반드시 온다",
+      "심장이 뛰는 한,\n나는 계속 나아간다!",
+      "전설은 포기하지 않는 자의 것!",
+      "이 질주의 끝에서\n새로운 새벽을 만나자",
+    ];
+    const msg = lines[Math.floor(Math.random() * lines.length)]!;
+
+    const label = this.add
+      .text(0, 0, msg, {
+        fontSize: "12px",
+        color: "#ffffff",
+        align: "center",
+        lineSpacing: 3,
+      })
+      .setOrigin(0.5);
+    const padX = 9;
+    const padY = 6;
+    const w = label.width + padX * 2;
+    const h = label.height + padY * 2;
+    const box = this.add.graphics();
+    // 외곽선 없이 검은 배경만
+    box.fillStyle(0x000000, 0.78);
+    box.fillRoundedRect(-w / 2, -h / 2, w, h, 3);
+    // 꼬리(아래 중앙)
+    box.fillTriangle(-6, h / 2 - 1, 6, h / 2 - 1, 0, h / 2 + 8);
+
+    // 초기 위치는 syncVisuals에서 매 프레임 갱신하므로 0,0으로 시작
+    const c = this.add.container(toScreenX(C.PLAYER_X), 0, [box, label]).setDepth(50).setAlpha(0);
+    this.bubble = c;
+    // Y는 syncVisuals가 추적 — 트윈은 alpha만 담당
+    this.tweens.add({ targets: c, alpha: 1, duration: 200, ease: "Quad.out" });
+    this.tweens.add({
+      targets: c,
+      alpha: 0,
+      delay: 4200,
+      duration: 450,
+      ease: "Quad.in",
+      onComplete: () => {
+        c.destroy();
+        if (this.bubble === c) this.bubble = undefined;
+      },
     });
   }
 

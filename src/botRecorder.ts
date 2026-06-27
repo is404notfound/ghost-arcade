@@ -8,7 +8,7 @@ import { createInputLog, recordTap, type InputLog } from './sim/inputLog';
 import { SIM_FPS } from './sim/constants';
 
 /** 봇 플레이 스타일 */
-export type BotProfile = 'casual' | 'skilled' | 'pro';
+export type BotProfile = 'early' | 'casual' | 'medium' | 'skilled' | 'good' | 'pro' | 'elite' | 'ultra';
 
 export interface BotRunResult {
   log: InputLog;
@@ -20,14 +20,30 @@ interface ProfileConfig {
   jitterFrames: number;   // ±jitter 범위
 }
 
+/**
+ * 난이도 분포 (8종):
+ *   early   — 초반 사망 (~200m) : 탭 거의 없음, 실수 많음
+ *   casual  — 짧은 거리 (~500m) : 드문 탭
+ *   medium  — 중거리 (~1500m)   : 보통 플레이
+ *   skilled — 중거리+ (~3000m)  : 안정적 탭
+ *   good    — 장거리 (~6000m)   : 좋은 반응
+ *   pro     — 장거리+ (~10000m) : 빠른 정확 탭
+ *   elite   — 고수 (~20000m)   : 매우 빠른 탭
+ *   ultra   — 최고수 (무한대에 가까움): 극한 탭
+ */
 const PROFILES: Record<BotProfile, ProfileConfig> = {
-  casual:  { intervalFrames: 35, jitterFrames: 8 },
-  skilled: { intervalFrames: 22, jitterFrames: 4 },
-  pro:     { intervalFrames: 16, jitterFrames: 3 },
+  early:   { intervalFrames: 60, jitterFrames: 20 }, // 2초마다 탭 + 큰 실수
+  casual:  { intervalFrames: 38, jitterFrames: 12 }, // ~1.3초마다
+  medium:  { intervalFrames: 28, jitterFrames: 8  }, // ~0.93초마다
+  skilled: { intervalFrames: 22, jitterFrames: 5  }, // ~0.73초마다
+  good:    { intervalFrames: 18, jitterFrames: 4  }, // ~0.6초마다
+  pro:     { intervalFrames: 15, jitterFrames: 3  }, // ~0.5초마다
+  elite:   { intervalFrames: 13, jitterFrames: 2  }, // ~0.43초마다
+  ultra:   { intervalFrames: 11, jitterFrames: 1  }, // ~0.37초마다
 };
 
-// 무한루프 안전장치: 15분 이상 돌면 강제 종료
-const MAX_FRAMES = SIM_FPS * 60 * 15;
+// 무한루프 안전장치: 30분 이상 돌면 강제 종료
+const MAX_FRAMES = SIM_FPS * 60 * 30;
 
 /** LCG — 결정론 유지를 위해 Math.random() 대신 사용 */
 function lcgNext(state: number): number {
@@ -62,11 +78,14 @@ export function recordBotRun(seed: number, profile: BotProfile, rngSeed?: number
 }
 
 /**
- * casual / skilled / pro 세 프로파일 모두 기록.
+ * 8개 봇을 "초반 사망 ~ 최고수"까지 스펙트럼으로 생성한다 (GHOST_TOP_N=8에 맞춤).
+ * 서로 다른 rngSeed로 지터가 달라지므로 같은 프로파일도 경로가 살짝 다름.
  * 거리 내림차순 정렬 후 반환 — 리더보드에 바로 사용 가능.
  */
 export function recordAllBotRuns(seed: number): BotRunResult[] {
-  const profiles: BotProfile[] = ['casual', 'skilled', 'pro'];
+  const profiles: BotProfile[] = [
+    'early', 'casual', 'medium', 'skilled', 'good', 'pro', 'elite', 'ultra',
+  ];
   const results = profiles.map((p, i) =>
     recordBotRun(seed, p, seed ^ (i * 0x9e3779b9)),
   );

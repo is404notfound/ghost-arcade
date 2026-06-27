@@ -53,11 +53,11 @@ describe('recordBotRun', () => {
 });
 
 describe('recordAllBotRuns', () => {
-  it('3개 BotRunResult를 반환한다', async () => {
+  it('8개 BotRunResult를 반환한다', async () => {
     const { recordAllBotRuns } = await getBotRecorder();
     const results = recordAllBotRuns(seed);
 
-    expect(results).toHaveLength(3);
+    expect(results).toHaveLength(8);
   });
 
   it('모든 결과의 거리가 양수다', async () => {

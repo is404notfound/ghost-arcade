@@ -26,7 +26,7 @@
 // 1.11.0: 스폰 간격을 speedT(피격 리셋 시계)로 계산 — 피격 후 속도↓+간격 최소값 유지로
 //         생기던 통과 불가 구간 해소. 스폰 타이밍이 달라져 궤적 변경.
 // 1.12.0: INTERVAL_MIN 980→760, RAMP 11→16 — 과도하게 쉬워진 간격 재조정(난이도 복원).
-export const SIM_VERSION = '1.12.0';
+export const SIM_VERSION = '1.13.0';
 
 export interface InputEvent {
   frame: number;
