@@ -179,6 +179,8 @@ export class GameScene extends Phaser.Scene {
   private prevCombo = 0; // 이전 프레임 combo 값 — 증가 감지용
   private prevRank = 0; // 이전 프레임 등수 — 상승 감지용
   private feverCount = 0; // 이번 판 피버 발동 횟수 — game_over 이벤트용
+  // 결과 패널 딜레이 타이머 — 재시작 시 반드시 취소해야 새 게임 중에 패널이 안 뜸
+  private resultPanelTimer: Phaser.Time.TimerEvent | null = null;
   private crashed = false; // 렌더 루프 예외 발생 시 1회만 보고하고 정지 (이벤트 폭주 방지)
   private gamePaused = false;
   // 인게임 안내
@@ -430,24 +432,33 @@ export class GameScene extends Phaser.Scene {
       .setDepth(20);
 
     // HUD: 체력바(하단 중앙) + 거리(우상단) + 랭킹 패널(좌상단)
-    // ── HP바: 화면 하단 띠(GROUND_Y_PX~DESIGN_H) 중앙에 배치 ──
+    // ── HP바: 네온 시안 테두리 스타일 ──
     const barW = 260,
-      barH = 14;
-    const barY = DESIGN_H - 24; // 지면 아래 바닥 띠 중앙
+      barH = 12;
+    const barY = DESIGN_H - 22;
+    // 외곽 테두리 (반투명 시안 네온)
     this.add
-      .rectangle(DESIGN_W / 2, barY, barW + 4, barH + 4, 0x000000, 0.65)
+      .rectangle(DESIGN_W / 2, barY, barW + 6, barH + 6, 0x020c18, 0.92)
+      .setStrokeStyle(1.5, 0x00e5ff, 0.45)
+      .setDepth(20);
+    // 바 내부 트랙
+    this.add
+      .rectangle(DESIGN_W / 2, barY, barW, barH, 0x000d1a, 0.85)
       .setDepth(20);
     this.hpFill = this.add
       .rectangle(DESIGN_W / 2 - barW / 2, barY, barW, barH, 0x2ecc71)
       .setOrigin(0, 0.5)
       .setDepth(21);
     this.add
-      .text(DESIGN_W / 2 - barW / 2 - 8, barY, "HP", {
-        fontSize: "12px",
-        color: "#aaaaaa",
+      .text(DESIGN_W / 2 - barW / 2 - 10, barY, "HP", {
+        fontSize: "11px",
+        fontFamily: "monospace",
+        fontStyle: "bold",
+        color: "#00e5ff",
       })
       .setOrigin(1, 0.5)
-      .setDepth(22);
+      .setDepth(22)
+      .setAlpha(0.85);
 
     // ── paceText/overtakeHudText: 랭킹 패널로 대체 → 투명으로 유지 ──
     this.paceText = this.add
@@ -459,26 +470,37 @@ export class GameScene extends Phaser.Scene {
 
     // ── 랭킹 패널: 상단 가로형 4칸 (슬롯 0=1등 ~ 3=4등), 초기 x=-9999(오프스크린) ──
     // panel[0]=플레이어(시안), panel[1..3]=상위 3고스트(회색). 순위 변경 시 tween으로 좌우 이동.
-    const RP_H = 36,
-      RP_W = 240;
+    const RP_H = 30,
+      RP_W = 218;
     const rpLabels = ["YOU", "G1", "G2", "G3"];
     const rpIsPlayer = [true, false, false, false];
     for (let i = 0; i < 4; i++) {
-      const fillColor = rpIsPlayer[i] ? 0x0b2e38 : 0x111111;
+      const isMe = rpIsPlayer[i]!;
+      // 배경: 플레이어=진한 심야 블루, 고스트=거의 검정
+      const fillColor = isMe ? 0x001830 : 0x070707;
+      const fillAlpha = isMe ? 0.96 : 0.78;
       const bg = this.add
-        .rectangle(0, 0, RP_W, RP_H, fillColor, rpIsPlayer[i] ? 0.88 : 0.65)
+        .rectangle(0, 0, RP_W, RP_H, fillColor, fillAlpha)
         .setOrigin(0, 0);
-      if (rpIsPlayer[i]) bg.setStrokeStyle(1.5, 0x5efce8, 1.0);
+      // 테두리: 플레이어=두꺼운 시안 네온, 고스트=미묘한 회색
+      bg.setStrokeStyle(isMe ? 2 : 1, isMe ? 0x00e5ff : 0x2a2a2a, isMe ? 1.0 : 0.6);
+      // 내부 장식선 — 플레이어 패널 상단에 밝은 줄 (네온 느낌)
+      const deco = isMe
+        ? this.add
+            .rectangle(0, 0, RP_W, 2, 0x00e5ff, 0.6)
+            .setOrigin(0, 0)
+        : null;
       const txt = this.add
         .text(10, RP_H / 2, rpLabels[i]!, {
-          fontSize: "13px",
-          color: rpIsPlayer[i] ? "#5efce8" : "#666666",
+          fontSize: isMe ? "13px" : "11px",
+          color: isMe ? "#00e5ff" : "#484848",
           fontFamily: "monospace",
           fontStyle: "bold",
         })
         .setOrigin(0, 0.5);
+      const children: Phaser.GameObjects.GameObject[] = deco ? [bg, deco, txt] : [bg, txt];
       const container = this.add
-        .container(-9999, 4, [bg, txt])
+        .container(-9999, 4, children)
         .setDepth(22)
         .setVisible(false);
       this.rankPanels.push(container);
@@ -498,30 +520,58 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false)
       .setDepth(10);
 
-    // 게임오버 패널 (숨김 상태로 미리 생성)
-    const goBg = this.add.rectangle(0, 0, 340, 200, 0x000000, 0.72);
+    // ── 게임오버 패널 — 네온 붉은 테두리, 심야 배경 ──
+    const goBg = this.add
+      .rectangle(0, 0, 360, 215, 0x060010, 0.95)
+      .setStrokeStyle(2, 0xff2d55, 1.0);
+    // 상단 장식선 (붉은 네온)
+    const goTopLine = this.add.rectangle(0, -107, 360, 2, 0xff2d55, 0.8);
+    // 하단 장식선
+    const goBotLine = this.add.rectangle(0, 107, 360, 1, 0xff2d55, 0.35);
     const goTitle = this.add
-      .text(0, -70, "YOU LOSE", {
+      .text(0, -72, "YOU LOSE", {
         fontSize: "30px",
-        color: "#ff4757",
+        color: "#ff2d55",
+        fontFamily: "monospace",
         fontStyle: "bold",
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setStroke("#2a0010", 5);
     this.gameOverDistText = this.add
-      .text(0, -28, "", { fontSize: "22px", color: "#ffffff" })
+      .text(0, -32, "", {
+        fontSize: "20px",
+        color: "#e0e0e0",
+        fontFamily: "monospace",
+      })
       .setOrigin(0.5);
     this.comparisonText = this.add
-      .text(0, 2, "", { fontSize: "17px", color: "#ffd166", fontStyle: "bold" })
+      .text(0, 0, "", {
+        fontSize: "16px",
+        color: "#ffd166",
+        fontStyle: "bold",
+        fontFamily: "monospace",
+      })
       .setOrigin(0.5);
     this.overtakeText = this.add
-      .text(0, 28, "", { fontSize: "15px", color: "#b39ddb" })
+      .text(0, 26, "", {
+        fontSize: "14px",
+        color: "#b39ddb",
+        fontFamily: "monospace",
+      })
       .setOrigin(0.5);
     this.hintText = this.add
-      .text(0, 64, "탭하여 재시작", { fontSize: "15px", color: "#aaaaaa" })
-      .setOrigin(0.5);
+      .text(0, 68, "탭하여 재시작", {
+        fontSize: "13px",
+        color: "#00e5ff",
+        fontFamily: "monospace",
+      })
+      .setOrigin(0.5)
+      .setAlpha(0.75);
     this.gameOverPanel = this.add
       .container(DESIGN_W / 2, DESIGN_H * 0.42, [
         goBg,
+        goTopLine,
+        goBotLine,
         goTitle,
         this.gameOverDistText,
         this.comparisonText,
@@ -676,6 +726,12 @@ export class GameScene extends Phaser.Scene {
   /** 새 판 시작 — 데일리 시드(오늘의 코스) + 저장된 최고 기록 유령 로드.
    *  isRetry=true면 게임오버 후 자발적 재시작(첫 진입과 구분). */
   private startRun(isRetry = false) {
+    // 이전 판의 결과 패널 딜레이 타이머가 남아있으면 즉시 취소.
+    // 게임오버 후 900ms 이내에 재시작하면 새 판에서 패널이 튀어나오는 버그 방지.
+    if (this.resultPanelTimer) {
+      this.resultPanelTimer.remove(false);
+      this.resultPanelTimer = null;
+    }
     this.seed = dailySeed(); // 같은 날 = 같은 코스 (TODOS 시드 공유 → 데일리 시드로 결정)
     this.sim = new GameSim(this.seed);
     this.log = createInputLog(this.seed);
@@ -1013,7 +1069,11 @@ export class GameScene extends Phaser.Scene {
         `[ghost-arcade] 사망 frame=${this.sim.state.frame}, 생존 유령 ${alive}/${this.ghosts.length} → 즉시 종료`,
       );
       // 고스트 collapse 연출이 보이도록 ~0.9초 후 결과 패널
-      this.time.delayedCall(900, () => this.showResultPanel(cmp, myDist));
+      // 반환값을 저장 → 재시작 시 취소 가능 (startRun 참조)
+      this.resultPanelTimer = this.time.delayedCall(900, () => {
+        this.resultPanelTimer = null;
+        this.showResultPanel(cmp, myDist);
+      });
     }
   }
 
@@ -1278,7 +1338,6 @@ export class GameScene extends Phaser.Scene {
     for (const layer of layers) {
       const layerH = artH * layer.hMul;
       const layerHalf = baseHalf * layer.wMul;
-      g.fillStyle(layer.color, layer.alpha);
       for (let s = 0; s < layer.tongues; s++) {
         // 불혀를 밑동 폭에 고르게 분포
         const u = layer.tongues === 1 ? 0 : (s / (layer.tongues - 1)) * 2 - 1; // -1..1
@@ -1290,10 +1349,19 @@ export class GameScene extends Phaser.Scene {
         const tipH = layerH * heightFall * flick;
         const sway = Math.sin(t * 5 + s * 0.9 + phase) * artH * 0.1 * (0.4 + Math.abs(u));
         const tipX = rootX + sway;
-        // 채워진 불혀: 밑변(두꺼움) → 끝(뾰족). 좌우를 살짝 곡선처럼 중간점으로.
         const midX = (rootX + tipX) / 2 + Math.sin(t * 6 + s) * 2;
         const midY = baseY - tipH * 0.5;
-        // 좌/우 두 삼각형으로 둥근 불혀 흉내
+
+        // ── 소프트 에지: 실제 삼각형 주변에 반투명 halo 2단 ──
+        // 가장 바깥쪽 (넓고 아주 투명) → 경계가 자연스럽게 페이드
+        g.fillStyle(layer.color, layer.alpha * 0.10);
+        g.fillTriangle(rootX - rootW * 1.55, baseY, rootX + rootW * 1.55, baseY, tipX, baseY - tipH * 1.06);
+        // 중간 halo
+        g.fillStyle(layer.color, layer.alpha * 0.22);
+        g.fillTriangle(rootX - rootW * 1.25, baseY, rootX + rootW * 1.25, baseY, tipX, baseY - tipH * 1.03);
+
+        // ── 실제 불혀 (선명한 코어) ──
+        g.fillStyle(layer.color, layer.alpha);
         g.fillTriangle(
           rootX - rootW, baseY,
           rootX + rootW, baseY,
@@ -1349,22 +1417,27 @@ export class GameScene extends Phaser.Scene {
     for (const layer of layers) {
       const lH = artH * layer.hMul;
       const lHalf = baseHalf * layer.wMul;
-      g.fillStyle(layer.color, layer.alpha);
       for (let s = 0; s < layer.tongues; s++) {
         const u = layer.tongues === 1 ? 0 : (s / (layer.tongues - 1)) * 2 - 1;
         const rootX = sx + u * lHalf;
         const rootW = (lHalf / layer.tongues) * 2.1;
-        // 오수는 더 뭉툭하게 — 가운데가 살짝 높은 완만한 분수형
         const heightFall = 1 - Math.abs(u) * 0.35;
-        // 더 느리게 출렁임 (t 계수 작게)
         const flick = 0.80 + 0.20 * Math.sin(t * (3.5 + s * 0.5) + phase + s * 1.5);
         const tipH = lH * heightFall * flick;
         const sway = Math.sin(t * 2.8 + s * 0.8 + phase) * artH * 0.07 * (0.3 + Math.abs(u));
         const tipX = rootX + sway;
-        g.fillTriangle(rootX - rootW, baseY, rootX + rootW, baseY, tipX, baseY - tipH);
-        // 아래 절반을 더 두껍게 (오수 특유의 뭉침)
         const midX = (rootX + tipX) / 2;
         const midY = baseY - tipH * 0.45;
+
+        // ── 소프트 에지 halo 2단 ──
+        g.fillStyle(layer.color, layer.alpha * 0.10);
+        g.fillTriangle(rootX - rootW * 1.55, baseY, rootX + rootW * 1.55, baseY, tipX, baseY - tipH * 1.06);
+        g.fillStyle(layer.color, layer.alpha * 0.22);
+        g.fillTriangle(rootX - rootW * 1.25, baseY, rootX + rootW * 1.25, baseY, tipX, baseY - tipH * 1.03);
+
+        // ── 실제 덩어리 ──
+        g.fillStyle(layer.color, layer.alpha);
+        g.fillTriangle(rootX - rootW, baseY, rootX + rootW, baseY, tipX, baseY - tipH);
         g.fillTriangle(rootX - rootW, baseY, midX, midY, tipX, baseY - tipH);
       }
     }
