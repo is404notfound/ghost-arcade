@@ -83,7 +83,7 @@
 | ID                                                      | 무엇                             | 풋프린트(게임 px)                  | 상태 | 비고                                                                 |
 | ------------------------------------------------------- | -------------------------------- | ---------------------------------- | ---- | -------------------------------------------------------------------- |
 | `player-rider`                                          | 후드 라이더+네온 오토바이        | 히트박스 30×42 (아트 ~56 overhang) | ✅   | ride/jump/hit/dead 컷. 글로우=코드 postFX                            |
-| `ghost-runner`                                          | 발로 뛰는 헤일로 고스트          | 30×42                              | ✅   | **6프레임 시트**(`ghost-run.png`), 런타임 랜덤 위상·속도             |
+| `ghost-runner`                                          | 발로 뛰는 헤일로 고스트          | 30×42                              | ✅🟡 | **6프레임 시트**(`ghost-run.png`), 런타임 랜덤 위상·속도. (2026-06-28: **후드 유령 컨셉으로 재생성 대기** → §5.2A) |
 | `ghost-collapse` (3프레임)                              | **기록 종료 시 엎어지는 고스트** | 420×320×3                          | ✅   | 전용 3프레임 적용(비틀→무릎→엎어짐). prep-ghost-collapse.py → §5.2B |
 | `fuel-can`                                              | 연료통(회복=주유)                | 26×26                              | ✅   | 쿨 블루. 빨간 주유통 ❌                                              |
 | `building-kit`                                          | 네온 건물                        | 폭 32, 높이 50–120                 | ⚠️   | **장애물 폐기**(아래 5종으로 전환). 스카이라인 참고용만             |
@@ -93,7 +93,7 @@
 | `hp-bar` (frame/fill/icon)                              | 체력바 HUD                       | 272×24 외                          | ⬜   | **프롬프트 작성됨** → §5.7 (현재 코드 사각형)                        |
 | `bg-sun`                                                | 레트로 선(노을 태양)             | ~360×220                           | 💠   | **코드 드로우**(`updateCodeSun`) — 일렁임 애니 포함, 이미지 제거됨   |
 | `fx-meteor`                                             | 화염 메테오                      | —                                  | 💠   | **코드 드로우**(`drawCodeMeteor`) — 동시 1개로 제한                  |
-| `fx-obstacle-smoke`                                     | 장애물 연기/불빛(타입별)         | —                                  | 💠   | **코드 드로우**(`drawObstacleSmoke`) — 웨이브 연기 선 + 맥동 베이스 글로우 + 불 타입 깜빡이는 코어/스프라이트 흔들림 |
+| `fx-obstacle-smoke`                                     | 장애물 연기/불빛(타입별)         | —                                  | 💠   | **코드 드로우**(`drawObstacleSmoke`) — 웨이브 연기 선 + 맥동 베이스 글로우. (2026-06-28: 불 타입 **상단 원형 코어 글로우 제거**) |
 | `fx-laser`                                              | 배경 경고 레이저                 | —                                  | 💠   | **코드 드로우**(`drawLasers`) — 태양 뒤 사선 스윕                    |
 | `signage-jp`                                            | 일본어 네온 간판 세트            | 가변                               | ✅   | 배경 패럴랙스 데코                                                   |
 | `bg-skyline-far`                                        | 먼 도시 실루엣                   | 가로 심리스                        | 💠   | 코드 드로우(`drawSkyline`)                                           |
@@ -178,19 +178,29 @@ white background, ground shadow, standing rider, car, three wheels
 
 ### 5.2 ghost-runner — 발로 뛰는 헤일로 고스트 + ★엎어짐(신규)
 
-**(A) 달리기 run-cycle** — 현재 `ghost-run.png`(6프레임) 사용 중. 재생성 시:
-머리 위 **크고 선명한 골드 헤일로**(죽은 기록 표식), 보라 `#b39ddb` 반투명, 맨몸 달리기(오토바이 ❌),
-라이더와 실루엣이 즉시 구분. 발 공통 baseline.
+**(A) 달리기 run-cycle** — 현재 `ghost-run.png`(6프레임) 사용 중.
+**★2026-06-28 컨셉 갱신:** 맨몸 러너 → **후드 쓴 유령**으로 교체. 주인공(후드 라이더)과
+세계관을 통일하되, 주인공은 오토바이·시안 / 고스트는 **맨발 달리기·보라 반투명·골드 헤일로**로
+실루엣이 즉시 구분되게. 펄럭이는 후드 자락이 유령 느낌(반투명 끝단 페이드)을 강화. 발 공통 baseline.
 
 ```
-A minimal neon ghost runner for a side-view endless runner, full body mid-run facing right,
-plain athletic human silhouette running on foot (no vehicle), glowing soft violet (#b39ddb)
-translucent neon body, a LARGE bright glowing golden angel halo ring (#ffd700) floating clearly
-above the head (roughly shoulder-width, unmistakable), no facial detail, ethereal and
-semi-transparent, restrained glow, synthwave apocalypse, flat vector-like, feet on a single
-common ground baseline, isolated on a transparent background, no scene, no ground, no shadow,
-no text, side profile, single character game asset.
+A minimal neon HOODED GHOST runner for a side-view endless runner, full body mid-run facing right,
+a hooded figure (hood up, face in shadow / no facial detail) running on foot (no vehicle),
+glowing soft violet (#b39ddb) translucent neon body, the lower edge of the hooded cloak fading to
+transparent like a wisp/spirit, a LARGE bright glowing golden angel halo ring (#ffd700) floating
+clearly above the hood (roughly shoulder-width, unmistakable), ethereal and semi-transparent,
+restrained glow, synthwave apocalypse, flat vector-like, feet on a single common ground baseline,
+isolated on a transparent background, no scene, no ground, no shadow, no text, side profile,
+single character game asset.
 ```
+
+```
+NEGATIVE: motorcycle, vehicle, wheels, bare head, helmet, visible face, gore, realistic, 3D,
+different palette, opaque solid body, text, watermark, white or black background.
+```
+
+> **일관성:** 주인공 후드 라이더(§5.1)를 참조 이미지로 올려 `match the hood shape, line weight,
+> glow and palette` 지시 → 같은 세계관의 "달리는 유령 버전"으로 뽑는다.
 
 > 멀티프레임: 포즈별 1장씩 6장 권장 — foot-strike → mid-flight → toe-off → recovery 등 위상 변화.
 > 한 장 시트로 받을 땐 `as a horizontal strip of 6 run-cycle frames, evenly spaced with clear
@@ -482,6 +492,60 @@ background, white or black background, drop shadow on ground, multiple bars, gam
 
 ---
 
+### 5.7B UI 패널 — 랭킹 / 튜토리얼 / 게임오버 ★신규 (현재 코드 Rectangle → 에셋 교체)
+
+> 공통: 전부 **9-slice 가능한 프레임**으로 받아 폭/높이 가변 합성. 글자·숫자는 게임에서 코드 렌더
+> (Orbitron/Noto Sans KR). 팔레트는 HUD 통일 — 시안 `#36f9f6`/`#00e5ff`, 위험 마젠타 `#ff2d55`,
+> 다크 바디 `#060010`~`#10081f`. 정면 플랫(원근 금지), 투명 배경, 글자 없이.
+
+**(1) rank-panel — 상단 거리 랭킹 칩 (가로 4칸, 슬롯형)**
+
+현재: 코드 Rectangle(플레이어=시안 테두리, 고스트=회색). 에셋은 **단일 칩 프레임 1개**를 받아
+4벌 복제·틴트. 플레이어 칩은 더 밝은 시안, 고스트 칩은 무채색 틴트(코드).
+
+```
+A single horizontal HUD rank chip/badge frame for a neon synthwave runner leaderboard, small
+rounded-rectangle plate, dark semi-transparent body (#060010) with a thin glowing cyan (#00e5ff)
+neon outline and a brighter accent line along the top edge, subtle beveled ends for 9-slice,
+faint outer glow, minimal flat vector UI, front-facing flat, isolated on a transparent background,
+empty inside, no text, no numbers, no icons.
+```
+
+**(2) tutorial-overlay — 시작/튜토리얼 안내 프레임 (중앙 카드)**
+
+현재: 반투명 풀스크린 + 코드 텍스트. 에셋은 **중앙 카드 프레임**(조작 힌트/카피를 코드로 얹음).
+
+```
+A centered HUD instruction card panel for a neon synthwave apocalypse runner, rounded rectangle
+with a dark glassy semi-transparent body (#10081f, ~70% opacity) and a glowing cyan (#36f9f6)
+neon border with soft bloom, a slightly brighter top header strip area (for a title), clean inner
+padding area left empty for text, corner notch accents, minimal flat vector UI, front-facing flat,
+isolated on a transparent background, no text, no letters, no icons.
+```
+
+**(3) gameover-panel — 결과 패널 프레임 (붉은 네온)**
+
+현재: 코드 Rectangle(`#060010` + `#ff2d55` 테두리 + 상/하 장식선). 에셋은 동일 톤의 프레임.
+
+```
+A centered HUD result/game-over panel frame for a neon synthwave apocalypse runner, rounded
+rectangle with a very dark body (#060010) and a glowing danger-red/magenta (#ff2d55) neon border,
+a bright thin accent line near the top and a faint one near the bottom, ominous soft red bloom,
+empty inner area for stats text, minimal flat vector UI, front-facing flat, isolated on a
+transparent background, no text, no letters, no numbers, no icons.
+```
+
+```
+NEGATIVE: text, letters, numbers, 3D, perspective, realistic, photo, drop shadow on ground,
+white or black background, busy ornaments, characters, mascots
+```
+
+> **구현:** 셋 다 9-slice. `rank-panel`은 §updateRankPanel의 slot tween 위치에 그대로 깔고,
+> `tutorial-overlay`/`gameover-panel`은 기존 컨테이너 배경 Rectangle을 Image(9-slice)로 교체.
+> 글자는 지금처럼 코드 텍스트(`resolution: TXT_RES`)로 위에 얹는다 — 버전/언어 무관.
+
+---
+
 ### 5.7 signage-jp — 일본어 네온 간판 세트 (시티팝)
 
 쇼와 레트로 시티팝. 세로+가로 혼합. 마젠타/시안/앰버 네온 튜브. **실제 상호·브랜드·로고 금지 →
@@ -553,9 +617,14 @@ NEGATIVE: happy upbeat pop, acoustic guitar, orchestral strings, choir, loud sir
 > 구현: `preload()`에서 `load.audio` → `syncVisuals()`에서 이벤트 비트마스크 읽어 재생.
 > WebView 자동재생 정책: 첫 탭(TAP TO START) 후 오디오 컨텍스트 언락. 음소거 토글 제공.
 
-### 6.3 인트로 영상 (#최후 폴리시)
+### 6.3 인트로 / 튜토리얼 영상 (#최후 폴리시)
 
 **카피(코드 오버레이, 영상엔 굽지 말 것):** "종말이 다가오는 지구. 마지막 인류가 된 당신 — 지구 끝까지 달려 살아남아라."
+
+> **★2026-06-28 요구:** 영상은 **2초 이내**(빠른 임팩트 컷). **첫 진입 1회만** 노출하고
+> **재시도/리플레이(is_retry/is_replay)에는 스킵**. 노출 게이트는 기존 `ga:onboarded`(또는 전용
+> `ga:intro-seen`) 플래그 재사용 — `startRun(isRetry=true)` 경로면 무조건 skip. 영상 끝/탭 시 즉시
+> 게임 시작으로 이어지게(스킵 버튼 상시). 아래 8초 프롬프트는 풀버전 참고용 → **2초 컷으로 축약 요청**.
 
 ```
 A cinematic 8-second intro for a synthwave apocalypse endless-runner. A dark crumbling city at

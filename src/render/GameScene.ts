@@ -94,7 +94,9 @@ const MAX_METEORS = 6; // 동시 메테오 상한(스폰당 1~3개가 누적)
 
 // 장애물 아트 텍스처 키(렌더 전용·결정론 무관). 건물은 더 이상 쓰지 않는다.
 const OBS_LOW = ["obs-car", "obs-debris"] as const; // 낮고 넓음
-const OBS_MID = ["obs-barrel", "code-sludge"] as const; // 중간 — 드럼통 or 오염수 분수
+// code-sludge(초록 오염수 분수)는 "장애물처럼 안 보인다"는 피드백으로 스폰 풀에서 제거.
+// drawSludgeFountain/스모크 프로파일은 추후 재테마 가능성 위해 남겨두되 더 이상 선택되지 않음.
+const OBS_MID = ["obs-barrel"] as const; // 중간 — 불타는 드럼통
 const OBS_TALL = ["code-flame-s", "code-flame-m", "code-flame-l"] as const; // 코드 드로우 화염분수 3종
 
 // 장애물 아트 폭/높이 상수 (렌더 전용)
@@ -249,7 +251,6 @@ export class GameScene extends Phaser.Scene {
   private rankPanelBgs: Phaser.GameObjects.Rectangle[] = [];
   private rankPanelTexts: Phaser.GameObjects.Text[] = [];
   private top3GhostDists: number[] = []; // startRun()에서 캐시, 판 내내 고정
-  private ghostsAreOwnRecords = false; // true = 로컬 저장 기록(내 것), 라벨에 YOU 사용
   private gameOverPanel!: Phaser.GameObjects.Container;
   private gameOverDistText!: Phaser.GameObjects.Text;
   private comparisonText!: Phaser.GameObjects.Text; // 신기록/뒤짐 비교 한 줄
@@ -801,13 +802,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** 고스트 레코드 배열을 현재 세션 필드(ghosts/distances/top3)에 반영. */
-  private applyGhostField(records: GhostRecord[], areOwn: boolean): void {
+  private applyGhostField(records: GhostRecord[]): void {
     this.ghosts = records.map((r) => new GhostDriver(r.log));
     this.ghostDistances = records.map((r) => r.distance);
     this.top3GhostDists = [...this.ghostDistances]
       .sort((a, b) => b - a)
       .slice(0, 3);
-    this.ghostsAreOwnRecords = areOwn;
     this.prevRank = this.ghosts.length + 1;
   }
 
@@ -827,7 +827,7 @@ export class GameScene extends Phaser.Scene {
     this.playerDeadFadeStarted = false;
     if (this.playerRect) {
       this.tweens.killTweensOf(this.playerRect);
-      this.playerRect.setAlpha(1).setVisible(true);
+      this.playerRect.setAlpha(1).setVisible(true).setAngle(0);
     }
     this.seed = dailySeed(); // 같은 날 = 같은 코스 (TODOS 시드 공유 → 데일리 시드로 결정)
     this.sim = new GameSim(this.seed);
@@ -837,8 +837,7 @@ export class GameScene extends Phaser.Scene {
     // 원격(타 유저) + 로컬(봇/셀프)을 병합해 거리순 상위 N → 봇이 유저보다 높으면 상단 노출.
     const localRecords = loadTopRuns(window.localStorage, this.seed);
     const merged = this.mergeGhostRecords(this.remoteRuns, localRecords);
-    // 원격이 하나도 없으면 전부 내 로컬 기록(셀프/봇) → 랭킹 패널 G# 대신 YOU 표시
-    this.applyGhostField(merged, this.remoteRuns.length === 0);
+    this.applyGhostField(merged);
     this.overtakenLive = 0;
     this.spectating = false;
     this.prevCombo = 0;
@@ -867,7 +866,7 @@ export class GameScene extends Phaser.Scene {
         this.ghosts.length === 0 &&
         this.sim.state.frame < C.SIM_FPS * 3
       ) {
-        this.applyGhostField(freshMerged, remote.length === 0);
+        this.applyGhostField(freshMerged);
       }
       // 병합 필드가 N보다 적으면 봇으로 보충 — 유저가 적어도 경쟁 필드를 가득 채우고,
       // 봇이 유저보다 빠르면 상단 랭킹에 노출된다. (원격 비었을 때만 원격에도 시딩)
@@ -954,7 +953,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.sim.state.gameOver && this.seed === seed) {
       const localNow = loadTopRuns(window.localStorage, seed);
       const mergedNow = this.mergeGhostRecords(this.remoteRuns, localNow);
-      this.applyGhostField(mergedNow, this.remoteRuns.length === 0);
+      this.applyGhostField(mergedNow);
     }
 
     // 원격 시딩은 원격이 비었을 때만 — 실제 유저가 있는 보드에 봇을 섞지 않는다.
@@ -1694,13 +1693,8 @@ export class GameScene extends Phaser.Scene {
       g.fillStyle(p.glow, 0.16 * pulse);
       g.fillCircle(sx, GROUND_Y_PX - 6, baseR * 0.5 * (0.85 + 0.25 * pulse));
 
-      // 불 타입: 화염 위에서 깜빡이는 밝은 코어(불씨가 일렁이는 느낌)
-      if (p.fire) {
-        const flick = 0.5 + 0.5 * Math.sin(t * 13 + i * 3.1);
-        const coreY = topY + o.h * 0.18;
-        g.fillStyle(0xffd27a, 0.18 + 0.22 * flick);
-        g.fillCircle(sx, coreY, baseR * 0.32 * (0.7 + 0.5 * flick));
-      }
+      // (제거됨) 불 타입 상단의 깜빡이는 원형 코어 글로우 — "위에 동그란 빛"이 어색하다는
+      // 피드백으로 삭제. 밑동 베이스 글로우와 불혀(drawFlameFountain)만으로 역동성 유지.
 
       for (let s = 0; s < p.strands; s++) {
         const phase = i * 1.3 + s * 2.4;
@@ -1785,6 +1779,19 @@ export class GameScene extends Phaser.Scene {
         artH,
       );
     }
+    // 2단 점프 추가 기울기 — 공중에서 2회차 점프(jumpsUsed>=2)면 뒤로 ~40° 더 꺾어 백플립 느낌.
+    // 전용 에셋(player-jump2) 전까지의 코드 스톱갭. 렌더 전용(sim 읽기만) → 결정론 무관.
+    // 화면 좌표는 y가 아래로 +라 시계반대(뒤로 젖힘)는 음수 각도.
+    let targetAngle = 0;
+    if (!s.gameOver && s.player.y > 2 && s.player.jumpsUsed >= 2) {
+      targetAngle = -40;
+    }
+    if (this.playerRect.angle !== targetAngle) {
+      // 살짝 부드럽게 추종(스냅 방지) — 프레임당 보간.
+      const a = Phaser.Math.Linear(this.playerRect.angle, targetAngle, 0.35);
+      this.playerRect.setAngle(Math.abs(a - targetAngle) < 0.5 ? targetAngle : a);
+    }
+
     // 사망 컷 페이드아웃 — 고스트와 동일 방식(트윈 1회). 결과 패널(900ms) 전에 소멸.
     // 200ms 띄운 후 580ms에 걸쳐 투명화 → ~780ms 완료, 패널과 겹치지 않음.
     if (playerTex === "player-dead" && !this.playerDeadFadeStarted) {
@@ -2348,14 +2355,15 @@ export class GameScene extends Phaser.Scene {
     // 텍스트 갱신: 플레이어 실시간 거리
     this.rankPanelTexts[0]!.setText(`YOU  ${Math.floor(s.distance)}m`);
 
-    // 텍스트 갱신: 고스트 최종거리 + 현재 슬롯(순위) 표시
-    // 로컬 기록(내 것) → "YOU", 원격 기록(타인) → "G#"
+    // 텍스트 갱신: 고스트 최종거리 + 현재 슬롯(순위) 표시.
+    // 고스트는 전부 '경쟁자'(봇 or 타 유저)이므로 항상 G#. 슬롯0(실시간 플레이어)만 YOU.
+    // (과거: 원격이 비면 ghostsAreOwnRecords=true로 봇까지 전부 YOU로 표기되던 버그.
+    //  내 과거 기록을 'YOU'로 구분하려면 레코드별 playerId 식별이 필요 → Forward-design meta 슬롯으로 추후.)
     for (let g = 0; g < n; g++) {
       const dist = Math.floor(this.top3GhostDists[g] ?? 0);
       const gSlot = slotOfPanel[g + 1] ?? g; // 현재 표시 슬롯
       const rankLabel = `#${gSlot + 1}`;
-      const gLabel = this.ghostsAreOwnRecords ? "YOU" : `G${g + 1}`;
-      this.rankPanelTexts[g + 1]!.setText(`${rankLabel} ${gLabel}  ${dist}m`);
+      this.rankPanelTexts[g + 1]!.setText(`${rankLabel} G${g + 1}  ${dist}m`);
     }
   }
 
