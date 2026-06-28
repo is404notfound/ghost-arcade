@@ -1400,22 +1400,44 @@ export class GameScene extends Phaser.Scene {
     const horizon = GROUND_Y_PX;
     const bottom = DESIGN_H;
     const cx = DESIGN_W * 0.5;
-    g.fillStyle(COLOR_GROUND_DARK, 1);
-    g.fillRect(0, horizon, DESIGN_W, bottom - horizon);
-    // 지평선 글로우 라인
-    g.lineStyle(2, COLOR_NEON_CYAN, 0.85);
+    const depth = bottom - horizon;
+
+    // 바닥 베이스 — 세로 그라데이션(지평선쪽 보라빛 → 바닥은 더 어둡게)으로 평면감 완화.
+    g.fillGradientStyle(0x301552, 0x301552, COLOR_GROUND_DARK, COLOR_GROUND_DARK, 1);
+    g.fillRect(0, horizon, DESIGN_W, depth);
+
+    // 지평선 글로우 밴드 — 지평선 위아래로 번지는 네온 발광(블룸 느낌).
+    for (let i = 0; i < 5; i++) {
+      g.fillStyle(COLOR_NEON_CYAN, 0.14 * (1 - i / 5));
+      g.fillRect(0, horizon - 2 + i * 2, DESIGN_W, 2);
+    }
+
+    // 스크롤되는 원근 수평선 — 지평선에서 생겨나 바닥으로 가속(달리는 속도감).
+    // p*p 원근으로 바닥쪽일수록 간격이 빠르게 벌어진다.
+    const rows = 16;
+    const scroll = (((worldPx / GRID_SPACING) % 1) + 1) % 1; // 0..1 진행 위상
+    for (let i = 0; i < rows; i++) {
+      const p = (i + scroll) / rows; // 0(지평선)→1(바닥)
+      const y = horizon + depth * (p * p);
+      g.lineStyle(1, COLOR_NEON_CYAN, 0.05 + 0.24 * p); // 가까울수록 진하게
+      g.lineBetween(0, y, DESIGN_W, y);
+    }
+
+    // 지평선 메인 라인(위 글로우 위에 또렷하게).
+    g.lineStyle(2, COLOR_NEON_CYAN, 0.9);
     g.lineBetween(0, horizon, DESIGN_W, horizon);
-    // 좌측으로 흐르는 수직 그리드(바닥에서 바깥으로 퍼지는 원근감)
-    g.lineStyle(1, COLOR_NEON_CYAN, 0.22);
+
+    // 수직 그리드(바닥에서 바깥으로 퍼지는 원근감, 좌측으로 흐름).
+    g.lineStyle(1, COLOR_NEON_CYAN, 0.2);
     const off = worldPx % GRID_SPACING;
     for (let gx = -off; gx <= DESIGN_W + GRID_SPACING; gx += GRID_SPACING) {
-      const bx = cx + (gx - cx) * 1.8;
+      const bx = cx + (gx - cx) * 2.0;
       g.lineBetween(gx, horizon, bx, bottom);
     }
-    // 수평 보조선 2줄
-    g.lineStyle(1, COLOR_NEON_CYAN, 0.13);
-    g.lineBetween(0, horizon + 16, DESIGN_W, horizon + 16);
-    g.lineBetween(0, horizon + 32, DESIGN_W, horizon + 32);
+
+    // 플레이어 주행 레인 반사 띠 — 바닥 중간에 옅은 시안 띠로 주행감/입체감 강조.
+    g.fillStyle(COLOR_NEON_CYAN, 0.045);
+    g.fillRect(0, horizon + depth * 0.5, DESIGN_W, depth * 0.16);
   }
 
   /**
@@ -1461,7 +1483,8 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * 네온 화염분수 — 바닥에서 솟구치는 활활 타오르는 불꽃.
-   * 아래는 두껍고 위로 갈수록 뾰족하게(채워진 불혀 다발), 가닥 수 많게, 위협적으로.
+   * 각 불혀를 '다분절 곡선 리본'(drawWavyTongue)으로 그려 일렁이며 휘날리는 디테일을 살린다.
+   * 아래는 두껍고 위로 갈수록 뾰족·휘어지며, 가닥마다 위상이 달라 자연스럽게 흔들린다.
    */
   private drawFlameFountain(
     g: Phaser.GameObjects.Graphics,
@@ -1471,72 +1494,111 @@ export class GameScene extends Phaser.Scene {
     const phase = idx * 2.3;
     const baseHalf = Math.max(14, artH * 0.42); // 밑동 반폭 — 두껍게
 
-    // 베이스 글로우 (넓게 깔린 불빛)
+    // 베이스 글로우 (넓게 깔린 불빛, 맥동)
     const pulse = 0.7 + 0.3 * Math.sin(t * 8 + phase);
     g.fillStyle(0xff5a1c, 0.16 * pulse);
     g.fillCircle(sx, baseY - 2, baseHalf * 1.5 * pulse);
-    g.fillStyle(0xff9a3c, 0.2 * pulse);
+    g.fillStyle(0xff9a3c, 0.22 * pulse);
     g.fillCircle(sx, baseY - 2, baseHalf * 0.9);
 
-    // 불혀(flame tongue) 다발 — 색 레이어별로 안→밖, 키 큰 순서로 겹쳐 그림.
-    // 각 레이어: 바닥에서 시작해 위로 갈수록 뾰족해지는 채워진 형태.
+    // 불혀 다발 — 색 레이어별로 바깥(짙은 빨강·큼)→안(흰노랑 코어·작음) 순서로 겹쳐 그림.
+    // 가닥 수를 늘려(11→3) 더 빽빽하게, 흔들림 위상을 가닥마다 달리해 일렁임을 살린다.
     const layers = [
-      { color: 0xd62828, hMul: 1.0, wMul: 1.0, tongues: 9, alpha: 0.5 }, // 바깥 빨강(제일 큼)
-      { color: 0xff7a1c, hMul: 0.86, wMul: 0.74, tongues: 7, alpha: 0.6 }, // 주황
-      { color: 0xffb43c, hMul: 0.68, wMul: 0.5, tongues: 5, alpha: 0.7 }, // 노랑주황
-      { color: 0xfff3c0, hMul: 0.46, wMul: 0.28, tongues: 3, alpha: 0.85 }, // 흰노랑 코어
+      { color: 0xb91d1d, hMul: 1.0, wMul: 1.0, tongues: 11, alpha: 0.4 }, // 바깥 짙은 빨강
+      { color: 0xe23a18, hMul: 0.9, wMul: 0.82, tongues: 9, alpha: 0.5 }, // 빨강
+      { color: 0xff7a1c, hMul: 0.78, wMul: 0.62, tongues: 7, alpha: 0.6 }, // 주황
+      { color: 0xffb43c, hMul: 0.6, wMul: 0.42, tongues: 5, alpha: 0.74 }, // 노랑주황
+      { color: 0xfff3c0, hMul: 0.42, wMul: 0.24, tongues: 3, alpha: 0.9 }, // 흰노랑 코어
     ];
 
-    for (const layer of layers) {
+    for (let li = 0; li < layers.length; li++) {
+      const layer = layers[li]!;
       const layerH = artH * layer.hMul;
       const layerHalf = baseHalf * layer.wMul;
       for (let s = 0; s < layer.tongues; s++) {
-        // 불혀를 밑동 폭에 고르게 분포
-        const u = layer.tongues === 1 ? 0 : (s / (layer.tongues - 1)) * 2 - 1; // -1..1
+        // 불혀를 밑동 폭에 고르게 분포(-1..1)
+        const u = layer.tongues === 1 ? 0 : (s / (layer.tongues - 1)) * 2 - 1;
         const rootX = sx + u * layerHalf;
-        const rootW = (layerHalf / layer.tongues) * 1.9; // 밑동 두께(겹치게)
-        // 가닥별로 높이·흔들림 다르게 — 가운데가 가장 높음(분수형)
-        const heightFall = 1 - Math.abs(u) * 0.45;
-        const flick = 0.78 + 0.22 * Math.sin(t * (7 + s) + phase + s * 1.7);
+        const rootW = Math.max(2, (layerHalf / layer.tongues) * 2.2); // 밑동 두께(겹치게)
+        // 가닥별 높이 깜빡임 — 가운데가 가장 높음(분수형), 빠른 깜빡임으로 활활.
+        const heightFall = 1 - Math.abs(u) * 0.4;
+        const flick = 0.7 + 0.3 * Math.sin(t * (6 + s * 0.7) + phase + s * 1.7);
         const tipH = layerH * heightFall * flick;
-        const sway = Math.sin(t * 5 + s * 0.9 + phase) * artH * 0.1 * (0.4 + Math.abs(u));
-        const tipX = rootX + sway;
-        const midX = (rootX + tipX) / 2 + Math.sin(t * 6 + s) * 2;
-        const midY = baseY - tipH * 0.5;
-
-        // ── 소프트 에지: 실제 삼각형 주변에 반투명 halo 2단 ──
-        // 가장 바깥쪽 (넓고 아주 투명) → 경계가 자연스럽게 페이드
-        g.fillStyle(layer.color, layer.alpha * 0.10);
-        g.fillTriangle(rootX - rootW * 1.55, baseY, rootX + rootW * 1.55, baseY, tipX, baseY - tipH * 1.06);
-        // 중간 halo
-        g.fillStyle(layer.color, layer.alpha * 0.22);
-        g.fillTriangle(rootX - rootW * 1.25, baseY, rootX + rootW * 1.25, baseY, tipX, baseY - tipH * 1.03);
-
-        // ── 실제 불혀 (선명한 코어) ──
-        g.fillStyle(layer.color, layer.alpha);
-        g.fillTriangle(
-          rootX - rootW, baseY,
-          rootX + rootW, baseY,
-          tipX, baseY - tipH,
-        );
-        // 중간 부풀림(아래쪽 더 두껍게)
-        g.fillTriangle(
-          rootX - rootW, baseY,
-          midX, midY,
-          tipX, baseY - tipH,
-        );
+        const seed = phase + s * 1.3 + li * 0.6; // 가닥 고유 흔들림 위상
+        this.drawWavyTongue(g, rootX, baseY, rootW, tipH, t, seed, u, layer.color, layer.alpha);
       }
     }
 
-    // 솟구치는 불씨 — 위로 떠오르는 점들
-    for (let e = 0; e < 5; e++) {
-      const rise = (t * (0.9 + e * 0.12) + e * 0.27) % 1; // 0→1
-      const ex = sx + Math.sin(t * 4 + e * 2) * baseHalf * 0.6;
-      const ey = baseY - rise * artH * 1.1;
-      const ea = (1 - rise) * 0.8;
-      g.fillStyle(e % 2 === 0 ? 0xffd27a : 0xff7a1c, ea);
-      g.fillCircle(ex, ey, (1 - rise) * 2.2 + 0.6);
+    // 솟구치는 불씨 — 위로 떠오르며 반짝이는 점들(색·반짝임 다양화).
+    for (let e = 0; e < 8; e++) {
+      const rise = (t * (0.8 + e * 0.1) + e * 0.21) % 1; // 0→1
+      const ex = sx + Math.sin(t * 4 + e * 2) * baseHalf * 0.7;
+      const ey = baseY - rise * artH * 1.15;
+      const tw = 0.5 + 0.5 * Math.sin(t * 18 + e * 3); // 빠른 반짝임
+      const ea = (1 - rise) * 0.85 * tw;
+      const col = e % 3 === 0 ? 0xfff3c0 : e % 3 === 1 ? 0xffd27a : 0xff7a1c;
+      g.fillStyle(col, ea);
+      g.fillCircle(ex, ey, (1 - rise) * 2.0 + 0.5);
     }
+
+    // 사방으로 튀는 스파크 — 밑동에서 좌우로 부채꼴로 퍼지며 솟구쳤다 살짝 떨어짐(중력).
+    // 메테오/불꽃 주변에 불티가 더 튀길 바라는 요청 반영. 반짝임으로 평면감 완화.
+    for (let k = 0; k < 12; k++) {
+      const life = (t * (1.1 + k * 0.11) + k * 0.31) % 1; // 0→1 수명
+      const side = ((k % 6) / 5 - 0.5) * 2; // -1..1 좌우 분산
+      const px = sx + side * baseHalf * 1.7 * life;
+      const py =
+        baseY - life * artH * (1.0 + (k % 3) * 0.28) + life * life * artH * 0.28; // 솟다 떨어짐
+      const tw = 0.5 + 0.5 * Math.sin(t * 26 + k * 5);
+      const a = (1 - life) * 0.9 * tw;
+      g.fillStyle(k % 2 === 0 ? 0xffe7a0 : 0xff9a3c, a);
+      g.fillCircle(px, py, (1 - life) * 1.7 + 0.4);
+    }
+  }
+
+  /**
+   * 불혀 1가닥을 '다분절 곡선 리본'으로 채워 그린다(렌더 전용).
+   * 중심선이 위로 갈수록 진폭↑인 다중 사인으로 일렁이고, 폭은 밑동→끝점으로 테이퍼되어 뾰족해진다.
+   * 바깥쪽 가닥은 u 방향으로 살짝 휘어(분수 splay) 더 역동적으로 보인다.
+   */
+  private drawWavyTongue(
+    g: Phaser.GameObjects.Graphics,
+    rootX: number, baseY: number, rootW: number, tipH: number,
+    t: number, seed: number, u: number, color: number, alpha: number,
+  ): void {
+    const SEG = 7;
+    const cx: number[] = [];
+    const cy: number[] = [];
+    const hw: number[] = [];
+    for (let k = 0; k <= SEG; k++) {
+      const f = k / SEG; // 0(밑동)→1(끝)
+      // 흔들림: 위로 갈수록 진폭↑, 두 주파수 합성으로 불규칙하게.
+      const amp = rootW * 0.5 + f * tipH * 0.18;
+      const wob =
+        Math.sin(t * 4 + f * 4.5 + seed) * amp +
+        Math.sin(t * 7.3 + f * 2.1 + seed * 1.7) * amp * 0.4;
+      const lean = u * f * tipH * 0.12; // 바깥 가닥일수록 더 휨
+      cx.push(rootX + wob + lean);
+      cy.push(baseY - f * tipH);
+      hw.push(Math.max(0, rootW * Math.pow(1 - f, 0.7))); // 끝으로 갈수록 뾰족
+    }
+
+    // 폴리곤: 왼쪽 에지(밑→끝) → 오른쪽 에지(끝→밑) 순으로 닫힌 리본.
+    const core: Phaser.Types.Math.Vector2Like[] = [];
+    for (let k = 0; k <= SEG; k++) core.push({ x: cx[k]! - hw[k]!, y: cy[k]! });
+    for (let k = SEG; k >= 0; k--) core.push({ x: cx[k]! + hw[k]!, y: cy[k]! });
+
+    // 소프트 에지 halo — 같은 형태를 살짝 넓혀 반투명으로 한 번 더(경계 페이드).
+    const halo: Phaser.Types.Math.Vector2Like[] = [];
+    const m = rootW * 0.6; // halo 두께
+    for (let k = 0; k <= SEG; k++) halo.push({ x: cx[k]! - hw[k]! - m * (1 - k / SEG), y: cy[k]! });
+    for (let k = SEG; k >= 0; k--) halo.push({ x: cx[k]! + hw[k]! + m * (1 - k / SEG), y: cy[k]! });
+    g.fillStyle(color, alpha * 0.2);
+    g.fillPoints(halo, true);
+
+    // 선명한 코어
+    g.fillStyle(color, alpha);
+    g.fillPoints(core, true);
   }
 
   /**
@@ -1779,16 +1841,19 @@ export class GameScene extends Phaser.Scene {
         artH,
       );
     }
-    // 2단 점프 추가 기울기 — 공중에서 2회차 점프(jumpsUsed>=2)면 뒤로 ~40° 더 꺾어 백플립 느낌.
-    // 전용 에셋(player-jump2) 전까지의 코드 스톱갭. 렌더 전용(sim 읽기만) → 결정론 무관.
-    // 화면 좌표는 y가 아래로 +라 시계반대(뒤로 젖힘)는 음수 각도.
+    // 점프 기울기 3단 — 공중에서만(렌더 전용, sim 읽기만 → 결정론 무관).
+    // 전용 에셋(player-jump2) 전까지의 코드 스톱갭. 화면 좌표 y가 아래로 +라 뒤로 젖힘=음수 각도.
+    //   1단 점프(jumpsUsed<=1, 비피버) → 0° (지금처럼 기울기 없음)
+    //   2단 점프(jumpsUsed>=2, 비피버) → -22° (이전 -40°보다 완만하게)
+    //   피버 무한점프(feverFramesLeft>0) → -40° (최고 경사 유지)
     let targetAngle = 0;
-    if (!s.gameOver && s.player.y > 2 && s.player.jumpsUsed >= 2) {
-      targetAngle = -40;
+    if (!s.gameOver && s.player.y > 2) {
+      if (s.feverFramesLeft > 0) targetAngle = -40;
+      else if (s.player.jumpsUsed >= 2) targetAngle = -22;
     }
     if (this.playerRect.angle !== targetAngle) {
-      // 살짝 부드럽게 추종(스냅 방지) — 프레임당 보간.
-      const a = Phaser.Math.Linear(this.playerRect.angle, targetAngle, 0.35);
+      // 부드럽게 추종(급변 방지) — 프레임당 보간. 계수↓로 단 간 전환을 완만하게.
+      const a = Phaser.Math.Linear(this.playerRect.angle, targetAngle, 0.2);
       this.playerRect.setAngle(Math.abs(a - targetAngle) < 0.5 ? targetAngle : a);
     }
 
@@ -2155,7 +2220,7 @@ export class GameScene extends Phaser.Scene {
 
   /** 메테오 1개 상태 생성(렌더 전용). */
   private makeMeteor(): CodeMeteor {
-    const size = 14 + Math.random() * 12; // 본체 반지름(최종) 14~26px
+    const size = 14 + Math.random() * 26; // 본체 반지름(최종) 14~40px — 큰 것 더 다이나믹하게
     const startX = DESIGN_W * (0.1 + Math.random() * 0.8);
     const startY = 10 + Math.random() * 80;
     const endY = GROUND_Y_PX * (0.38 + Math.random() * 0.18); // 화면 중~하단 중간에서 소멸
@@ -2281,16 +2346,28 @@ export class GameScene extends Phaser.Scene {
     g.fillStyle(0xfff2cc, alpha * 0.9); // 백열 중심
     g.fillCircle(x - dirx * r * 0.18, y - diry * r * 0.18, r * 0.16);
 
-    // ─── 3) 튀는 불티(ember) ───
-    for (let i = 0; i < 4; i++) {
-      const ph = t * (3 + i) + i * 2.1;
+    // ─── 3) 튀는 불티(ember) — 더 많이·다양하게, 꼬리 방향으로 흩뿌려진다 ───
+    for (let i = 0; i < 11; i++) {
+      const ph = t * (3 + i * 0.5) + i * 2.1;
       const ed = (ph % 2) / 2; // 0..1 수명
-      const ang = m.tailAngle + Math.sin(ph * 5 + i) * 0.7;
-      const dist = r * (1.2 + ed * 3.5);
+      const ang = m.tailAngle + Math.sin(ph * 5 + i) * 0.95;
+      const dist = r * (1.0 + ed * (3.0 + (i % 3) * 1.2));
       const exx = x + Math.cos(ang) * dist,
         eyy = y + Math.sin(ang) * dist;
-      g.fillStyle(0xffcc66, alpha * (1 - ed) * 0.8);
-      g.fillCircle(exx, eyy, Math.max(0.6, r * 0.1 * (1 - ed)));
+      const tw = 0.6 + 0.4 * Math.sin(t * 22 + i * 4); // 반짝임
+      const col = i % 3 === 0 ? 0xfff2cc : i % 3 === 1 ? 0xffcc66 : 0xff7a1a;
+      g.fillStyle(col, alpha * (1 - ed) * 0.85 * tw);
+      g.fillCircle(exx, eyy, Math.max(0.5, r * 0.12 * (1 - ed)));
+    }
+    // ─── 4) 코어 주변 반짝이는 미세 스파크 — 평면감 완화용 ───
+    for (let i = 0; i < 6; i++) {
+      const ap = t * 1.7 + (i / 6) * Math.PI * 2;
+      const rad = r * (1.3 + 0.5 * Math.sin(t * 3 + i * 2));
+      const px = x + Math.cos(ap) * rad,
+        py = y + Math.sin(ap) * rad;
+      const tw = 0.5 + 0.5 * Math.sin(t * 30 + i * 7);
+      g.fillStyle(0xffe7a0, alpha * 0.7 * tw);
+      g.fillCircle(px, py, 0.8 + tw * 0.8);
     }
   }
 
