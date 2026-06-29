@@ -36,7 +36,12 @@ import {
   toScreenY,
   boxCenterScreenY,
 } from "./viewport";
-import { registerPauseToggle, setPauseButtonState, registerRestart, setRestartButtonVisible } from "../controls";
+import {
+  registerPauseToggle,
+  setPauseButtonState,
+  registerRestart,
+  setRestartButtonVisible,
+} from "../controls";
 import { track } from "../analytics";
 
 // 게임 에셋(전처리본 assets/game/*) — Vite가 해시 URL로 번들. scripts/prep-assets.py 산출물.
@@ -136,18 +141,78 @@ type SmokeProfile = {
 function smokeProfile(key: string): SmokeProfile {
   switch (key) {
     case "obs-debris": // 잔해: 낮고 넓은 흙먼지
-      return { color: 0x9b8f86, strands: 3, height: 30, baseW: 5.5, alpha: 0.3, spread: 11, sway: 16, freq: 1.5, ember: false, glow: 0xff5a7a, fire: false };
+      return {
+        color: 0x9b8f86,
+        strands: 3,
+        height: 30,
+        baseW: 5.5,
+        alpha: 0.3,
+        spread: 11,
+        sway: 16,
+        freq: 1.5,
+        ember: false,
+        glow: 0xff5a7a,
+        fire: false,
+      };
     case "obs-barrel": // 드럼통: 검고 높은 매연 + 불씨 밑동
-      return { color: 0x655e6c, strands: 2, height: 56, baseW: 5, alpha: 0.42, spread: 6, sway: 12, freq: 2.2, ember: true, glow: 0xff7a3c, fire: true };
+      return {
+        color: 0x655e6c,
+        strands: 2,
+        height: 56,
+        baseW: 5,
+        alpha: 0.42,
+        spread: 6,
+        sway: 12,
+        freq: 2.2,
+        ember: true,
+        glow: 0xff7a3c,
+        fire: true,
+      };
     case "code-flame-s":
     case "code-flame-m":
     case "code-flame-l": // 코드 드로우 화염분수 — 연기는 거의 없고 빛이 강함
-      return { color: 0x7a6a72, strands: 1, height: 30, baseW: 3, alpha: 0.18, spread: 0, sway: 9, freq: 2.8, ember: true, glow: 0xff9a3c, fire: true };
+      return {
+        color: 0x7a6a72,
+        strands: 1,
+        height: 30,
+        baseW: 3,
+        alpha: 0.18,
+        spread: 0,
+        sway: 9,
+        freq: 2.8,
+        ember: true,
+        glow: 0xff9a3c,
+        fire: true,
+      };
     case "code-sludge": // 오염수 분수 — 회색/녹색 연기
-      return { color: 0x5a6655, strands: 2, height: 38, baseW: 4, alpha: 0.28, spread: 5, sway: 10, freq: 1.8, ember: false, glow: 0x7fff6a, fire: false };
+      return {
+        color: 0x5a6655,
+        strands: 2,
+        height: 38,
+        baseW: 4,
+        alpha: 0.28,
+        spread: 5,
+        sway: 10,
+        freq: 1.8,
+        ember: false,
+        glow: 0x7fff6a,
+        fire: false,
+      };
     case "obs-car": // 부서진 차: 엔진룸 회색 연기 + 시안 네온 잔광
     default:
-      return { color: 0xb8b2c0, strands: 2, height: 42, baseW: 4.5, alpha: 0.32, spread: 8, sway: 13, freq: 2.0, ember: false, glow: 0x2de1ff, fire: false };
+      return {
+        color: 0xb8b2c0,
+        strands: 2,
+        height: 42,
+        baseW: 4.5,
+        alpha: 0.32,
+        spread: 8,
+        sway: 13,
+        freq: 2.0,
+        ember: false,
+        glow: 0x2de1ff,
+        fire: false,
+      };
   }
 }
 
@@ -496,12 +561,14 @@ export class GameScene extends Phaser.Scene {
         .rectangle(0, 0, RP_W, RP_H, fillColor, fillAlpha)
         .setOrigin(0, 0);
       // 테두리: 플레이어=두꺼운 시안 네온, 고스트=미묘한 회색
-      bg.setStrokeStyle(isMe ? 2 : 1, isMe ? 0x00e5ff : 0x2a2a2a, isMe ? 1.0 : 0.6);
+      bg.setStrokeStyle(
+        isMe ? 2 : 1,
+        isMe ? 0x00e5ff : 0x2a2a2a,
+        isMe ? 1.0 : 0.6,
+      );
       // 내부 장식선 — 플레이어 패널 상단에 밝은 줄 (네온 느낌)
       const deco = isMe
-        ? this.add
-            .rectangle(0, 0, RP_W, 2, 0x00e5ff, 0.6)
-            .setOrigin(0, 0)
+        ? this.add.rectangle(0, 0, RP_W, 2, 0x00e5ff, 0.6).setOrigin(0, 0)
         : null;
       const txt = this.add
         .text(10, RP_H / 2, rpLabels[i]!, {
@@ -512,7 +579,9 @@ export class GameScene extends Phaser.Scene {
           resolution: TXT_RES,
         })
         .setOrigin(0, 0.5);
-      const children: Phaser.GameObjects.GameObject[] = deco ? [bg, deco, txt] : [bg, txt];
+      const children: Phaser.GameObjects.GameObject[] = deco
+        ? [bg, deco, txt]
+        : [bg, txt];
       const container = this.add
         .container(-9999, 4, children)
         .setDepth(22)
@@ -765,9 +834,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** 표시 리스트를 재귀 순회하며 모든 Text의 렌더 해상도를 TXT_RES로 올린다. */
-  private applyTextResolution(
-    objects: Phaser.GameObjects.GameObject[],
-  ): void {
+  private applyTextResolution(objects: Phaser.GameObjects.GameObject[]): void {
     for (const obj of objects) {
       if (obj instanceof Phaser.GameObjects.Text) {
         obj.setResolution(TXT_RES);
@@ -1079,8 +1146,16 @@ export class GameScene extends Phaser.Scene {
 
   /** 코어가 뱉은 이벤트 비트마스크 → 연출 트리거 (스텝당 1회) */
   private handleStepEvents(ev: number) {
+    if (ev & C.EV_JUMP) {
+      // 모바일 햅틱 — Android Chrome/Firefox 지원, iOS Safari 미지원(조용히 무시).
+      // 2단 점프는 조금 더 강하게(40ms). Vibration API 없는 환경은 에러 없이 스킵.
+      const isDoubleJump = this.sim.state.player.jumpsUsed >= 2;
+      navigator.vibrate?.(isDoubleJump ? 40 : 22);
+    }
     if (ev & C.EV_HIT) {
       this.cameras.main.flash(140, 255, 70, 70);
+      // 피격 진동 — 점프보다 길고 강하게(타격감).
+      navigator.vibrate?.(60);
     }
     if (ev & C.EV_COMBO_BREAK) {
       // 콤보가 끊긴 순간 — 화면 흔들림 + 빨간 팝업
@@ -1135,7 +1210,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (ev & C.EV_GAME_OVER) {
       setPauseButtonState(false, false); // 게임오버 → 일시정지 버튼 숨김
-      setRestartButtonVisible(false);    // 게임오버 → 다시하기 버튼도 숨김
+      setRestartButtonVisible(false); // 게임오버 → 다시하기 버튼도 숨김
       const myDist = this.sim.state.distance;
       track("game_over", {
         distance: Math.floor(myDist),
@@ -1205,12 +1280,17 @@ export class GameScene extends Phaser.Scene {
     let prevBestM = 0;
     let isPersonalBest = false;
     try {
-      prevBestM = parseInt(window.localStorage.getItem("ga:best-dist") ?? "0", 10);
+      prevBestM = parseInt(
+        window.localStorage.getItem("ga:best-dist") ?? "0",
+        10,
+      );
       isPersonalBest = Math.floor(myDist) > prevBestM;
       if (isPersonalBest) {
         window.localStorage.setItem("ga:best-dist", String(Math.floor(myDist)));
       }
-    } catch { /* localStorage 차단 환경 — 무시 */ }
+    } catch {
+      /* localStorage 차단 환경 — 무시 */
+    }
 
     // 거리 텍스트 — 개인 신기록이면 골드 강조
     this.gameOverDistText
@@ -1233,7 +1313,9 @@ export class GameScene extends Phaser.Scene {
         if (finalRankForSave < stored) {
           window.localStorage.setItem("ga:best-rank", String(finalRankForSave));
         }
-      } catch { /* 무시 */ }
+      } catch {
+        /* 무시 */
+      }
     }
 
     if (!cmp.hasGhosts) {
@@ -1268,9 +1350,8 @@ export class GameScene extends Phaser.Scene {
     const cx = DESIGN_W / 2;
     const cy = DESIGN_H * 0.28;
     const diff = nowM - prevBestM;
-    const label = prevBestM > 0
-      ? `✨ PERSONAL BEST  +${diff}M`
-      : "✨ PERSONAL BEST";
+    const label =
+      prevBestM > 0 ? `✨ PERSONAL BEST  +${diff}M` : "✨ PERSONAL BEST";
 
     const txt = this.add
       .text(cx, cy, label, {
@@ -1403,7 +1484,13 @@ export class GameScene extends Phaser.Scene {
     const depth = bottom - horizon;
 
     // 바닥 베이스 — 세로 그라데이션(지평선쪽 보라빛 → 바닥은 더 어둡게)으로 평면감 완화.
-    g.fillGradientStyle(0x301552, 0x301552, COLOR_GROUND_DARK, COLOR_GROUND_DARK, 1);
+    g.fillGradientStyle(
+      0x301552,
+      0x301552,
+      COLOR_GROUND_DARK,
+      COLOR_GROUND_DARK,
+      1,
+    );
     g.fillRect(0, horizon, DESIGN_W, depth);
 
     // 지평선 글로우 밴드 — 지평선 위아래로 번지는 네온 발광(블룸 느낌).
@@ -1469,8 +1556,8 @@ export class GameScene extends Phaser.Scene {
       const isSludge = key === "code-sludge";
 
       // 높이 결정: flame-s/m/l → 작게/보통/크게, sludge → 중간
-      const heightMult = key === "code-flame-s" ? 0.85
-        : key === "code-flame-l" ? 1.25 : 1.0;
+      const heightMult =
+        key === "code-flame-s" ? 0.85 : key === "code-flame-l" ? 1.25 : 1.0;
       const artH = o.h * OBSTACLE_ART_SCALE * heightMult;
 
       if (isSludge) {
@@ -1488,8 +1575,11 @@ export class GameScene extends Phaser.Scene {
    */
   private drawFlameFountain(
     g: Phaser.GameObjects.Graphics,
-    sx: number, baseY: number, artH: number,
-    t: number, idx: number,
+    sx: number,
+    baseY: number,
+    artH: number,
+    t: number,
+    idx: number,
   ): void {
     const phase = idx * 2.3;
     const baseHalf = Math.max(14, artH * 0.42); // 밑동 반폭 — 두껍게
@@ -1525,7 +1615,18 @@ export class GameScene extends Phaser.Scene {
         const flick = 0.7 + 0.3 * Math.sin(t * (6 + s * 0.7) + phase + s * 1.7);
         const tipH = layerH * heightFall * flick;
         const seed = phase + s * 1.3 + li * 0.6; // 가닥 고유 흔들림 위상
-        this.drawWavyTongue(g, rootX, baseY, rootW, tipH, t, seed, u, layer.color, layer.alpha);
+        this.drawWavyTongue(
+          g,
+          rootX,
+          baseY,
+          rootW,
+          tipH,
+          t,
+          seed,
+          u,
+          layer.color,
+          layer.alpha,
+        );
       }
     }
 
@@ -1548,7 +1649,9 @@ export class GameScene extends Phaser.Scene {
       const side = ((k % 6) / 5 - 0.5) * 2; // -1..1 좌우 분산
       const px = sx + side * baseHalf * 1.7 * life;
       const py =
-        baseY - life * artH * (1.0 + (k % 3) * 0.28) + life * life * artH * 0.28; // 솟다 떨어짐
+        baseY -
+        life * artH * (1.0 + (k % 3) * 0.28) +
+        life * life * artH * 0.28; // 솟다 떨어짐
       const tw = 0.5 + 0.5 * Math.sin(t * 26 + k * 5);
       const a = (1 - life) * 0.9 * tw;
       g.fillStyle(k % 2 === 0 ? 0xffe7a0 : 0xff9a3c, a);
@@ -1563,8 +1666,15 @@ export class GameScene extends Phaser.Scene {
    */
   private drawWavyTongue(
     g: Phaser.GameObjects.Graphics,
-    rootX: number, baseY: number, rootW: number, tipH: number,
-    t: number, seed: number, u: number, color: number, alpha: number,
+    rootX: number,
+    baseY: number,
+    rootW: number,
+    tipH: number,
+    t: number,
+    seed: number,
+    u: number,
+    color: number,
+    alpha: number,
   ): void {
     const SEG = 7;
     const cx: number[] = [];
@@ -1591,8 +1701,10 @@ export class GameScene extends Phaser.Scene {
     // 소프트 에지 halo — 같은 형태를 살짝 넓혀 반투명으로 한 번 더(경계 페이드).
     const halo: Phaser.Types.Math.Vector2Like[] = [];
     const m = rootW * 0.6; // halo 두께
-    for (let k = 0; k <= SEG; k++) halo.push({ x: cx[k]! - hw[k]! - m * (1 - k / SEG), y: cy[k]! });
-    for (let k = SEG; k >= 0; k--) halo.push({ x: cx[k]! + hw[k]! + m * (1 - k / SEG), y: cy[k]! });
+    for (let k = 0; k <= SEG; k++)
+      halo.push({ x: cx[k]! - hw[k]! - m * (1 - k / SEG), y: cy[k]! });
+    for (let k = SEG; k >= 0; k--)
+      halo.push({ x: cx[k]! + hw[k]! + m * (1 - k / SEG), y: cy[k]! });
     g.fillStyle(color, alpha * 0.2);
     g.fillPoints(halo, true);
 
@@ -1607,8 +1719,11 @@ export class GameScene extends Phaser.Scene {
    */
   private drawSludgeFountain(
     g: Phaser.GameObjects.Graphics,
-    sx: number, baseY: number, artH: number,
-    t: number, idx: number,
+    sx: number,
+    baseY: number,
+    artH: number,
+    t: number,
+    idx: number,
   ): void {
     const phase = idx * 1.7;
     const baseHalf = Math.max(12, artH * 0.38); // 밑동 반폭
@@ -1624,8 +1739,8 @@ export class GameScene extends Phaser.Scene {
     const layers = [
       { color: 0x1a4d1a, hMul: 1.0, wMul: 1.0, tongues: 7, alpha: 0.55 }, // 짙은 회록
       { color: 0x2e7d32, hMul: 0.82, wMul: 0.72, tongues: 5, alpha: 0.65 }, // 어두운 녹
-      { color: 0x4caf50, hMul: 0.60, wMul: 0.48, tongues: 4, alpha: 0.72 }, // 독성 녹
-      { color: 0xb9f6ca, hMul: 0.38, wMul: 0.26, tongues: 2, alpha: 0.80 }, // 밝은 코어
+      { color: 0x4caf50, hMul: 0.6, wMul: 0.48, tongues: 4, alpha: 0.72 }, // 독성 녹
+      { color: 0xb9f6ca, hMul: 0.38, wMul: 0.26, tongues: 2, alpha: 0.8 }, // 밝은 코어
     ];
 
     for (const layer of layers) {
@@ -1636,22 +1751,48 @@ export class GameScene extends Phaser.Scene {
         const rootX = sx + u * lHalf;
         const rootW = (lHalf / layer.tongues) * 2.1;
         const heightFall = 1 - Math.abs(u) * 0.35;
-        const flick = 0.80 + 0.20 * Math.sin(t * (3.5 + s * 0.5) + phase + s * 1.5);
+        const flick =
+          0.8 + 0.2 * Math.sin(t * (3.5 + s * 0.5) + phase + s * 1.5);
         const tipH = lH * heightFall * flick;
-        const sway = Math.sin(t * 2.8 + s * 0.8 + phase) * artH * 0.07 * (0.3 + Math.abs(u));
+        const sway =
+          Math.sin(t * 2.8 + s * 0.8 + phase) *
+          artH *
+          0.07 *
+          (0.3 + Math.abs(u));
         const tipX = rootX + sway;
         const midX = (rootX + tipX) / 2;
         const midY = baseY - tipH * 0.45;
 
         // ── 소프트 에지 halo 2단 ──
-        g.fillStyle(layer.color, layer.alpha * 0.10);
-        g.fillTriangle(rootX - rootW * 1.55, baseY, rootX + rootW * 1.55, baseY, tipX, baseY - tipH * 1.06);
+        g.fillStyle(layer.color, layer.alpha * 0.1);
+        g.fillTriangle(
+          rootX - rootW * 1.55,
+          baseY,
+          rootX + rootW * 1.55,
+          baseY,
+          tipX,
+          baseY - tipH * 1.06,
+        );
         g.fillStyle(layer.color, layer.alpha * 0.22);
-        g.fillTriangle(rootX - rootW * 1.25, baseY, rootX + rootW * 1.25, baseY, tipX, baseY - tipH * 1.03);
+        g.fillTriangle(
+          rootX - rootW * 1.25,
+          baseY,
+          rootX + rootW * 1.25,
+          baseY,
+          tipX,
+          baseY - tipH * 1.03,
+        );
 
         // ── 실제 덩어리 ──
         g.fillStyle(layer.color, layer.alpha);
-        g.fillTriangle(rootX - rootW, baseY, rootX + rootW, baseY, tipX, baseY - tipH);
+        g.fillTriangle(
+          rootX - rootW,
+          baseY,
+          rootX + rootW,
+          baseY,
+          tipX,
+          baseY - tipH,
+        );
         g.fillTriangle(rootX - rootW, baseY, midX, midY, tipX, baseY - tipH);
       }
     }
@@ -1672,7 +1813,11 @@ export class GameScene extends Phaser.Scene {
    * 수직이 아닌 수평 베이스라인처럼: 점프해도 항상 지면 기준 고정 높이에서 뻗음.
    * 속도에 비례해 길이·밝기가 강해지고 반짝임.
    */
-  private drawNeonTrail(speed: number, gameOver: boolean, playerScreenY: number): void {
+  private drawNeonTrail(
+    speed: number,
+    gameOver: boolean,
+    playerScreenY: number,
+  ): void {
     const g = this.trailGfx;
     g.clear();
     if (gameOver) return;
@@ -1718,7 +1863,7 @@ export class GameScene extends Phaser.Scene {
 
       // 흐르는 반짝 도트 — 트레일을 따라 좌측으로 흘러감
       for (let d = 0; d < 3; d++) {
-        const flow = ((t * (1.5 + li * 0.3) + d * 0.33) % 1); // 0→1 반복
+        const flow = (t * (1.5 + li * 0.3) + d * 0.33) % 1; // 0→1 반복
         const dx = baseX - flow * maxLen;
         const dy = baseY + Math.sin(t * 12 + d + phase) * 1.5;
         const da = (1 - flow) * 0.8 * intensity * flicker;
@@ -1776,7 +1921,9 @@ export class GameScene extends Phaser.Scene {
           const a = (1 - f) * p.alpha; // 위로 갈수록 옅게
           // 불 타입은 밑동을 따뜻하게(불씨→연기 전이)
           const col =
-            p.ember && f < 0.34 ? this.lerpColor(0xff7a3c, p.color, f / 0.34) : p.color;
+            p.ember && f < 0.34
+              ? this.lerpColor(0xff7a3c, p.color, f / 0.34)
+              : p.color;
           g.lineStyle(w, col, a);
           g.lineBetween(px0, py0, xx, yy);
           px0 = xx;
@@ -1835,7 +1982,8 @@ export class GameScene extends Phaser.Scene {
     if (this.playerRect.texture.key !== playerTex) {
       this.playerRect.setTexture(playerTex);
       // 사망 컷(오토바이에서 날아가는)은 살짝 크게 — 극적이되 과하지 않게.
-      const artH = playerTex === "player-dead" ? PLAYER_ART_H * 1.25 : PLAYER_ART_H;
+      const artH =
+        playerTex === "player-dead" ? PLAYER_ART_H * 1.25 : PLAYER_ART_H;
       this.playerRect.setDisplaySize(
         (this.playerRect.width / this.playerRect.height) * artH,
         artH,
@@ -1854,7 +2002,9 @@ export class GameScene extends Phaser.Scene {
     if (this.playerRect.angle !== targetAngle) {
       // 부드럽게 추종(급변 방지) — 프레임당 보간. 계수↓로 단 간 전환을 완만하게.
       const a = Phaser.Math.Linear(this.playerRect.angle, targetAngle, 0.2);
-      this.playerRect.setAngle(Math.abs(a - targetAngle) < 0.5 ? targetAngle : a);
+      this.playerRect.setAngle(
+        Math.abs(a - targetAngle) < 0.5 ? targetAngle : a,
+      );
     }
 
     // 사망 컷 페이드아웃 — 고스트와 동일 방식(트윈 1회). 결과 패널(900ms) 전에 소멸.
@@ -1868,7 +2018,9 @@ export class GameScene extends Phaser.Scene {
         delay: 200,
         duration: 580,
         ease: "Quad.in",
-        onComplete: () => { this.playerRect.setVisible(false); },
+        onComplete: () => {
+          this.playerRect.setVisible(false);
+        },
       });
     }
 
@@ -1907,7 +2059,10 @@ export class GameScene extends Phaser.Scene {
         sprite.setAngle(0);
         sprite.anims.resume(); // 점프 중 멈춰있던 anim 해제
         // 고스트 쓰러질 때 이모션: 머리 위에 짧게 말풍선 표시 (Tier 1-1)
-        this.showGhostEmotion(toScreenX(C.PLAYER_X) + xOff, GROUND_Y_PX - GHOST_ART_H - 10);
+        this.showGhostEmotion(
+          toScreenX(C.PLAYER_X) + xOff,
+          GROUND_Y_PX - GHOST_ART_H - 10,
+        );
         // play()가 텍스처를 collapse로 전환 — 스케일은 run과 동일(높이300 기준) 유지.
         sprite.play("ghost-collapse");
         sprite.once(
@@ -1958,9 +2113,14 @@ export class GameScene extends Phaser.Scene {
         if (r.texture.key !== key) r.setTexture(key);
         const artH = o.h * OBSTACLE_ART_SCALE;
         const aspect = r.width / r.height;
-        const w = Math.max(OBSTACLE_MIN_W, Math.min(artH * aspect, OBSTACLE_MAX_W));
+        const w = Math.max(
+          OBSTACLE_MIN_W,
+          Math.min(artH * aspect, OBSTACLE_MAX_W),
+        );
         const prof = smokeProfile(key);
-        const flicker = prof.fire ? 1 + 0.05 * Math.sin(this.renderTimeMs * 0.012 + i * 2.1) : 1;
+        const flicker = prof.fire
+          ? 1 + 0.05 * Math.sin(this.renderTimeMs * 0.012 + i * 2.1)
+          : 1;
         r.setDisplaySize(w * flicker, artH);
         r.setPosition(toScreenX(o.x), GROUND_Y_PX);
       }
@@ -2074,7 +2234,12 @@ export class GameScene extends Phaser.Scene {
     const x = toScreenX(C.PLAYER_X);
     const y = boxCenterScreenY(this.sim.state.player.y, C.PLAYER_H) - 44;
     const t = this.add
-      .text(x, y, msg, { fontSize: "20px", color, fontStyle: "bold", resolution: TXT_RES })
+      .text(x, y, msg, {
+        fontSize: "20px",
+        color,
+        fontStyle: "bold",
+        resolution: TXT_RES,
+      })
       .setOrigin(0.5);
     this.tweens.add({
       targets: t,
@@ -2104,7 +2269,12 @@ export class GameScene extends Phaser.Scene {
     ];
     const msg = phrases[Math.floor(Math.random() * phrases.length)]!;
     const label = this.add
-      .text(0, 0, msg, { fontSize: "11px", color: "#ffffff", align: "center", resolution: TXT_RES })
+      .text(0, 0, msg, {
+        fontSize: "11px",
+        color: "#ffffff",
+        align: "center",
+        resolution: TXT_RES,
+      })
       .setOrigin(0.5);
     const padX = 8;
     const padY = 5;
@@ -2170,7 +2340,10 @@ export class GameScene extends Phaser.Scene {
     box.fillTriangle(-6, h / 2 - 1, 6, h / 2 - 1, 0, h / 2 + 8);
 
     // 초기 위치는 syncVisuals에서 매 프레임 갱신하므로 0,0으로 시작
-    const c = this.add.container(toScreenX(C.PLAYER_X), 0, [box, label]).setDepth(50).setAlpha(0);
+    const c = this.add
+      .container(toScreenX(C.PLAYER_X), 0, [box, label])
+      .setDepth(50)
+      .setAlpha(0);
     this.bubble = c;
     // Y는 syncVisuals가 추적 — 트윈은 alpha만 담당
     this.tweens.add({ targets: c, alpha: 1, duration: 200, ease: "Quad.out" });
@@ -2192,7 +2365,12 @@ export class GameScene extends Phaser.Scene {
     const x = toScreenX(C.PLAYER_X);
     const y = boxCenterScreenY(this.sim.state.player.y, C.PLAYER_H) - 50;
     const t = this.add
-      .text(x, y, msg, { fontSize: "30px", color, fontStyle: "bold", resolution: TXT_RES })
+      .text(x, y, msg, {
+        fontSize: "30px",
+        color,
+        fontStyle: "bold",
+        resolution: TXT_RES,
+      })
       .setOrigin(0.5)
       .setStroke("#1a1a2e", 6);
     this.tweens.add({
@@ -2234,7 +2412,16 @@ export class GameScene extends Phaser.Scene {
     const len = Math.sqrt(dx * dx + dy * dy);
     const tailAngle = Math.atan2(-dy / len, -dx / len);
 
-    return { startX, startY, endX, endY, elapsed: 0, duration, size, tailAngle };
+    return {
+      startX,
+      startY,
+      endX,
+      endY,
+      elapsed: 0,
+      duration,
+      size,
+      tailAngle,
+    };
   }
 
   /**
@@ -2248,10 +2435,7 @@ export class GameScene extends Phaser.Scene {
     for (const m of this.codeMeteors) this.drawOneMeteor(g, m);
   }
 
-  private drawOneMeteor(
-    g: Phaser.GameObjects.Graphics,
-    m: CodeMeteor,
-  ): void {
+  private drawOneMeteor(g: Phaser.GameObjects.Graphics, m: CodeMeteor): void {
     const rawProg = m.elapsed / m.duration; // 0 → 1
     const ease = rawProg * rawProg; // Quad.in — 처음엔 느리게 출발
     const x = m.startX + (m.endX - m.startX) * ease;
@@ -2301,8 +2485,7 @@ export class GameScene extends Phaser.Scene {
               ? 0xff4d1a
               : 0xcc2200;
       // 밑변은 좁게 → 끝점으로 수렴하는 날카로운 삼각형(불꽃 혀).
-      const halfW =
-        Math.max(0.5, r * (0.42 - cd * 0.26)) * (0.6 + 0.4 * flick);
+      const halfW = Math.max(0.5, r * (0.42 - cd * 0.26)) * (0.6 + 0.4 * flick);
       const a = alpha * (0.5 - cd * 0.3) * (0.6 + 0.4 * flick);
       // 불혀 자체 방향의 수직으로 밑변 두 점을 잡고 tip(ex,ey)으로 모은다.
       const tdx = ex - sx,
