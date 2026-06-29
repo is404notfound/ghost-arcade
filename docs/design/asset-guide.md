@@ -83,6 +83,7 @@
 | ID                                                      | 무엇                             | 풋프린트(게임 px)                  | 상태 | 비고                                                                 |
 | ------------------------------------------------------- | -------------------------------- | ---------------------------------- | ---- | -------------------------------------------------------------------- |
 | `player-rider`                                          | 후드 라이더+네온 오토바이        | 히트박스 30×42 (아트 ~56 overhang) | ✅   | ride/jump/hit/dead 컷. 글로우=코드 postFX                            |
+| `player-jump2` (6프레임)                                | 2단 점프(직각+네온 부스트)        | 30×42 (히트박스 동일)              | ⬜   | **프롬프트 갱신됨** → §5.1. 6프레임 점프 사이클, jumpCount===2 전환  |
 | `ghost-runner`                                          | 발로 뛰는 헤일로 고스트          | 30×42                              | ✅🟡 | **6프레임 시트**(`ghost-run.png`), 런타임 랜덤 위상·속도. (2026-06-28: **후드 유령 컨셉으로 재생성 대기** → §5.2A) |
 | `ghost-collapse` (3프레임)                              | **기록 종료 시 엎어지는 고스트** | 420×320×3                          | ✅   | 전용 3프레임 적용(비틀→무릎→엎어짐). prep-ghost-collapse.py → §5.2B |
 | `fuel-can`                                              | 연료통(회복=주유)                | 26×26                              | ✅   | 쿨 블루. 빨간 주유통 ❌                                              |
@@ -90,6 +91,9 @@
 | `obs-car` / `obs-debris`                                | **부서진 차 / 잔해더미**(낮고넓음) | 높이=히트박스, 폭 클램프 40–150  | ✅   | `obstacles.png` 3분할 → prep-obstacles2.py. 높이 ≤80 출현            |
 | `obs-barrel`                                            | **불타는 드럼통**(중간)          | 높이=히트박스, 종횡비 유지         | ✅   | `obstacles.png` 3분할. 높이 80–120 출현                              |
 | `flame-pilar-1` / `flame-pilar-2`                       | **불기둥**(높음, 2종)            | 높이=히트박스, 폭 클램프 ≥40       | ✅   | 흰배경 제거 → prep-obstacles2.py. TALL(>120) 출현                    |
+| `wreck-vending`                                          | **부서진 자판기**(중간)          | 높이=히트박스, 종횡비 유지         | ⬜   | 프롬프트 §5.3(9). 일본 거리감, 깨진 화면 글리치                      |
+| `tire-pile`                                              | **쌓인 폐타이어**(낮음~중간)     | 높이=히트박스, 종횡비 유지         | ⬜   | 프롬프트 §5.3(10). 낮고 둥근 더미                                    |
+| `manhole-steam` (6프레임)                               | **맨홀+증기 분출**(낮음, 애니)   | 높이=히트박스(맨홀 융기부)         | ⬜   | 프롬프트 §5.3(11). 증기 6프레임 루프, 충돌박스는 정지               |
 | `hp-bar` (frame/fill/icon)                              | 체력바 HUD                       | 272×24 외                          | ⬜   | **프롬프트 작성됨** → §5.7 (현재 코드 사각형)                        |
 | `bg-sun`                                                | 레트로 선(노을 태양)             | ~360×220                           | 💠   | **코드 드로우**(`updateCodeSun`) — 일렁임 애니 포함, 이미지 제거됨   |
 | `fx-meteor`                                             | 화염 메테오                      | —                                  | 💠   | **코드 드로우**(`drawCodeMeteor`) — 동시 1개로 제한                  |
@@ -152,27 +156,38 @@ overload, photo, face close-up, rider standing, car, three wheels
 > 추가 컷(동일 스타일·baseline·글로우): `jump`(앞바퀴 들린 버니홉), `hit`(1컷, 깜빡임은 코드),
 > `dead`(라이더가 튕겨 나가 머리 위 골드 헤일로가 생기는 컷 — "죽으면 나도 고스트가 된다" 루프 핵심).
 
-#### ★ player-jump2 — 2단 점프 컷 (신규 에셋 필요)
+#### ★ player-jump2 — 2단 점프 (6프레임 애니, ⬜ 신규 에셋 필요)
 
-2단 점프 시(`player.jumpCount === 2`) 현재 `player-jump`와 다른 별도 컷으로 교체 → 더 강하게 꺾인 느낌.
-
-```
-SAME neon hooded rider and cyan motorcycle as player-rider (identical palette, glow, scarf, style)
-— but captured at the peak of a SECOND mid-air jump: the front wheel kicked up sharply about
-80 degrees above horizontal, rear wheel angled down, rider body thrown backward with the scarf
-lashing forward dramatically, strong tilt and air, the whole bike reads as "punched upward" with
-an urgent reckless energy. Side view facing right, full side profile, same baseline anchor (bottom
-of rear wheel), isolated on a transparent background, no scene, no ground, no shadow, no text,
-game asset.
-```
+2단 점프 시(`player.jumpCount === 2`) **거의 수직(80~90°)으로 꺾인** 더 격렬한 도약 + **네온
+부스트 분사**. 사용자 요구(2026-06-29): 기울기를 직각에 가깝게, 네온 부스트, **6프레임 시퀀스**로
+바퀴·휘날리는 머리 디테일을 살린다. (※ 기존 단일 컷 → 6프레임 점프 사이클로 승격.)
 
 ```
-NEGATIVE: front wheel down, casual hover, flat angle, 3D, realistic, photo, text, watermark,
-white background, ground shadow, standing rider, car, three wheels
+A 6-frame side-view animation strip of the SAME neon hooded rider on the SAME cyan motorcycle as
+player-rider (identical palette #5efce8/#cafff8, glow, line weight, long hair streaming, style) —
+performing an explosive SECOND mid-air jump. Across the 6 frames the bike rotates so the front
+wheel kicks up to NEARLY VERTICAL (about 80-90 degrees above horizontal) at the peak, rear wheel
+angled down, the rider thrown back with long hair and scarf whipping dramatically, both wheels
+spinning with motion-blur glow. A burst of bright cyan (#36f9f6) NEON BOOST flames/jet erupts
+downward-backward from under the rear of the bike, growing across the frames to sell the "punched
+straight up" energy. Frame sequence: (1) crouch/wind-up, (2) front wheel lifting, (3) ~45° rising
+with boost igniting, (4) ~70° with full boost jet, (5) PEAK near-vertical, hair fully streaming,
+(6) tipping back to fall. Horizontal strip of 6 evenly spaced frames, clear gaps, all frames
+identical scale, lighting and baseline anchor (bottom of rear wheel), side profile facing right,
+isolated on a transparent background, no scene, no ground, no shadow, no text, game asset.
 ```
 
-> **구현 노트(렌더 전용):** `src/sim/sim.ts`에서 `s.player.jumpCount`가 `2`이면 `player-jump2`
-> 텍스처로 전환. `player-jump`와 동일 `displaySize` 사용. sim 히트박스는 동일 → 버전 업 없음.
+```
+NEGATIVE: front wheel down, casual flat hover, gentle angle, 3D, realistic, photo, text, watermark,
+white background, ground shadow, standing rider, car, three wheels, helmet, inconsistent scale
+between frames, frames at different heights
+```
+
+> **구현 노트(렌더 전용):** `assets/images/player/player-jump2-1~6.png`(또는 한 장 스트립) →
+> `scripts/prep-*`로 균일 분할·하단정렬. `s.player.jumpCount === 2`일 때 `player-jump2` 6프레임
+> 애니로 전환(점프 상승~정점에 매핑, 1회 재생 후 정점 프레임 유지). `player-jump`와 동일
+> `displaySize`, sim 히트박스 동일 → **버전 업 없음**. 네온 부스트는 6프레임에 구워도 되고,
+> 부담되면 정점만 코드 파티클로 보강.
 
 ---
 
@@ -370,9 +385,71 @@ NEGATIVE: perspective, 3D, isometric, upright drivable motorcycle, rider on it, 
 people, road, ground shadow, text, watermark, white background, realistic photo
 ```
 
+**(9) wreck-vending — 부서진 자판기 (중간 높이, 일본 거리감) ⬜신규**
+
+> 사용자 요구(2026-06-29). 깨진 화면이 글리치로 명멸(연출은 코드 글로우 보강 가능).
+
+```
+A single smashed Japanese street vending machine as a side-view obstacle, strict flat side
+elevation (no perspective), medium-tall box silhouette tipped slightly, cracked display glass and
+a dented coin panel, dark charred body (#0d0618) with a flickering broken screen glowing magenta
+(#ff5fa2) and cyan (#36f9f6), a few spilled cans and dying spark glints, thin smoke wisp,
+synthwave city-pop apocalypse, minimal flat vector shapes, clean readable silhouette on a common
+ground baseline, isolated on a transparent background, no ground, no scene, no text, single
+object, game asset.
+```
+
+```
+NEGATIVE: perspective, 3D, isometric, intact working vending machine, bright full display, people,
+road, ground shadow, text, real brand logos, watermark, white background, realistic photo
+```
+
+**(10) tire-pile — 쌓인 폐타이어 더미 (낮음~중간) ⬜신규**
+
+> 사용자 요구(2026-06-29). 낮고 둥글게 쌓인 실루엣 — 1단 점프 단서.
+
+```
+A single pile of stacked worn-out tires as a side-view obstacle, strict flat side elevation
+(no perspective), low rounded heap of 4-6 dark rubber tires (#0d0618) stacked unevenly, faint
+magenta (#ff5fa2) hazard underglow and a dim cyan (#36f9f6) edge light, a little dust, synthwave
+apocalypse, minimal flat vector shapes, clean readable silhouette on a common ground baseline,
+isolated on a transparent background, no ground, no scene, no text, single object, game asset.
+```
+
+```
+NEGATIVE: perspective, 3D, isometric, single tire, rolling tire, car, people, road, ground shadow,
+text, watermark, white background, realistic photo, scattered spread
+```
+
+**(11) manhole-steam — 균열에서 솟은 맨홀 + 증기 (6프레임 애니, 낮음) ⬜신규**
+
+> 사용자 요구(2026-06-29): 증기 분출을 **6프레임**으로 움직이게. ★주의: 바닥 평면이 아니라
+> **솟아오른 맨홀**로 읽혀야 점프 단서가 명확(crater-fissure와 동일 원칙). 충돌 박스는 맨홀 융기부.
+
+```
+A 6-frame side-view animation strip of a broken manhole erupting from a cracked street as a
+side-view obstacle. A heavy round manhole cover popped up and tilted on a raised broken concrete
+rim (dark #0d0618 with rusty edges), and a column of pressurized STEAM bursting upward. Across the
+6 frames the steam plume grows and curls: (1) thin first jet, (2-4) billowing taller with swirling
+volume, (5) full plume with faint magenta (#ff5fa2) and cyan (#36f9f6) neon tint catching the
+city light, (6) starting to dissipate. The manhole/rim stays consistent; only the steam animates.
+Raised readable vertical mass (NOT a flat floor hole), strict flat side elevation, synthwave
+apocalypse, minimal flat vector shapes, strong silhouette, base on a common ground baseline,
+horizontal strip of 6 evenly spaced frames, identical scale and lighting, isolated on a
+transparent background, no ground plane, no scene, no text, single object, game asset.
+```
+
+```
+NEGATIVE: top-down hole, flat floor crack, perspective, 3D, isometric, water flood, people, road,
+ground shadow, text, watermark, white background, realistic photo, frames at different scales,
+steam only with no manhole
+```
+
 > **구현 노트:** 위 전부 `building-kit`과 같은 장애물 슬롯의 **텍스처 교체**다. sim 충돌은
 > 직사각형(`OBS_W`×`h`) 그대로 — 에셋은 그 박스를 "덮는 그림". 패턴/높이에 따라 어떤 텍스처를
 > 쓸지는 `GameScene` 렌더에서 분기(결정론 무관). WIDE_LOW(부서진 차)만 폭 64.
+> **애니 장애물(manhole-steam 6프레임)**: 텍스처만 6프레임 시트로 받아 렌더에서 루프 재생 —
+> 충돌 박스는 정지 직사각형 그대로(증기는 박스 밖 장식). 결정론 무관.
 
 ---
 
