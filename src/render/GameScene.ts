@@ -276,7 +276,7 @@ export class GameScene extends Phaser.Scene {
   private ghostRects: Phaser.GameObjects.Sprite[] = [];
   // 고스트 엎어짐 연출 상태 — 기록 종료(finished) 시 1회 텀블 후 done. 렌더 전용.
   private ghostTumbleState: ("run" | "tumbling" | "done")[] = [];
-  private playerRect!: Phaser.GameObjects.Image; // 후드 라이더 + 네온 오토바이
+  private playerRect!: Phaser.GameObjects.Sprite; // 후드 라이더 + 네온 오토바이
   // sim의 고정 크기 풀과 1:1 매핑 — 생성은 create()에서 단 한 번 (D6)
   private obstacleRects: Phaser.GameObjects.Image[] = []; // 아포칼립스 장애물(가변 높이)
   private obstacleType: string[] = []; // 슬롯별 배정된 아트 타입 키
@@ -328,7 +328,11 @@ export class GameScene extends Phaser.Scene {
 
   preload() {
     // 전처리된 게임 텍스처 로드 (Vite 해시 URL). 결정론과 무관한 렌더 자원.
-    this.load.image("player-ride", playerRideUrl);
+    // player-ride: 6프레임 스프라이트시트(전처리본 2082×300 → 각 347×300). 배경 투명·하단 정렬 완료.
+    this.load.spritesheet("player-ride", playerRideUrl, {
+      frameWidth: 347,
+      frameHeight: 300,
+    });
     this.load.image("player-jump", playerJumpUrl);
     this.load.image("player-hit", playerHitUrl);
     this.load.image("player-dead", playerDeadUrl);
@@ -406,6 +410,18 @@ export class GameScene extends Phaser.Scene {
         repeat: 0,
       });
     }
+    // player-ride 달리기 애니 — 6프레임 루프, 고스트와 같은 속도(12fps=0.5s/cycle).
+    if (!this.anims.exists("player-ride-anim")) {
+      this.anims.create({
+        key: "player-ride-anim",
+        frames: this.anims.generateFrameNumbers("player-ride", {
+          start: 0,
+          end: 5,
+        }),
+        frameRate: GHOST_RUN_FPS,
+        repeat: -1,
+      });
+    }
 
     // 고스트 풀: 발로 뛰는 헤일로 고스트(죽은 라이벌). 보라 틴트 + 반투명.
     for (let i = 0; i < GHOST_TOP_N; i++) {
@@ -427,14 +443,15 @@ export class GameScene extends Phaser.Scene {
     // 네온 트레일 — 플레이어보다 먼저 add → 플레이어 스프라이트 뒤에서 그려짐.
     this.trailGfx = this.add.graphics();
 
-    // 플레이어: 후드 라이더 + 네온 오토바이. 아트는 히트박스보다 넓다(overhang).
+    // 플레이어: 네온 바이커 소녀. 아트는 히트박스보다 넓다(overhang).
     this.playerRect = this.add
-      .image(toScreenX(C.PLAYER_X), GROUND_Y_PX, "player-ride")
+      .sprite(toScreenX(C.PLAYER_X), GROUND_Y_PX, "player-ride")
       .setOrigin(PLAYER_ART_ORIGIN_X, PLAYER_ART_ORIGIN_Y);
     this.playerRect.setDisplaySize(
       (this.playerRect.width / this.playerRect.height) * PLAYER_ART_H,
       PLAYER_ART_H,
     );
+    this.playerRect.play("player-ride-anim");
     // 바이크 시안 네온 글로우 — WebGL postFX, 비지원 기기는 무시 (렌더 전용, 결정론 무관)
     try {
       if (this.playerRect.postFX) {
@@ -1980,7 +1997,14 @@ export class GameScene extends Phaser.Scene {
           ? "player-jump"
           : "player-ride";
     if (this.playerRect.texture.key !== playerTex) {
-      this.playerRect.setTexture(playerTex);
+      if (playerTex === "player-ride") {
+        // 달리기 복귀 — 애니 재개
+        this.playerRect.play("player-ride-anim");
+      } else {
+        // jump/hit/dead 정지 컷 전환
+        this.playerRect.stop();
+        this.playerRect.setTexture(playerTex);
+      }
       // 사망 컷(오토바이에서 날아가는)은 살짝 크게 — 극적이되 과하지 않게.
       const artH =
         playerTex === "player-dead" ? PLAYER_ART_H * 1.25 : PLAYER_ART_H;
