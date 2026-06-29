@@ -332,9 +332,9 @@ export class GameScene extends Phaser.Scene {
     this.load.image("player-jump", playerJumpUrl);
     this.load.image("player-hit", playerHitUrl);
     this.load.image("player-dead", playerDeadUrl);
-    // ghost-run: 6프레임 스프라이트시트(전처리본 1608×300 → 각 268×300). 배경 투명·정렬 완료.
+    // ghost-run: 6프레임 스프라이트시트(전처리본 1434×300 → 각 239×300). 배경 투명·정렬 완료.
     this.load.spritesheet("ghost-run", ghostRunSheetUrl, {
-      frameWidth: 268,
+      frameWidth: 239,
       frameHeight: 300,
     });
     // ghost-collapse: 엎어짐 3프레임(전처리본 1260×320 → 각 420×320). run과 동일 배율(높이300 기준).
