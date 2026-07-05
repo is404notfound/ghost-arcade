@@ -362,6 +362,7 @@ export class GameScene extends Phaser.Scene {
   private biomeMix = 1; // 0→1 크로스페이드 진행 (1 = 정착)
   private biomeLastMs = 0; // mix 적분용 직전 renderTimeMs
   private lastKmMilestone = 0; // 마일스톤 팡파레 중복 방지
+  private zoomPunch = { t: 0 }; // 펀치 줌 트윈 상태 (0 = 기본 줌)
   // 오글거리는 랜덤 말풍선 — 일정 간격마다 표시 (렌더 전용)
   private bubbleMs = 0; // 다음 말풍선까지 남은 ms
   private bubble?: Phaser.GameObjects.Container;
@@ -1070,6 +1071,10 @@ export class GameScene extends Phaser.Scene {
     this.biomeMix = 1;
     this.lastKmMilestone = 0;
     if (this.skyGfx) this.drawSky(BIOMES[0]!);
+    // 펀치 줌 중 재시작 대비 — 카메라를 기본 줌·중심으로 복원
+    this.tweens.killTweensOf(this.zoomPunch);
+    this.zoomPunch.t = 0;
+    this.cameras.main.setZoom(RENDER_DPR).centerOn(DESIGN_W / 2, DESIGN_H / 2);
     if (this.feverOverlay) this.feverOverlay.setVisible(false);
     if (this.infiniteJumpText) this.infiniteJumpText.setVisible(false);
     if (this.spectateHintText) this.spectateHintText.setVisible(false);
@@ -1254,6 +1259,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (ev & C.EV_HIT) {
       this.cameras.main.flash(140, 255, 70, 70);
+      this.punchZoom(1.07, 90); // 짧고 약하게 — 기존 쉐이크와 중첩
       // 피격 진동 — 점프보다 길고 강하게(타격감).
       navigator.vibrate?.(60);
     }
@@ -1273,6 +1279,7 @@ export class GameScene extends Phaser.Scene {
     if (ev & C.EV_FEVER_START) {
       this.feverCount++;
       this.cameras.main.flash(200, 255, 215, 0); // 황금빛 노란 플래시 (피격 빨강과 구분)
+      this.punchZoom(1.12, 170); // 주인공 쪽으로 펀치 줌인 — 가속감 강조
       this.feverOverlay.setVisible(true);
       // 큰 FEVER! 연출 — popup()보다 크게 직접 생성
       const fx = DESIGN_W / 2;
@@ -1491,6 +1498,39 @@ export class GameScene extends Phaser.Scene {
         ? rowLabel(ranks[myIdx]!, myIdx + 1, true)
         : "",
     );
+  }
+
+  /**
+   * 주인공 쪽 펀치 줌 — 카메라를 잠깐 확대했다 복귀 (렌더 전용, 요요 트윈).
+   * 주인공 위치를 고정점으로 줌·팬을 함께 움직여 "주인공에게 파고드는" 느낌.
+   * 간단 버전: HUD도 같은 카메라를 쓰므로 factor ≤ 1.15, 왕복 0.4s 이내로만 —
+   * 더 길고 깊은 줌이 필요해지면 UI 전용 카메라 분리로 승격할 것.
+   */
+  private punchZoom(factor: number, halfMs: number): void {
+    const cam = this.cameras.main;
+    this.tweens.killTweensOf(this.zoomPunch);
+    this.zoomPunch.t = 0;
+    // 고정점: 바이크 몸통 근방 (지면 위 50px). 줌 중에도 이 점은 화면상 제자리.
+    const px = toScreenX(C.PLAYER_X);
+    const py = toScreenY(50);
+    const cx0 = DESIGN_W / 2;
+    const cy0 = DESIGN_H / 2;
+    this.tweens.add({
+      targets: this.zoomPunch,
+      t: 1,
+      duration: halfMs,
+      yoyo: true,
+      ease: "Quad.out",
+      onUpdate: () => {
+        const z = 1 + (factor - 1) * this.zoomPunch.t;
+        cam.setZoom(RENDER_DPR * z);
+        // 고정점 p 유지: 새 중심 c' = p + (c0 − p)/z
+        cam.centerOn(px + (cx0 - px) / z, py + (cy0 - py) / z);
+      },
+      onComplete: () => {
+        cam.setZoom(RENDER_DPR).centerOn(cx0, cy0);
+      },
+    });
   }
 
   /**
