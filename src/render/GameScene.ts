@@ -126,6 +126,22 @@ function blendBiome(a: BiomePalette, b: BiomePalette, t: number): BiomePalette {
     grid: lerpColor(a.grid, b.grid, t),
   };
 }
+
+// ── 정전(Blackout) 트랩 — 우측 절반 시야 차단 (렌더 전용, 장거리 스파이스) ──
+// 발동 지점은 (시드)만의 순수 함수 → 같은 시드의 모든 유저가 같은 거리에서 겪는다
+// (리더보드 공정성). sim은 전혀 건드리지 않으므로 버전·고스트 무관.
+// 예고 1.2s(네온 플리커 + ⚠) → 암전 3s(우측 ~95%, 경계 그라데이션) → 복전 플리커.
+const BLACKOUT_START_M = 1000; // 첫 발동 최소 거리 — 초반 유저는 안 만난다
+const BLACKOUT_GAP_MIN_M = 700; // 발동 간 최소 간격(m)
+const BLACKOUT_GAP_JITTER_M = 500; // 간격 지터(m) — 시드 LCG로 결정
+const BLACKOUT_WARN_MS = 1200; // 예고(플리커) 시간
+const BLACKOUT_DARK_MS = 3000; // 암전 유지(페이드인 포함)
+const BLACKOUT_FADE_MS = 250; // 암전 페이드인
+const BLACKOUT_RECOVER_MS = 600; // 복전 플리커
+const BLACKOUT_MAX_ALPHA = 0.95; // 완전 검정 대신 실루엣이 아주 희미하게
+const BLACKOUT_EDGE0 = DESIGN_W * 0.45; // 그라데이션 경계 시작
+const BLACKOUT_EDGE1 = DESIGN_W * 0.55; // 이후부터 완전 차단
+type BlackoutPhase = "idle" | "warn" | "dark" | "recover";
 const SKYLINE_PARALLAX = 0.2; // 먼 스카이라인 스크롤 배수(월드속도 대비)
 const GRID_SPACING = 70; // 바닥 그리드 수직선 간격(px)
 const DEAD_PLAYER_ALPHA = 0.25; // 사망 후 내 캐릭터 디밍
@@ -363,6 +379,13 @@ export class GameScene extends Phaser.Scene {
   private biomeLastMs = 0; // mix 적분용 직전 renderTimeMs
   private lastKmMilestone = 0; // 마일스톤 팡파레 중복 방지
   private zoomPunch = { t: 0 }; // 펀치 줌 트윈 상태 (0 = 기본 줌)
+  // ── 정전 트랩 상태 (렌더 전용) ──
+  private blackoutGfx!: Phaser.GameObjects.Graphics;
+  private blackoutWarnText!: Phaser.GameObjects.Text;
+  private blackoutPhase: BlackoutPhase = "idle";
+  private blackoutPhaseStartMs = 0; // 현재 phase 진입 시점(renderTimeMs)
+  private blackoutNextAtM = Infinity; // 다음 발동 거리(m) — 시드 LCG로 갱신
+  private blackoutLcg = 0; // 발동 간격 결정용 LCG 상태 (시드에서 파생)
   // 오글거리는 랜덤 말풍선 — 일정 간격마다 표시 (렌더 전용)
   private bubbleMs = 0; // 다음 말풍선까지 남은 ms
   private bubble?: Phaser.GameObjects.Container;
@@ -437,6 +460,20 @@ export class GameScene extends Phaser.Scene {
     // 배경 레이어 (하늘·노을 선·패럴랙스 스카이라인·바닥 그리드).
     // 가장 먼저 add → 디스플레이 리스트 최하단 = 모든 게임 오브젝트 뒤에 렌더.
     this.createBackground();
+
+    // 정전 트랩 오버레이 — 월드(depth 0) 위, HUD 텍스트(10+)·순위 칩(22) 아래.
+    this.blackoutGfx = this.add.graphics().setDepth(6);
+    this.blackoutWarnText = this.add
+      .text(DESIGN_W * 0.75, 140, "⚠ 정전 경고", {
+        fontSize: "20px",
+        color: "#ff5fa2",
+        fontStyle: "bold",
+        resolution: TXT_RES,
+      })
+      .setOrigin(0.5)
+      .setStroke("#1a0010", 5)
+      .setDepth(7)
+      .setVisible(false);
 
     // 메테오 풀은 createBackground() 안에서 태양보다 먼저 생성됨 (Z-order 보장).
     this.meteorSpawnMs = 0; // 게임 시작 즉시 첫 스폰
@@ -1075,6 +1112,12 @@ export class GameScene extends Phaser.Scene {
     this.tweens.killTweensOf(this.zoomPunch);
     this.zoomPunch.t = 0;
     this.cameras.main.setZoom(RENDER_DPR).centerOn(DESIGN_W / 2, DESIGN_H / 2);
+    // 정전 트랩 리셋 — 발동 수열을 시드에서 재파생 (같은 시드 = 같은 발동 지점)
+    this.blackoutLcg = this.seed | 0;
+    this.blackoutNextAtM = BLACKOUT_START_M + this.blackoutRoll(BLACKOUT_GAP_JITTER_M);
+    this.blackoutPhase = "idle";
+    if (this.blackoutGfx) this.blackoutGfx.clear();
+    if (this.blackoutWarnText) this.blackoutWarnText.setVisible(false);
     if (this.feverOverlay) this.feverOverlay.setVisible(false);
     if (this.infiniteJumpText) this.infiniteJumpText.setVisible(false);
     if (this.spectateHintText) this.spectateHintText.setVisible(false);
@@ -1498,6 +1541,96 @@ export class GameScene extends Phaser.Scene {
         ? rowLabel(ranks[myIdx]!, myIdx + 1, true)
         : "",
     );
+  }
+
+  /** 정전 트랩 간격 롤 — 시드 파생 LCG (렌더 전용, sim RNG와 완전 분리) */
+  private blackoutRoll(range: number): number {
+    this.blackoutLcg = (Math.imul(this.blackoutLcg, 1664525) + 1013904223) | 0;
+    return (this.blackoutLcg >>> 8) % (range + 1);
+  }
+
+  /**
+   * 정전 트랩 상태기 — 매 렌더 프레임 호출 (렌더 전용).
+   * idle → warn(1.2s 플리커+경고) → dark(3s 우측 차단) → recover(0.6s 복전) → idle.
+   * 발동 거리는 시드 결정론 수열(blackoutNextAtM), 페이즈 전환은 렌더 시계.
+   */
+  private updateBlackout(s: {
+    gameOver: boolean;
+    distance: number;
+    feverFramesLeft: number;
+  }): void {
+    if (s.gameOver) {
+      // 사망 → 즉시 해제: 결과 패널(depth 0)이 오버레이에 가리지 않게
+      if (this.blackoutPhase !== "idle") {
+        this.blackoutPhase = "idle";
+        this.blackoutGfx.clear();
+        this.blackoutWarnText.setVisible(false);
+      }
+      return;
+    }
+    const now = this.renderTimeMs;
+    const el = now - this.blackoutPhaseStartMs;
+
+    switch (this.blackoutPhase) {
+      case "idle":
+        if (s.distance >= this.blackoutNextAtM) {
+          // 다음 발동 거리는 지금 확정 — 스킵 여부와 무관하게 수열은 전진 (결정론)
+          this.blackoutNextAtM += BLACKOUT_GAP_MIN_M + this.blackoutRoll(BLACKOUT_GAP_JITTER_M);
+          if (s.feverFramesLeft > 0) break; // 피버 중엔 스킵 — 무적이라 무의미
+          this.blackoutPhase = "warn";
+          this.blackoutPhaseStartMs = now;
+          this.blackoutWarnText.setVisible(true);
+        }
+        break;
+      case "warn": {
+        // 우측 네온이 지지직 — 약한 암막 플리커 + 경고 점멸
+        this.drawBlackoutOverlay(0.1 + 0.1 * Math.abs(Math.sin(now * 0.03)));
+        this.blackoutWarnText.setAlpha(0.4 + 0.6 * Math.abs(Math.sin(now * 0.015)));
+        if (el >= BLACKOUT_WARN_MS) {
+          this.blackoutPhase = "dark";
+          this.blackoutPhaseStartMs = now;
+          this.blackoutWarnText.setVisible(false);
+        }
+        break;
+      }
+      case "dark": {
+        this.drawBlackoutOverlay(
+          BLACKOUT_MAX_ALPHA * Math.min(1, el / BLACKOUT_FADE_MS),
+        );
+        if (el >= BLACKOUT_DARK_MS) {
+          this.blackoutPhase = "recover";
+          this.blackoutPhaseStartMs = now;
+        }
+        break;
+      }
+      case "recover": {
+        const p = Math.min(1, el / BLACKOUT_RECOVER_MS);
+        // 전원 들어오듯 플리커하며 밝아짐
+        this.drawBlackoutOverlay(
+          BLACKOUT_MAX_ALPHA * (1 - p) * (0.55 + 0.45 * Math.abs(Math.sin(now * 0.05))),
+        );
+        if (p >= 1) {
+          this.blackoutPhase = "idle";
+          this.blackoutGfx.clear();
+        }
+        break;
+      }
+    }
+  }
+
+  /** 정전 오버레이 드로우 — 중앙 그라데이션 경계 + 우측 솔리드 차단 */
+  private drawBlackoutOverlay(alpha: number): void {
+    const g = this.blackoutGfx;
+    g.clear();
+    if (alpha <= 0.002) return;
+    const steps = 10;
+    const stepW = (BLACKOUT_EDGE1 - BLACKOUT_EDGE0) / steps;
+    for (let i = 0; i < steps; i++) {
+      g.fillStyle(0x000008, alpha * ((i + 1) / steps));
+      g.fillRect(BLACKOUT_EDGE0 + i * stepW, 0, stepW + 1, DESIGN_H);
+    }
+    g.fillStyle(0x000008, alpha);
+    g.fillRect(BLACKOUT_EDGE1, 0, DESIGN_W - BLACKOUT_EDGE1, DESIGN_H);
   }
 
   /**
@@ -2203,6 +2336,7 @@ export class GameScene extends Phaser.Scene {
     this.biomeLastMs = this.renderTimeMs;
 
     this.drawGroundGrid(worldPx, pal);
+    this.updateBlackout(s);
 
     // 플레이어 (무적 중엔 시뮬 프레임 기반 깜빡임, 죽으면 그 자리에서 디밍).
     // 아트 origin이 하단이므로 y = 히트박스 바닥의 화면 y = toScreenY(player.y).
