@@ -19,8 +19,18 @@ const DISTANCE_OUTLIER_CEILING = (SPEED_MAX / UNITS_PER_METER) * 900;
 const REMOTE_TIMEOUT_MS = 5000;
 
 // ghost_runs 테이블 컬럼 타입.
-// meta 컬럼은 Forward-design 슬롯 — 아직 DB에 없어도 클라에서 null-safe하게 처리.
+// meta 컬럼은 Forward-design 슬롯 (migrations/001) — 컬럼이 없는 구 DB에서는
+// missing-column 에러를 감지해 meta 없이 재시도한다 (아래 isMissingColumnError).
 type DbRow = { distance: number; log: unknown; meta?: Partial<RunMeta> | null };
+
+// PostgREST는 존재하지 않는 컬럼을 조용히 무시하지 않는다:
+// select → 42703 (undefined_column), insert → PGRST204 (schema cache에 컬럼 없음).
+// 이 두 코드만 "스키마가 아직 구버전" 신호로 보고 meta 없이 폴백한다.
+function isMissingColumnError(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return false;
+  const code = (e as { code?: unknown }).code;
+  return code === '42703' || code === 'PGRST204';
+}
 
 /**
  * 오늘 시드 기준 원격 상위 N 기록을 가져온다.
@@ -37,15 +47,22 @@ export async function loadTopRunsRemote(seed: number): Promise<GhostRecord[]> {
   const timer = setTimeout(() => controller.abort(), REMOTE_TIMEOUT_MS);
 
   try {
-    const { data, error } = (await client
-      .from('ghost_runs')
-      // meta 컬럼은 Forward-design 슬롯 — DB에 없으면 undefined로 조용히 처리됨
-      .select('distance, log, meta')
-      .eq('seed', seed)
-      .eq('sim_version', SIM_VERSION)
-      .order('distance', { ascending: false })
-      .limit(GHOST_TOP_N)
-      .abortSignal(controller.signal)) as { data: DbRow[] | null; error: unknown };
+    const selectTop = (cols: string) =>
+      client
+        .from('ghost_runs')
+        .select(cols)
+        .eq('seed', seed)
+        .eq('sim_version', SIM_VERSION)
+        .order('distance', { ascending: false })
+        .limit(GHOST_TOP_N)
+        .abortSignal(controller.signal) as unknown as Promise<{
+        data: DbRow[] | null;
+        error: unknown;
+      }>;
+
+    let { data, error } = await selectTop('distance, log, meta');
+    // meta 컬럼 미적용 DB (migrations/001 이전) — meta 없이 재시도
+    if (isMissingColumnError(error)) ({ data, error } = await selectTop('distance, log'));
 
     clearTimeout(timer);
     if (error) throw error;
@@ -97,24 +114,33 @@ export async function submitRunRemote(
   if (!client) return;
 
   // meta 슬롯: log.meta 우선, 파라미터 meta로 보완 (Forward-design)
-  // DB meta 컬럼이 아직 없어도 insert는 조용히 무시됨 (Supabase 기본 동작)
   const mergedMeta = meta ?? log.meta ?? undefined;
 
-  const insertPromise = client.from('ghost_runs').insert({
+  const baseRow = {
     seed,
     sim_version: SIM_VERSION,
     distance,
     log: log as unknown as Record<string, unknown>,
     is_bot: isBot,
-    ...(mergedMeta ? { meta: mergedMeta } : {}),
-  }) as unknown as Promise<{ error: unknown }>;
+  };
   // INSERT hang 방지 — Supabase 장애 시 무한 대기 없이 로컬 기록으로 계속
-  const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new DOMException('INSERT timeout', 'AbortError')), REMOTE_TIMEOUT_MS),
-  );
+  const raceInsert = (row: Record<string, unknown>) =>
+    Promise.race([
+      client.from('ghost_runs').insert(row) as unknown as Promise<{ error: unknown }>,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new DOMException('INSERT timeout', 'AbortError')),
+          REMOTE_TIMEOUT_MS,
+        ),
+      ),
+    ]);
 
   try {
-    const { error } = await Promise.race([insertPromise, timeoutPromise]);
+    let { error } = await raceInsert(
+      mergedMeta ? { ...baseRow, meta: mergedMeta } : baseRow,
+    );
+    // meta 컬럼 미적용 DB (migrations/001 이전) — meta 빼고 재시도해 기록 자체는 살린다
+    if (mergedMeta && isMissingColumnError(error)) ({ error } = await raceInsert(baseRow));
     if (error) throw error;
   } catch (e) {
     // AbortError는 의도적 타임아웃 — Sentry 노이즈 제외

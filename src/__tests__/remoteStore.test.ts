@@ -138,6 +138,24 @@ describe('loadTopRunsRemote', () => {
     vi.useRealTimers();
   });
 
+  it('meta 컬럼 없음(42703): meta 제외 select로 재시도해 데이터 반환', async () => {
+    const getClient = await getGetSupabaseClient();
+    const logObj = JSON.parse(serializeLog(log)) as unknown;
+    const { client, chain } = makeChain();
+    chain.abortSignal
+      .mockResolvedValueOnce({ data: null, error: { code: '42703', message: 'column ghost_runs.meta does not exist' } })
+      .mockResolvedValueOnce({ data: [{ distance: 100, log: logObj }], error: null });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getClient.mockReturnValue(client as any);
+    const { loadTopRunsRemote } = await importRemote();
+
+    const result = await loadTopRunsRemote(seed);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.distance).toBe(100);
+    // 재시도 select는 meta 없이 호출되어야 한다
+    expect(chain.select).toHaveBeenLastCalledWith('distance, log');
+  });
+
   it('시드 불일치 레코드 스킵', async () => {
     const getClient = await getGetSupabaseClient();
     const otherLog = createInputLog(99999);
@@ -194,6 +212,26 @@ describe('submitRunRemote', () => {
 
     await submitRunRemote(seed, log, -1);
     expect(chain.insert).not.toHaveBeenCalled();
+  });
+
+  it('meta 컬럼 없음(PGRST204): meta 빼고 재시도해 기록을 살린다', async () => {
+    const getClient = await getGetSupabaseClient();
+    const { client, chain } = makeChain();
+    chain.insert
+      .mockResolvedValueOnce({ error: { code: 'PGRST204', message: "Could not find the 'meta' column" } })
+      .mockResolvedValueOnce({ error: null });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getClient.mockReturnValue(client as any);
+    const { submitRunRemote } = await importRemote();
+
+    await submitRunRemote(seed, log, 150, false, { nickname: '테스터' });
+    expect(chain.insert).toHaveBeenCalledTimes(2);
+    // 1차는 meta 포함, 2차(재시도)는 meta 제외
+    expect(chain.insert.mock.calls[0]![0]).toHaveProperty('meta');
+    expect(chain.insert.mock.calls[1]![0]).not.toHaveProperty('meta');
+
+    const { captureException } = await import('@sentry/browser');
+    expect(vi.mocked(captureException)).not.toHaveBeenCalled();
   });
 
   it('네트워크 오류: 예외 미전파', async () => {

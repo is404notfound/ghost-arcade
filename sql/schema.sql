@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS ghost_runs (
   log          JSONB       NOT NULL,
   is_bot       BOOLEAN     NOT NULL DEFAULT FALSE,
   character_id TEXT        NOT NULL DEFAULT 'base',
+  -- 닉네임·캐릭터 등 RunMeta 슬롯 (inputLog.ts DEFAULT_META 참조). NULL 허용 — 클라가 관대하게 처리.
+  meta         JSONB,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
