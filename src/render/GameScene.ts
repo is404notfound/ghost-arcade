@@ -78,12 +78,52 @@ const COLOR_GHOST = 0xb39ddb; // 고스트 — 보라 계열 반투명(스프라
 const TXT_RES = Math.min(Math.max(window.devicePixelRatio || 1, 2), 3);
 
 // 배경(코드 스킨) 팔레트 — docs/design/asset-guide.md §3 컬러 토큰. 전부 렌더 전용.
-const COLOR_SKY_TOP = 0x170a2e; // 하늘 상단(딥 인디고)
-const COLOR_SKY_LOW = 0x6b1248; // 지평선(마젠타-퍼플)
+// 하늘 색은 BIOMES[0](기본 노을 팔레트)로 이동 — 바이옴 전환 도입
 const COLOR_NEON_CYAN = 0x36f9f6; // 바닥 그리드 / 지평선 글로우
 const COLOR_SKYLINE = 0x1b0c33; // 먼 도시 실루엣
 const COLOR_SKYLINE_WIN = 0xff6fb0; // 실루엣 창문 점
 const COLOR_GROUND_DARK = 0x0a0612; // 지면(지평선 아래)
+
+// ── 바이옴 팔레트 — 1000m마다 순환 전환 (장거리 지루함 대책 2, 렌더 전용) ──
+// 하늘 그라데이션 + 바닥 베이스 + 그리드 네온만 바꾼다. 태양·간판·게임플레이 4색
+// (플레이어/고스트/연료/위험)은 불변 — 색이 곧 정보라는 규칙(asset-guide §3)을 지킨다.
+interface BiomePalette {
+  skyTop: number;
+  skyLow: number;
+  groundTop: number;
+  grid: number;
+}
+const BIOMES: readonly BiomePalette[] = [
+  // 0: 세기말 노을 (기존 기본)
+  { skyTop: 0x170a2e, skyLow: 0x6b1248, groundTop: 0x301552, grid: COLOR_NEON_CYAN },
+  // 1: 심야 블루 — 도시가 잠든 딥 블루 구역
+  { skyTop: 0x05071f, skyLow: 0x12275e, groundTop: 0x101c4a, grid: 0x5e8bff },
+  // 2: 독성 그린 — 오염 구역의 형광 녹색
+  { skyTop: 0x041712, skyLow: 0x0e5a3a, groundTop: 0x0e3d2e, grid: 0x50ffb0 },
+  // 3: 심홍 — 화재 구역의 붉은 하늘
+  { skyTop: 0x1f060e, skyLow: 0x7a1430, groundTop: 0x4a0f28, grid: 0xff5f7a },
+];
+const BIOME_METERS = 1000; // 구간 길이(m)
+const BIOME_FADE_MS = 2000; // 크로스페이드 시간
+
+function lerpColor(a: number, b: number, t: number): number {
+  const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
+  const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255;
+  return (
+    (Math.round(ar + (br - ar) * t) << 16) |
+    (Math.round(ag + (bg - ag) * t) << 8) |
+    Math.round(ab + (bb - ab) * t)
+  );
+}
+
+function blendBiome(a: BiomePalette, b: BiomePalette, t: number): BiomePalette {
+  return {
+    skyTop: lerpColor(a.skyTop, b.skyTop, t),
+    skyLow: lerpColor(a.skyLow, b.skyLow, t),
+    groundTop: lerpColor(a.groundTop, b.groundTop, t),
+    grid: lerpColor(a.grid, b.grid, t),
+  };
+}
 const SKYLINE_PARALLAX = 0.2; // 먼 스카이라인 스크롤 배수(월드속도 대비)
 const GRID_SPACING = 70; // 바닥 그리드 수직선 간격(px)
 const DEAD_PLAYER_ALPHA = 0.25; // 사망 후 내 캐릭터 디밍
@@ -313,6 +353,13 @@ export class GameScene extends Phaser.Scene {
   // 레이저 경고 이펙트 — 렌더 전용 Graphics 레이어
   private laserGraphics!: Phaser.GameObjects.Graphics;
   private renderTimeMs = 0; // 렌더 전용 시계 (sim 무관, Math.sin 연출용)
+  // ── 바이옴 전환 상태 (렌더 전용) ──
+  private skyGfx!: Phaser.GameObjects.Graphics;
+  private biomeFrom = 0; // 페이드 시작 팔레트 인덱스
+  private biomeTo = 0; // 목표 팔레트 인덱스
+  private biomeMix = 1; // 0→1 크로스페이드 진행 (1 = 정착)
+  private biomeLastMs = 0; // mix 적분용 직전 renderTimeMs
+  private lastKmMilestone = 0; // 마일스톤 팡파레 중복 방지
   // 오글거리는 랜덤 말풍선 — 일정 간격마다 표시 (렌더 전용)
   private bubbleMs = 0; // 다음 말풍선까지 남은 ms
   private bubble?: Phaser.GameObjects.Container;
@@ -1009,6 +1056,12 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.weeklyPanel) this.weeklyPanel.setVisible(false);
     if (this.comboDisplay) this.comboDisplay.setVisible(false);
+    // 바이옴/마일스톤 리셋 — 새 판은 항상 기본 노을 팔레트에서 시작
+    this.biomeFrom = 0;
+    this.biomeTo = 0;
+    this.biomeMix = 1;
+    this.lastKmMilestone = 0;
+    if (this.skyGfx) this.drawSky(BIOMES[0]!);
     if (this.feverOverlay) this.feverOverlay.setVisible(false);
     if (this.infiniteJumpText) this.infiniteJumpText.setVisible(false);
     if (this.spectateHintText) this.spectateHintText.setVisible(false);
@@ -1431,6 +1484,42 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  /**
+   * 거리 마일스톤 팡파레 — 1000m마다 새 구역 진입을 알린다 (렌더 전용).
+   * 색은 진입하는 바이옴의 그리드 네온과 맞춰 "구역이 바뀌었다"를 함께 전달.
+   */
+  private showMilestonePopup(meters: number): void {
+    const colorHex = `#${BIOMES[this.biomeTo]!.grid.toString(16).padStart(6, "0")}`;
+    const txt = this.add
+      .text(DESIGN_W / 2, DESIGN_H * 0.24, `⚡ ${meters.toLocaleString()}M`, {
+        fontSize: "34px",
+        fontFamily: "'Orbitron', monospace",
+        fontStyle: "bold",
+        color: colorHex,
+        resolution: TXT_RES,
+      })
+      .setOrigin(0.5)
+      .setStroke("#0a0a1e", 6)
+      .setAlpha(0)
+      .setDepth(11);
+    this.tweens.add({
+      targets: txt,
+      alpha: 0.95,
+      scale: { from: 0.7, to: 1 },
+      duration: 260,
+      ease: "Back.out",
+    });
+    this.tweens.add({
+      targets: txt,
+      y: DESIGN_H * 0.24 - 46,
+      alpha: 0,
+      delay: 1000,
+      duration: 620,
+      ease: "Cubic.in",
+      onComplete: () => txt.destroy(),
+    });
+  }
+
   /** 개인 신기록 달성 팝업 — 화면 중앙에서 위로 올라가며 사라짐 */
   private showPersonalBestPopup(prevBestM: number, nowM: number): void {
     const cx = DESIGN_W / 2;
@@ -1495,15 +1584,9 @@ export class GameScene extends Phaser.Scene {
   /** 배경 레이어 1회 생성 (하늘·노을 선·먼 스카이라인·바닥 그리드). 전부 렌더 전용. */
   private createBackground() {
     // 1) 하늘 그라데이션 (상단 인디고 → 지평선 마젠타). 지평선 위만 덮는다.
-    const sky = this.add.graphics();
-    sky.fillGradientStyle(
-      COLOR_SKY_TOP,
-      COLOR_SKY_TOP,
-      COLOR_SKY_LOW,
-      COLOR_SKY_LOW,
-      1,
-    );
-    sky.fillRect(0, 0, DESIGN_W, GROUND_Y_PX);
+    // 바이옴 전환 시 drawSky()로 재드로우 — 평상시엔 정적.
+    this.skyGfx = this.add.graphics();
+    this.drawSky(BIOMES[0]!);
 
     // 1a) 레이저 이펙트 Graphics — 하늘 직후, 메테오·태양보다 먼저 add → 태양 뒤에 렌더.
     this.laserGraphics = this.add.graphics();
@@ -1560,19 +1643,28 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** 하늘 그라데이션 재드로우 — 바이옴 전환 크로스페이드 중에만 매 프레임 호출. */
+  private drawSky(pal: BiomePalette) {
+    const g = this.skyGfx;
+    g.clear();
+    g.fillGradientStyle(pal.skyTop, pal.skyTop, pal.skyLow, pal.skyLow, 1);
+    g.fillRect(0, 0, DESIGN_W, GROUND_Y_PX);
+  }
+
   /** 바닥 네온 그리드. worldPx만큼 좌측으로 흐르는 원근 그리드 (매 프레임 redraw). */
-  private drawGroundGrid(worldPx: number) {
+  private drawGroundGrid(worldPx: number, pal: BiomePalette = BIOMES[0]!) {
     const g = this.groundGrid;
     g.clear();
     const horizon = GROUND_Y_PX;
     const bottom = DESIGN_H;
     const cx = DESIGN_W * 0.5;
     const depth = bottom - horizon;
+    const neon = pal.grid;
 
     // 바닥 베이스 — 세로 그라데이션(지평선쪽 보라빛 → 바닥은 더 어둡게)으로 평면감 완화.
     g.fillGradientStyle(
-      0x301552,
-      0x301552,
+      pal.groundTop,
+      pal.groundTop,
       COLOR_GROUND_DARK,
       COLOR_GROUND_DARK,
       1,
@@ -1581,7 +1673,7 @@ export class GameScene extends Phaser.Scene {
 
     // 지평선 글로우 밴드 — 지평선 위아래로 번지는 네온 발광(블룸 느낌).
     for (let i = 0; i < 5; i++) {
-      g.fillStyle(COLOR_NEON_CYAN, 0.14 * (1 - i / 5));
+      g.fillStyle(neon, 0.14 * (1 - i / 5));
       g.fillRect(0, horizon - 2 + i * 2, DESIGN_W, 2);
     }
 
@@ -1592,16 +1684,16 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < rows; i++) {
       const p = (i + scroll) / rows; // 0(지평선)→1(바닥)
       const y = horizon + depth * (p * p);
-      g.lineStyle(1, COLOR_NEON_CYAN, 0.05 + 0.24 * p); // 가까울수록 진하게
+      g.lineStyle(1, neon, 0.05 + 0.24 * p); // 가까울수록 진하게
       g.lineBetween(0, y, DESIGN_W, y);
     }
 
     // 지평선 메인 라인(위 글로우 위에 또렷하게).
-    g.lineStyle(2, COLOR_NEON_CYAN, 0.9);
+    g.lineStyle(2, neon, 0.9);
     g.lineBetween(0, horizon, DESIGN_W, horizon);
 
     // 수직 그리드(바닥에서 바깥으로 퍼지는 원근감, 좌측으로 흐름).
-    g.lineStyle(1, COLOR_NEON_CYAN, 0.2);
+    g.lineStyle(1, neon, 0.2);
     const off = worldPx % GRID_SPACING;
     for (let gx = -off; gx <= DESIGN_W + GRID_SPACING; gx += GRID_SPACING) {
       const bx = cx + (gx - cx) * 2.0;
@@ -1609,7 +1701,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 플레이어 주행 레인 반사 띠 — 바닥 중간에 옅은 시안 띠로 주행감/입체감 강조.
-    g.fillStyle(COLOR_NEON_CYAN, 0.045);
+    g.fillStyle(neon, 0.045);
     g.fillRect(0, horizon + depth * 0.5, DESIGN_W, depth * 0.16);
   }
 
@@ -2038,7 +2130,30 @@ export class GameScene extends Phaser.Scene {
     this.sunGraphics.y = 214 + jumpY * 0.3; // 태양: 약하게 점프 연동
     this.updateCodeSun();
 
-    this.drawGroundGrid(worldPx);
+    // ── 바이옴 전환 (1000m마다 팔레트 순환, 렌더 전용) + 마일스톤 팡파레 ──
+    const km = Math.floor(world.distance / BIOME_METERS);
+    const targetBiome = km % BIOMES.length;
+    if (targetBiome !== this.biomeTo) {
+      this.biomeFrom = this.biomeTo;
+      this.biomeTo = targetBiome;
+      this.biomeMix = 0;
+    }
+    if (!s.gameOver && km > this.lastKmMilestone) {
+      this.lastKmMilestone = km;
+      this.showMilestonePopup(km * BIOME_METERS);
+    }
+    let pal = BIOMES[this.biomeTo]!;
+    if (this.biomeMix < 1) {
+      this.biomeMix = Math.min(
+        1,
+        this.biomeMix + (this.renderTimeMs - this.biomeLastMs) / BIOME_FADE_MS,
+      );
+      pal = blendBiome(BIOMES[this.biomeFrom]!, BIOMES[this.biomeTo]!, this.biomeMix);
+      this.drawSky(pal); // 크로스페이드 중에만 재드로우
+    }
+    this.biomeLastMs = this.renderTimeMs;
+
+    this.drawGroundGrid(worldPx, pal);
 
     // 플레이어 (무적 중엔 시뮬 프레임 기반 깜빡임, 죽으면 그 자리에서 디밍).
     // 아트 origin이 하단이므로 y = 히트박스 바닥의 화면 y = toScreenY(player.y).
