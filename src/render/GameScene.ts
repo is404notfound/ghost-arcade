@@ -157,7 +157,9 @@ const DEAD_PLAYER_ALPHA = 0.25; // 사망 후 내 캐릭터 디밍
 const PLAYER_ART_H = 96;
 const PLAYER_ART_ORIGIN_X = 0.62; // 아트 내 히트박스 정렬점(왼쪽 트레일 보정 → 우측 치우침)
 const PLAYER_ART_ORIGIN_Y = 0.96; // 바퀴 접지점이 바닥선에 닿도록
-const GHOST_ART_H = 106; // 고스트 러너 표시 높이 (94→106: 주인공 대비 존재감 살짝 더)
+// 고스트 러너 표시 높이. 106→90: 주인공 시트 교체(표시 96) 후 고스트가 주인공보다
+// 커 보인다는 피드백 — 주인공보다 살짝 작게 재조정.
+const GHOST_ART_H = 90;
 const GHOST_SPRITE_ALPHA = 0.5; // 디테일 실루엣이 읽히도록 도형(0.22)보다 높임
 const FUEL_ART_SIZE = 100; // 연료통 표시 한 변(px) — 52→100: 지금보다 2배
 const GHOST_RUN_FPS = 12; // 고스트 달리기 6프레임 사이클 속도(렌더 전용) — 12fps=0.5s/cycle
@@ -382,6 +384,7 @@ export class GameScene extends Phaser.Scene {
   private biomeLastMs = 0; // mix 적분용 직전 renderTimeMs
   private lastKmMilestone = 0; // 마일스톤 팡파레 중복 방지
   private zoomPunch = { t: 0 }; // 펀치 줌 트윈 상태 (0 = 기본 줌)
+  private sunRedrawToggle = false; // 태양 재드로우 30fps 스로틀용 토글
   // ── 정전 트랩 상태 (렌더 전용) ──
   private blackoutGfx!: Phaser.GameObjects.Graphics;
   private blackoutWarnText!: Phaser.GameObjects.Text;
@@ -2364,7 +2367,10 @@ export class GameScene extends Phaser.Scene {
     const jumpY = s.player.y * 0.07; // 최대 ≈26px. 과하면 멀미 — 작게 시작.
     this.bgSkylineFar.y = jumpY * 0.5; // 원경: 절반
     this.sunGraphics.y = 214 + jumpY * 0.3; // 태양: 약하게 점프 연동
-    this.updateCodeSun();
+    // 태양 재드로우(블룸 동심원 18겹 + 광선)는 CPU 비용이 커 30fps로 스로틀 —
+    // 일렁임 주파수가 낮아 체감 차이 없음. 위치(y) 추적은 매 프레임 유지.
+    this.sunRedrawToggle = !this.sunRedrawToggle;
+    if (this.sunRedrawToggle) this.updateCodeSun();
 
     // ── 바이옴 전환 (1000m마다 팔레트 순환, 렌더 전용) + 마일스톤 팡파레 ──
     const km = Math.floor(world.distance / BIOME_METERS);

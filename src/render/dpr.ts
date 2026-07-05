@@ -9,6 +9,9 @@
 // 해법(표준 레시피): 게임(백킹) 크기 = 논리 크기 × DPR, 메인 카메라 zoom = DPR.
 // 좌표계는 논리(1040×480) 그대로 유지되고, 렌더만 물리 해상도로 이뤄진다.
 //
-// 상한 3: TXT_RES와 동일 — DPR 4+ 기기에서의 GPU 필레이트 폭주 방지.
+// 상한 2 (3→2): DPR 3 기기에서 백킹 픽셀이 논리 대비 9배가 되어 전반적인 프레임
+// 드랍이 보고됨. 상한 2면 4배 수준 — 텍스트 선명도는 충분히 유지하면서 GPU
+// 필레이트를 절반 이하로 줄인다. (DPR 3 폰에서는 1.5배 업스케일이 남지만
+// LINEAR 필터로 완만하게 보간됨.)
 export const RENDER_DPR =
-  typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, 3);
+  typeof window === 'undefined' ? 1 : Math.min(window.devicePixelRatio || 1, 2);
