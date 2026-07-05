@@ -41,13 +41,15 @@ export const INVINCIBLE_MS = 900;
 // 포션
 export const POTION_HEAL = 30;
 export const POTION_CHANCE = 0.35;
-export const POTION_R = 13;
+// 1.14.0: 13→30 — 연료통 표시 크기(FUEL_ART_SIZE=100px)에 비해 판정이 절반 이하라
+// "눈에는 겹쳤는데 수집 안 됨" 버그로 인지됨. 판정 반경을 시각 크기에 근접시킴.
+export const POTION_R = 30;
 export const POTION_Y_MIN = 70; // 포션 중심 높이 범위 (낮은 포션 = 안 뛰거나 살짝 점프)
 // POTION_Y_MAX 불변식: 모든 포션은 1단 점프로 획득 가능해야 한다.
 // 1단 점프 정점(발 기준) = JUMP_VEL²/(2·GRAVITY) = 680²/2800 ≈ 165
 // 수집 조건 = player.y + PLAYER_H > p.y - POTION_R
-// → 이론 상한 = 165 + PLAYER_H(42) - POTION_R(13) = 194
-// → 여유(±44) 포함 150 채택 — 획득 자체는 보장, 타이밍 결정이 긴장 요소
+// → 이론 상한 = 165 + PLAYER_H(42) - POTION_R(30) = 177
+// → 여유(±27) 포함 150 채택 — 획득 자체는 보장, 타이밍 결정이 긴장 요소
 export const POTION_Y_MAX = 150;
 
 // 거리 점수

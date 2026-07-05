@@ -27,7 +27,8 @@
 //         생기던 통과 불가 구간 해소. 스폰 타이밍이 달라져 궤적 변경.
 // 1.12.0: INTERVAL_MIN 980→760, RAMP 11→16 — 과도하게 쉬워진 간격 재조정(난이도 복원).
 // 1.13.0: FEVER_TAP_HEAL 3→1 — 피버 중 체력 회복 과도 보정.
-export const SIM_VERSION = '1.13.0';
+// 1.14.0: POTION_R 13→30 — 연료통 판정을 표시 크기에 근접(수집 누락 버그) → 수집 궤적 변경.
+export const SIM_VERSION = '1.14.0';
 
 export interface InputEvent {
   frame: number;
