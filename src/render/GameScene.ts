@@ -26,7 +26,13 @@ import {
   GHOST_TOP_N,
   type GhostRecord,
 } from "../ghostStore";
-import { loadTopRunsRemote, submitRunRemote } from "../remoteStore";
+import {
+  loadTopRunsRemote,
+  submitRunRemote,
+  loadWeeklyRankings,
+  type WeeklyRank,
+} from "../remoteStore";
+import { getUserId, getNickname } from "../identity";
 import { compareGhosts, type GhostComparison } from "./ghostCompare";
 import {
   DESIGN_W,
@@ -330,6 +336,11 @@ export class GameScene extends Phaser.Scene {
   private comparisonText!: Phaser.GameObjects.Text; // 신기록/뒤짐 비교 한 줄
   private overtakeText!: Phaser.GameObjects.Text; // "고스트 K/N 제침"
   private hintText!: Phaser.GameObjects.Text; // "탭하여 재시작" / "한 판 더?"
+  // ── 주간 누적 랭킹 패널 (게임오버 화면 우측) ──
+  private weeklyPanel!: Phaser.GameObjects.Container;
+  private weeklyRowTexts: Phaser.GameObjects.Text[] = []; // 상위 5행
+  private weeklyMyText!: Phaser.GameObjects.Text; // top5 밖일 때 내 순위 행
+  private weeklyRanks: WeeklyRank[] | null = null; // 게임오버 시 fetch 결과 (null = 아직/실패)
 
   constructor() {
     super({ key: "GameScene" });
@@ -696,6 +707,48 @@ export class GameScene extends Phaser.Scene {
       ])
       .setVisible(false);
 
+    // ── 주간 누적 랭킹 패널 — 게임오버 패널 우측, 시안 네온 테두리 ──
+    // 데이터가 없으면(오프라인/뷰 미적용) 아예 표시하지 않는다 (완전 폴백).
+    {
+      const wkBg = this.add
+        .rectangle(0, 0, 300, 230, 0x060010, 0.95)
+        .setStrokeStyle(2, 0x36f9f6, 0.9);
+      const wkTopLine = this.add.rectangle(0, -114, 300, 2, 0x36f9f6, 0.7);
+      const wkTitle = this.add
+        .text(0, -92, "주간 랭킹 · 7일 누적", {
+          fontSize: "16px",
+          color: "#36f9f6",
+          fontStyle: "bold",
+          resolution: TXT_RES,
+        })
+        .setOrigin(0.5);
+      const children: Phaser.GameObjects.GameObject[] = [wkBg, wkTopLine, wkTitle];
+      this.weeklyRowTexts = [];
+      for (let i = 0; i < 5; i++) {
+        const row = this.add
+          .text(-134, -60 + i * 28, "", {
+            fontSize: "14px",
+            color: "#e0e0e0",
+            resolution: TXT_RES,
+          })
+          .setOrigin(0, 0.5);
+        this.weeklyRowTexts.push(row);
+        children.push(row);
+      }
+      this.weeklyMyText = this.add
+        .text(-134, 96, "", {
+          fontSize: "14px",
+          color: "#ffd700",
+          fontStyle: "bold",
+          resolution: TXT_RES,
+        })
+        .setOrigin(0, 0.5);
+      children.push(this.weeklyMyText);
+      this.weeklyPanel = this.add
+        .container(DESIGN_W / 2 + 340, DESIGN_H * 0.42, children)
+        .setVisible(false);
+    }
+
     // 일시정지 오버레이 — 게임오버 패널 위에 렌더되도록 마지막에 생성
     const poBg = this.add.rectangle(
       DESIGN_W / 2,
@@ -997,6 +1050,7 @@ export class GameScene extends Phaser.Scene {
       this.ghostTumbleState[i] = "run";
     }
     if (this.gameOverPanel) this.gameOverPanel.setVisible(false);
+    if (this.weeklyPanel) this.weeklyPanel.setVisible(false);
     if (this.comboDisplay) this.comboDisplay.setVisible(false);
     if (this.feverOverlay) this.feverOverlay.setVisible(false);
     if (this.infiniteJumpText) this.infiniteJumpText.setVisible(false);
@@ -1248,8 +1302,25 @@ export class GameScene extends Phaser.Scene {
       // 비교 먼저 (판 시작 시점 기록 기준) → 저장은 그 다음
       const cmp = compareGhosts(myDist, this.ghostDistances);
       saveRun(window.localStorage, this.seed, this.log, myDist);
-      // 원격 제출 — fire-and-forget: 실패해도 로컬 기록은 보존된다
-      void submitRunRemote(this.seed, this.log, myDist);
+      // 원격 제출 — fire-and-forget: 실패해도 로컬 기록은 보존된다.
+      // user_id·닉네임 포함 → 주간 랭킹의 "누구" 축. 제출 완료 후 랭킹을 읽어야
+      // 방금 판이 집계에 포함된다 (submitRunRemote는 실패해도 resolve).
+      const myUserId = getUserId(window.localStorage);
+      this.weeklyRanks = null;
+      void submitRunRemote(
+        this.seed,
+        this.log,
+        myDist,
+        false,
+        { nickname: getNickname(window.localStorage) },
+        myUserId,
+      )
+        .then(() => loadWeeklyRankings())
+        .then((ranks) => {
+          this.weeklyRanks = ranks;
+          // 결과 패널이 이미 떠 있으면(fetch가 늦게 도착) 즉시 갱신
+          if (this.gameOverPanel.visible) this.refreshWeeklyPanel();
+        });
       // 골든 리플레이/고스트 재료 — 이 로그와 시드만 있으면 이 판 전체가 복원된다
       console.log("[ghost-arcade] 입력 로그:", serializeLog(this.log));
       // 재시작 대비: 원격 고스트를 미리 갱신 (Tier 1-2).
@@ -1369,6 +1440,48 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.gameOverPanel.setVisible(true);
+    this.refreshWeeklyPanel();
+  }
+
+  /**
+   * 주간 랭킹 패널 갱신 — 상위 5명 + (top5 밖이면) 내 순위 행.
+   * 데이터 없음(오프라인/뷰 미적용/아직 fetch 중)이면 패널 자체를 숨긴다.
+   */
+  private refreshWeeklyPanel(): void {
+    const ranks = this.weeklyRanks;
+    if (!ranks || ranks.length === 0) {
+      this.weeklyPanel.setVisible(false);
+      return;
+    }
+    const myUserId = getUserId(window.localStorage);
+    const myIdx = ranks.findIndex((r) => r.user_id === myUserId);
+
+    const rowLabel = (r: WeeklyRank, rank: number, isMe: boolean) => {
+      const nick = r.nickname || "이름없는 고스트";
+      return `${rank}.  ${nick}${isMe ? " (나)" : ""}   ${Math.floor(r.total_distance).toLocaleString()}m`;
+    };
+
+    for (let i = 0; i < this.weeklyRowTexts.length; i++) {
+      const row = this.weeklyRowTexts[i]!;
+      const r = ranks[i];
+      if (!r) {
+        row.setText("");
+        continue;
+      }
+      const isMe = i === myIdx;
+      row
+        .setText(rowLabel(r, i + 1, isMe))
+        .setColor(isMe ? "#ffd700" : "#e0e0e0")
+        .setFontStyle(isMe ? "bold" : "normal");
+    }
+
+    // top5 밖의 내 순위 행. myIdx === -1(제출 실패/집계 레이스/fetch 상한 밖)은 조용히 생략.
+    this.weeklyMyText.setText(
+      myIdx >= this.weeklyRowTexts.length
+        ? rowLabel(ranks[myIdx]!, myIdx + 1, true)
+        : "",
+    );
+    this.weeklyPanel.setVisible(true);
   }
 
   /** 개인 신기록 달성 팝업 — 화면 중앙에서 위로 올라가며 사라짐 */

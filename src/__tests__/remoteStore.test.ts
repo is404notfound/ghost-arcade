@@ -34,8 +34,8 @@ function makeChain(
 
 // 동적 임포트 — vi.mock 훅이 적용된 버전을 가져온다
 async function importRemote() {
-  const { loadTopRunsRemote, submitRunRemote } = await import('../remoteStore');
-  return { loadTopRunsRemote, submitRunRemote };
+  const { loadTopRunsRemote, submitRunRemote, loadWeeklyRankings } = await import('../remoteStore');
+  return { loadTopRunsRemote, submitRunRemote, loadWeeklyRankings };
 }
 
 async function getGetSupabaseClient() {
@@ -214,6 +214,19 @@ describe('submitRunRemote', () => {
     expect(chain.insert).not.toHaveBeenCalled();
   });
 
+  it('userId 전달 시 user_id 컬럼 포함 제출', async () => {
+    const getClient = await getGetSupabaseClient();
+    const { client, chain } = makeChain(undefined, { error: null });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getClient.mockReturnValue(client as any);
+    const { submitRunRemote } = await importRemote();
+
+    await submitRunRemote(seed, log, 150, false, { nickname: '네온여우-42' }, 'uuid-1234');
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: 'uuid-1234', meta: { nickname: '네온여우-42' } }),
+    );
+  });
+
   it('meta 컬럼 없음(PGRST204): meta 빼고 재시도해 기록을 살린다', async () => {
     const getClient = await getGetSupabaseClient();
     const { client, chain } = makeChain();
@@ -286,4 +299,48 @@ describe('submitRunRemote', () => {
     expect(localRuns).toHaveLength(1);
     expect(localRuns[0]!.distance).toBe(100);
   });
+});
+
+// ─────────────────────────────────────────────
+// loadWeeklyRankings
+// ─────────────────────────────────────────────
+
+describe('loadWeeklyRankings', () => {
+  it('정상 응답: 뷰 행 그대로 반환', async () => {
+    const getClient = await getGetSupabaseClient();
+    const rows = [
+      { user_id: 'a', nickname: '네온여우-42', total_distance: 900, best_distance: 500, run_count: 3 },
+      { user_id: 'b', nickname: null, total_distance: 400, best_distance: 400, run_count: 1 },
+    ];
+    const { client, chain } = makeChain({ data: rows, error: null });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getClient.mockReturnValue(client as any);
+    const { loadWeeklyRankings } = await importRemote();
+
+    const result = await loadWeeklyRankings();
+    expect(result).toEqual(rows);
+    expect(client.from).toHaveBeenCalledWith('ghost_weekly_rankings');
+    expect(chain.order).toHaveBeenCalledWith('total_distance', { ascending: false });
+  });
+
+  it('뷰 미적용(42P01)·네트워크 오류: 빈 배열, 예외 미전파', async () => {
+    const getClient = await getGetSupabaseClient();
+    const { client } = makeChain({ data: null, error: { code: '42P01', message: 'relation "ghost_weekly_rankings" does not exist' } });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getClient.mockReturnValue(client as any);
+    const { loadWeeklyRankings } = await importRemote();
+
+    await expect(loadWeeklyRankings()).resolves.toEqual([]);
+    const { captureException } = await import('@sentry/browser');
+    expect(vi.mocked(captureException)).not.toHaveBeenCalled();
+  });
+
+  it('Supabase 미설정: 빈 배열 반환', async () => {
+    const getClient = await getGetSupabaseClient();
+    getClient.mockReturnValue(null);
+    const { loadWeeklyRankings } = await importRemote();
+
+    await expect(loadWeeklyRankings()).resolves.toEqual([]);
+  });
+
 });

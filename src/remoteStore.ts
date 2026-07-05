@@ -96,6 +96,54 @@ export async function loadTopRunsRemote(seed: number): Promise<GhostRecord[]> {
   }
 }
 
+// ─── 주간 누적 랭킹 (migrations/002 뷰) ─────────────────────────────────────
+
+/** ghost_weekly_rankings 뷰 한 행 — 지난 7일 누적. */
+export interface WeeklyRank {
+  user_id: string;
+  nickname: string | null;
+  total_distance: number;
+  best_distance: number;
+  run_count: number;
+}
+
+// "내 순위"를 top-N 밖에서도 찾을 수 있게 여유 있게 가져온다 (표시는 상위 5 + 나).
+const WEEKLY_FETCH_N = 50;
+
+/**
+ * 주간 누적 랭킹을 total_distance 내림차순으로 가져온다.
+ * 뷰 미적용(migrations/002 이전)·네트워크 장애 시 [] — 호출부는 패널을 숨기면 된다.
+ */
+export async function loadWeeklyRankings(): Promise<WeeklyRank[]> {
+  const client = getSupabaseClient();
+  if (!client) return [];
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REMOTE_TIMEOUT_MS);
+
+  try {
+    const { data, error } = (await client
+      .from('ghost_weekly_rankings')
+      .select('user_id, nickname, total_distance, best_distance, run_count')
+      .order('total_distance', { ascending: false })
+      .limit(WEEKLY_FETCH_N)
+      .abortSignal(controller.signal)) as { data: WeeklyRank[] | null; error: unknown };
+
+    clearTimeout(timer);
+    if (error) throw error;
+    return data ?? [];
+  } catch (e) {
+    clearTimeout(timer);
+    if (!(e instanceof DOMException && e.name === 'AbortError')) {
+      console.warn('[remoteStore] 주간 랭킹 조회 실패 —', e);
+      // 뷰 미적용(42P01: relation does not exist)은 예상 가능한 degrade — Sentry 제외
+      const code = (e as { code?: unknown }).code;
+      if (code !== '42P01') Sentry.captureException(e, { level: 'warning' });
+    }
+    return [];
+  }
+}
+
 /**
  * 이번 판 결과를 원격에 제출한다. fire-and-forget: 실패해도 로컬 기록은 유지된다.
  * isBot=true 이면 콜드스타트 봇 로그로 표시된다.
@@ -106,6 +154,7 @@ export async function submitRunRemote(
   distance: number,
   isBot = false,
   meta?: Partial<RunMeta>,
+  userId?: string,
 ): Promise<void> {
   // 이상치 필터 (B3) — 물리 상한 초과·음수는 서버에 기록하지 않는다
   if (distance > DISTANCE_OUTLIER_CEILING || distance < 0) return;
@@ -135,12 +184,19 @@ export async function submitRunRemote(
       ),
     ]);
 
+  const hasOptionalCols = Boolean(mergedMeta ?? userId);
+  const fullRow = {
+    ...baseRow,
+    ...(mergedMeta ? { meta: mergedMeta } : {}),
+    ...(userId ? { user_id: userId } : {}),
+  };
+
   try {
-    let { error } = await raceInsert(
-      mergedMeta ? { ...baseRow, meta: mergedMeta } : baseRow,
-    );
-    // meta 컬럼 미적용 DB (migrations/001 이전) — meta 빼고 재시도해 기록 자체는 살린다
-    if (mergedMeta && isMissingColumnError(error)) ({ error } = await raceInsert(baseRow));
+    let { error } = await raceInsert(fullRow);
+    // 선택 컬럼(meta/user_id) 미적용 DB (migrations/001·002 이전) —
+    // 필수 컬럼만으로 재시도해 기록 자체는 살린다
+    if (hasOptionalCols && isMissingColumnError(error))
+      ({ error } = await raceInsert(baseRow));
     if (error) throw error;
   } catch (e) {
     // AbortError는 의도적 타임아웃 — Sentry 노이즈 제외

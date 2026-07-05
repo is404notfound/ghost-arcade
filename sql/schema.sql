@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS ghost_runs (
   character_id TEXT        NOT NULL DEFAULT 'base',
   -- 닉네임·캐릭터 등 RunMeta 슬롯 (inputLog.ts DEFAULT_META 참조). NULL 허용 — 클라가 관대하게 처리.
   meta         JSONB,
+  -- 익명 유저 식별자 (클라 localStorage UUID, src/identity.ts). 주간 랭킹의 "누구" 축.
+  user_id      TEXT,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -22,3 +24,22 @@ CREATE TABLE IF NOT EXISTS ghost_runs (
 -- "오늘 시드 + 현재 버전의 상위 N개" 쿼리를 Index-Only Scan으로 처리한다.
 CREATE INDEX IF NOT EXISTS idx_ghost_runs_leaderboard
   ON ghost_runs (seed, sim_version, distance DESC);
+
+-- 주간 집계 스캔용 부분 인덱스 (migrations/002)
+CREATE INDEX IF NOT EXISTS idx_ghost_runs_weekly
+  ON ghost_runs (created_at) WHERE is_bot = FALSE;
+
+-- 주간 누적 랭킹 뷰 (migrations/002) — 지난 7일 누적 거리, 봇 제외, 버전 무관(플레이 총량 지표).
+-- 닉네임은 가장 최근 판의 meta->>'nickname'.
+CREATE OR REPLACE VIEW ghost_weekly_rankings AS
+SELECT
+  user_id,
+  (ARRAY_AGG(meta->>'nickname' ORDER BY created_at DESC))[1] AS nickname,
+  SUM(distance)  AS total_distance,
+  MAX(distance)  AS best_distance,
+  COUNT(*)       AS run_count
+FROM ghost_runs
+WHERE created_at > NOW() - INTERVAL '7 days'
+  AND is_bot = FALSE
+  AND user_id IS NOT NULL
+GROUP BY user_id;
