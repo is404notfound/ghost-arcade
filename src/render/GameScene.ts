@@ -1044,8 +1044,9 @@ export class GameScene extends Phaser.Scene {
     } catch {
       return; // localStorage 접근 실패 = 스킵
     }
-    const { recordAllBotRuns } = await import("../botRecorder");
-    const botRuns = recordAllBotRuns(seed);
+    // 비동기 버전 — 봇 1기마다 메인 스레드에 양보해 인게임 프레임 드랍 방지
+    const { recordAllBotRunsAsync } = await import("../botRecorder");
+    const botRuns = await recordAllBotRunsAsync(seed);
 
     // 로컬 저장 먼저 — 네트워크 실패해도 다음 판부터 보임. saveRun이 거리순 top-N 유지.
     for (const { log, distance } of botRuns) {
