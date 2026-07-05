@@ -32,7 +32,7 @@ import {
   loadWeeklyRankings,
   type WeeklyRank,
 } from "../remoteStore";
-import { getUserId, getNickname } from "../identity";
+import { getUserId, getNickname, deterministicNickname } from "../identity";
 import { RENDER_DPR } from "./dpr";
 import { compareGhosts, type GhostComparison } from "./ghostCompare";
 import {
@@ -1502,16 +1502,39 @@ export class GameScene extends Phaser.Scene {
    * 결과 패널을 겸하므로 데이터가 없어도 숨기지 않고 상태 문구를 보여준다.
    */
   private refreshWeeklyPanel(): void {
-    const ranks = this.weeklyRanks;
-    if (!ranks || ranks.length === 0) {
-      // null = 아직 fetch 중(도착 시 재갱신됨) / [] = 오프라인·뷰 미적용 degrade
+    let ranks = this.weeklyRanks;
+    if (!ranks) {
+      // null = 아직 fetch 중 — 도착 시 재갱신됨
       for (const row of this.weeklyRowTexts) row.setText("");
       this.weeklyRowTexts[0]!
-        .setText(ranks ? "주간 랭킹을 불러올 수 없어요" : "랭킹 불러오는 중…")
+        .setText("랭킹 불러오는 중…")
         .setColor("#8899aa")
         .setFontStyle("normal");
       this.weeklyMyText.setText("");
       return;
+    }
+    if (ranks.length === 0) {
+      // 원격 비었음(오프라인·뷰 미적용·기록 없음) — 오늘 시드의 로컬 기록(봇 포함)으로
+      // 폴백해 빈 패널 대신 경쟁 필드를 보여준다. 닉네임 없는 기록(봇)은 시드 결정론 생성.
+      const locals = loadTopRuns(window.localStorage, this.seed);
+      ranks = locals.slice(0, this.weeklyRowTexts.length).map((r, i) => ({
+        user_id: `local-${i}`,
+        nickname:
+          r.log.meta?.nickname ||
+          deterministicNickname(this.seed ^ Math.imul(i + 1, 0x9e3779b9)),
+        total_distance: r.distance,
+        best_distance: r.distance,
+        run_count: 1,
+      }));
+      if (ranks.length === 0) {
+        for (const row of this.weeklyRowTexts) row.setText("");
+        this.weeklyRowTexts[0]!
+          .setText("주간 랭킹을 불러올 수 없어요")
+          .setColor("#8899aa")
+          .setFontStyle("normal");
+        this.weeklyMyText.setText("");
+        return;
+      }
     }
     const myUserId = getUserId(window.localStorage);
     const myIdx = ranks.findIndex((r) => r.user_id === myUserId);

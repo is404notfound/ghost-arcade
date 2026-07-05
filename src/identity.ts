@@ -61,6 +61,21 @@ export function getNickname(store: KVStore): string {
   }
 }
 
+/**
+ * 키에서 결정론적으로 닉네임을 생성 — 봇 기록 표시용 (렌더 전용).
+ * 같은 키 = 같은 닉네임이라 프레임마다/세션마다 이름이 바뀌지 않는다.
+ */
+export function deterministicNickname(key: number): string {
+  let s = key | 0;
+  const next = (): number => {
+    s = (Math.imul(s, 1664525) + 1013904223) | 0;
+    return s >>> 8;
+  };
+  const adj = NICK_ADJ[next() % NICK_ADJ.length]!;
+  const noun = NICK_NOUN[next() % NICK_NOUN.length]!;
+  return `${adj}${noun}-${10 + (next() % 90)}`;
+}
+
 /** 닉네임 수동 변경 훅 — UI는 추후. 랭킹 meta에 다음 판부터 반영된다. */
 export function setNickname(store: KVStore, nickname: string): void {
   const trimmed = nickname.trim().slice(0, 12);

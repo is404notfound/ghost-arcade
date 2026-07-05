@@ -64,3 +64,15 @@ describe('setNickname', () => {
     expect(getNickname(kv)).toBe(original);
   });
 });
+
+describe('deterministicNickname', () => {
+  it('같은 키는 항상 같은 닉네임, 형식 유지', async () => {
+    const { deterministicNickname } = await import('../identity');
+    const a = deterministicNickname(3061741561);
+    expect(deterministicNickname(3061741561)).toBe(a);
+    expect(a).toMatch(/^.+-\d{2}$/);
+    // 다른 키는 (대체로) 다른 이름 — 최소한 항상 같지는 않아야 한다
+    const names = new Set([0, 1, 2, 3, 4].map((k) => deterministicNickname(k)));
+    expect(names.size).toBeGreaterThan(1);
+  });
+});
