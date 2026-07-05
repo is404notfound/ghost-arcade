@@ -127,20 +127,22 @@ function blendBiome(a: BiomePalette, b: BiomePalette, t: number): BiomePalette {
   };
 }
 
-// ── 정전(Blackout) 트랩 — 우측 절반 시야 차단 (렌더 전용, 장거리 스파이스) ──
+// ── 연막(Blackout) 트랩 — 우측 절반 시야 차단 (렌더 전용, 장거리 스파이스) ──
 // 발동 지점은 (시드)만의 순수 함수 → 같은 시드의 모든 유저가 같은 거리에서 겪는다
 // (리더보드 공정성). sim은 전혀 건드리지 않으므로 버전·고스트 무관.
-// 예고 1.2s(네온 플리커 + ⚠) → 암전 3s(우측 ~95%, 경계 그라데이션) → 복전 플리커.
+// 예고 1.2s(플리커 + ⚠) → 우측 끝에서 연기가 밀려오듯 스윕인 0.9s → 유지 →
+// 부드러운 페이드아웃 0.8s. 색은 검정 대신 짙은 연기 회색 + 경계 일렁임.
 const BLACKOUT_START_M = 1000; // 첫 발동 최소 거리 — 초반 유저는 안 만난다
 const BLACKOUT_GAP_MIN_M = 700; // 발동 간 최소 간격(m)
 const BLACKOUT_GAP_JITTER_M = 500; // 간격 지터(m) — 시드 LCG로 결정
 const BLACKOUT_WARN_MS = 1200; // 예고(플리커) 시간
-const BLACKOUT_DARK_MS = 3000; // 암전 유지(페이드인 포함)
-const BLACKOUT_FADE_MS = 250; // 암전 페이드인
-const BLACKOUT_RECOVER_MS = 600; // 복전 플리커
-const BLACKOUT_MAX_ALPHA = 0.95; // 완전 검정 대신 실루엣이 아주 희미하게
-const BLACKOUT_EDGE0 = DESIGN_W * 0.45; // 그라데이션 경계 시작
-const BLACKOUT_EDGE1 = DESIGN_W * 0.55; // 이후부터 완전 차단
+const BLACKOUT_SWEEP_IN_MS = 900; // 연기 스윕인 — 우측 끝→중앙까지 천천히 덮임
+const BLACKOUT_DARK_MS = 3000; // 차단 유지(스윕인 포함)
+const BLACKOUT_FADE_OUT_MS = 800; // 부드러운 페이드아웃
+const BLACKOUT_MAX_ALPHA = 0.94; // 완전 불투명 대신 실루엣이 아주 희미하게
+const BLACKOUT_COLOR = 0x2e2e36; // 짙은 연기 회색 (검정 X)
+const BLACKOUT_EDGE0 = DESIGN_W * 0.45; // 스윕 완료 시 그라데이션 경계 시작
+const BLACKOUT_GRAD_W = DESIGN_W * 0.1; // 경계 그라데이션 폭
 type BlackoutPhase = "idle" | "warn" | "dark" | "recover";
 const SKYLINE_PARALLAX = 0.2; // 먼 스카이라인 스크롤 배수(월드속도 대비)
 const GRID_SPACING = 70; // 바닥 그리드 수직선 간격(px)
@@ -1606,8 +1608,8 @@ export class GameScene extends Phaser.Scene {
         }
         break;
       case "warn": {
-        // 우측 네온이 지지직 — 약한 암막 플리커 + 경고 점멸
-        this.drawBlackoutOverlay(0.1 + 0.1 * Math.abs(Math.sin(now * 0.03)));
+        // 우측 끝에서 연기 기운이 살짝 어른거림 + 경고 점멸
+        this.drawBlackoutOverlay(0.1 + 0.08 * Math.abs(Math.sin(now * 0.03)), 0.25);
         this.blackoutWarnText.setAlpha(0.4 + 0.6 * Math.abs(Math.sin(now * 0.015)));
         if (el >= BLACKOUT_WARN_MS) {
           this.blackoutPhase = "dark";
@@ -1617,8 +1619,12 @@ export class GameScene extends Phaser.Scene {
         break;
       }
       case "dark": {
+        // 연기가 우측 끝에서 중앙까지 천천히 밀려온다 (ease-out) + 알파 램프
+        const sp = Math.min(1, el / BLACKOUT_SWEEP_IN_MS);
+        const sweep = 1 - (1 - sp) * (1 - sp);
         this.drawBlackoutOverlay(
-          BLACKOUT_MAX_ALPHA * Math.min(1, el / BLACKOUT_FADE_MS),
+          BLACKOUT_MAX_ALPHA * Math.min(1, el / (BLACKOUT_SWEEP_IN_MS * 0.5)),
+          sweep,
         );
         if (el >= BLACKOUT_DARK_MS) {
           this.blackoutPhase = "recover";
@@ -1627,11 +1633,9 @@ export class GameScene extends Phaser.Scene {
         break;
       }
       case "recover": {
-        const p = Math.min(1, el / BLACKOUT_RECOVER_MS);
-        // 전원 들어오듯 플리커하며 밝아짐
-        this.drawBlackoutOverlay(
-          BLACKOUT_MAX_ALPHA * (1 - p) * (0.55 + 0.45 * Math.abs(Math.sin(now * 0.05))),
-        );
+        // 연기가 걷히듯 부드러운 페이드아웃
+        const p = Math.min(1, el / BLACKOUT_FADE_OUT_MS);
+        this.drawBlackoutOverlay(BLACKOUT_MAX_ALPHA * (1 - p) * (1 - p), 1);
         if (p >= 1) {
           this.blackoutPhase = "idle";
           this.blackoutGfx.clear();
@@ -1641,19 +1645,33 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** 정전 오버레이 드로우 — 중앙 그라데이션 경계 + 우측 솔리드 차단 */
-  private drawBlackoutOverlay(alpha: number): void {
+  /**
+   * 연막 오버레이 드로우 — sweep(0→1)만큼 우측 끝에서 경계가 전진하고,
+   * 경계는 밴드별 sin 위상차로 연기처럼 넘실댄다. 경계엔 그라데이션.
+   */
+  private drawBlackoutOverlay(alpha: number, sweep: number): void {
     const g = this.blackoutGfx;
     g.clear();
-    if (alpha <= 0.002) return;
-    const steps = 10;
-    const stepW = (BLACKOUT_EDGE1 - BLACKOUT_EDGE0) / steps;
-    for (let i = 0; i < steps; i++) {
-      g.fillStyle(0x000008, alpha * ((i + 1) / steps));
-      g.fillRect(BLACKOUT_EDGE0 + i * stepW, 0, stepW + 1, DESIGN_H);
+    if (alpha <= 0.002 || sweep <= 0.002) return;
+    // 덮개 왼쪽 경계 — sweep 0→1 동안 화면 우측 끝에서 EDGE0까지 전진
+    const edge = DESIGN_W - (DESIGN_W - BLACKOUT_EDGE0) * sweep;
+    const bands = 8;
+    const bandH = DESIGN_H / bands;
+    const steps = 6;
+    const stepW = BLACKOUT_GRAD_W / steps;
+    const t = this.renderTimeMs;
+    for (let b = 0; b < bands; b++) {
+      // 밴드별 위상이 다른 가장자리 일렁임 — 직선 경계 대신 연기 느낌
+      const e = edge + Math.sin(t * 0.0018 + b * 0.9) * 16 - BLACKOUT_GRAD_W;
+      const y = b * bandH;
+      for (let i = 0; i < steps; i++) {
+        g.fillStyle(BLACKOUT_COLOR, alpha * ((i + 1) / steps));
+        g.fillRect(e + i * stepW, y, stepW + 1, bandH + 1);
+      }
+      g.fillStyle(BLACKOUT_COLOR, alpha);
+      const solidX = e + BLACKOUT_GRAD_W;
+      if (solidX < DESIGN_W) g.fillRect(solidX, y, DESIGN_W - solidX, bandH + 1);
     }
-    g.fillStyle(0x000008, alpha);
-    g.fillRect(BLACKOUT_EDGE1, 0, DESIGN_W - BLACKOUT_EDGE1, DESIGN_H);
   }
 
   /**
