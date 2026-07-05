@@ -331,12 +331,9 @@ export class GameScene extends Phaser.Scene {
   private rankPanelBgs: Phaser.GameObjects.Rectangle[] = [];
   private rankPanelTexts: Phaser.GameObjects.Text[] = [];
   private top3GhostDists: number[] = []; // startRun()에서 캐시, 판 내내 고정
-  private gameOverPanel!: Phaser.GameObjects.Container;
-  private gameOverDistText!: Phaser.GameObjects.Text;
-  private comparisonText!: Phaser.GameObjects.Text; // 신기록/뒤짐 비교 한 줄
-  private overtakeText!: Phaser.GameObjects.Text; // "고스트 K/N 제침"
+  private gameOverDistText!: Phaser.GameObjects.Text; // 이번 판 거리 (결과 패널 상단)
   private hintText!: Phaser.GameObjects.Text; // "탭하여 재시작" / "한 판 더?"
-  // ── 주간 누적 랭킹 패널 (게임오버 화면 우측) ──
+  // ── 결과 패널 = 주간 누적 랭킹 (게임오버 중앙 단일 패널) ──
   private weeklyPanel!: Phaser.GameObjects.Container;
   private weeklyRowTexts: Phaser.GameObjects.Text[] = []; // 상위 5행
   private weeklyMyText!: Phaser.GameObjects.Text; // top5 밖일 때 내 순위 행
@@ -642,91 +639,42 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false)
       .setDepth(10);
 
-    // ── 게임오버 패널 — 네온 붉은 테두리, 심야 배경 ──
-    const goBg = this.add
-      .rectangle(0, 0, 360, 215, 0x060010, 0.95)
-      .setStrokeStyle(2, 0xff2d55, 1.0);
-    // 상단 장식선 (붉은 네온)
-    const goTopLine = this.add.rectangle(0, -107, 360, 2, 0xff2d55, 0.8);
-    // 하단 장식선
-    const goBotLine = this.add.rectangle(0, 107, 360, 1, 0xff2d55, 0.35);
-    const goTitle = this.add
-      .text(0, -72, "YOU LOSE", {
-        fontSize: "30px",
-        color: "#ff2d55",
-        fontFamily: "'Orbitron', monospace",
-        fontStyle: "bold",
-        resolution: TXT_RES,
-      })
-      .setOrigin(0.5)
-      .setStroke("#2a0010", 5);
-    this.gameOverDistText = this.add
-      .text(0, -32, "", {
-        fontSize: "19px",
-        color: "#e0e0e0",
-        fontFamily: "'Orbitron', monospace",
-        resolution: TXT_RES,
-      })
-      .setOrigin(0.5);
-    this.comparisonText = this.add
-      .text(0, 0, "", {
-        fontSize: "15px",
-        color: "#ffd166",
-        fontStyle: "bold",
-        fontFamily: "'Orbitron', monospace",
-        resolution: TXT_RES,
-      })
-      .setOrigin(0.5);
-    this.overtakeText = this.add
-      .text(0, 26, "", {
-        fontSize: "13px",
-        color: "#b39ddb",
-        fontFamily: "'Orbitron', monospace",
-        resolution: TXT_RES,
-      })
-      .setOrigin(0.5);
-    this.hintText = this.add
-      .text(0, 68, "TAP TO RESTART", {
-        fontSize: "11px",
-        color: "#00e5ff",
-        fontFamily: "'Orbitron', monospace",
-        resolution: TXT_RES,
-      })
-      .setOrigin(0.5)
-      .setAlpha(0.75);
-    this.gameOverPanel = this.add
-      .container(DESIGN_W / 2, DESIGN_H * 0.42, [
-        goBg,
-        goTopLine,
-        goBotLine,
-        goTitle,
-        this.gameOverDistText,
-        this.comparisonText,
-        this.overtakeText,
-        this.hintText,
-      ])
-      .setVisible(false);
-
-    // ── 주간 누적 랭킹 패널 — 게임오버 패널 우측, 시안 네온 테두리 ──
-    // 데이터가 없으면(오프라인/뷰 미적용) 아예 표시하지 않는다 (완전 폴백).
+    // ── 결과 패널 = 주간 누적 랭킹 (중앙 단일 패널) ──
+    // 별도 YOU LOSE 패널은 제거 — 이번 판 거리·재시작 힌트를 여기에 흡수.
+    // 사망 자체는 상단 "당신은 죽었습니다" + 좌상단 순위 칩이 이미 전달한다.
     {
       const wkBg = this.add
-        .rectangle(0, 0, 300, 230, 0x060010, 0.95)
+        .rectangle(0, 0, 440, 250, 0x060010, 0.95)
         .setStrokeStyle(2, 0x36f9f6, 0.9);
-      const wkTopLine = this.add.rectangle(0, -114, 300, 2, 0x36f9f6, 0.7);
+      const wkTopLine = this.add.rectangle(0, -124, 440, 2, 0x36f9f6, 0.7);
+      const wkBotLine = this.add.rectangle(0, 124, 440, 1, 0x36f9f6, 0.35);
       const wkTitle = this.add
-        .text(0, -92, "주간 랭킹 · 7일 누적", {
+        .text(0, -100, "주간 랭킹 · 7일 누적", {
           fontSize: "16px",
           color: "#36f9f6",
           fontStyle: "bold",
           resolution: TXT_RES,
         })
         .setOrigin(0.5);
-      const children: Phaser.GameObjects.GameObject[] = [wkBg, wkTopLine, wkTitle];
+      this.gameOverDistText = this.add
+        .text(0, -72, "", {
+          fontSize: "19px",
+          color: "#e0e0e0",
+          fontFamily: "'Orbitron', monospace",
+          resolution: TXT_RES,
+        })
+        .setOrigin(0.5);
+      const children: Phaser.GameObjects.GameObject[] = [
+        wkBg,
+        wkTopLine,
+        wkBotLine,
+        wkTitle,
+        this.gameOverDistText,
+      ];
       this.weeklyRowTexts = [];
       for (let i = 0; i < 5; i++) {
         const row = this.add
-          .text(-134, -60 + i * 28, "", {
+          .text(-190, -42 + i * 24, "", {
             fontSize: "14px",
             color: "#e0e0e0",
             resolution: TXT_RES,
@@ -736,7 +684,7 @@ export class GameScene extends Phaser.Scene {
         children.push(row);
       }
       this.weeklyMyText = this.add
-        .text(-134, 96, "", {
+        .text(-190, 78, "", {
           fontSize: "14px",
           color: "#ffd700",
           fontStyle: "bold",
@@ -744,8 +692,18 @@ export class GameScene extends Phaser.Scene {
         })
         .setOrigin(0, 0.5);
       children.push(this.weeklyMyText);
+      this.hintText = this.add
+        .text(0, 106, "TAP TO RESTART", {
+          fontSize: "11px",
+          color: "#00e5ff",
+          fontFamily: "'Orbitron', monospace",
+          resolution: TXT_RES,
+        })
+        .setOrigin(0.5)
+        .setAlpha(0.75);
+      children.push(this.hintText);
       this.weeklyPanel = this.add
-        .container(DESIGN_W / 2 + 340, DESIGN_H * 0.42, children)
+        .container(DESIGN_W / 2, DESIGN_H * 0.5, children)
         .setVisible(false);
     }
 
@@ -1049,7 +1007,6 @@ export class GameScene extends Phaser.Scene {
       sprite.anims.timeScale = 0.82 + Math.random() * 0.46;
       this.ghostTumbleState[i] = "run";
     }
-    if (this.gameOverPanel) this.gameOverPanel.setVisible(false);
     if (this.weeklyPanel) this.weeklyPanel.setVisible(false);
     if (this.comboDisplay) this.comboDisplay.setVisible(false);
     if (this.feverOverlay) this.feverOverlay.setVisible(false);
@@ -1319,7 +1276,7 @@ export class GameScene extends Phaser.Scene {
         .then((ranks) => {
           this.weeklyRanks = ranks;
           // 결과 패널이 이미 떠 있으면(fetch가 늦게 도착) 즉시 갱신
-          if (this.gameOverPanel.visible) this.refreshWeeklyPanel();
+          if (this.weeklyPanel.visible) this.refreshWeeklyPanel();
         });
       // 골든 리플레이/고스트 재료 — 이 로그와 시드만 있으면 이 판 전체가 복원된다
       console.log("[ghost-arcade] 입력 로그:", serializeLog(this.log));
@@ -1415,42 +1372,32 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    if (!cmp.hasGhosts) {
-      this.comparisonText.setText("").setColor("#ffd166");
-      this.overtakeText.setText("");
-      this.hintText.setText("TAP TO RESTART");
-    } else if (cmp.isRecord) {
-      this.comparisonText
-        .setText(`고스트 +${cmp.diffM}M 앞`)
-        .setColor("#ffd166");
-      const finalRank1 = cmp.total - cmp.overtaken + 1;
-      this.overtakeText.setText(
-        `최종 ${finalRank1}/${cmp.total + 1}등  ·  제침 ${cmp.overtaken}/${cmp.total}`,
-      );
-      this.hintText.setText("TAP TO RESTART");
-    } else {
-      this.comparisonText
-        .setText(`고스트에게 ${cmp.diffM}M 뒤짐`)
-        .setColor(cmp.isClose ? "#ff8787" : "#aaaaaa");
-      const finalRank2 = cmp.total - cmp.overtaken + 1;
-      this.overtakeText.setText(
-        `최종 ${finalRank2}/${cmp.total + 1}등  ·  제침 ${cmp.overtaken}/${cmp.total}`,
-      );
-      this.hintText.setText(cmp.isClose ? "ONE MORE RUN?" : "TAP TO RESTART");
-    }
+    // 고스트 비교 문구는 패널 통합으로 제거 — 아깝게 진(isClose) 판만 힌트로 재도전 유도.
+    // 최종 순위는 좌상단 순위 칩이 이미 보여준다.
+    this.hintText.setText(
+      cmp.hasGhosts && !cmp.isRecord && cmp.isClose
+        ? "ONE MORE RUN?"
+        : "TAP TO RESTART",
+    );
 
-    this.gameOverPanel.setVisible(true);
     this.refreshWeeklyPanel();
+    this.weeklyPanel.setVisible(true);
   }
 
   /**
-   * 주간 랭킹 패널 갱신 — 상위 5명 + (top5 밖이면) 내 순위 행.
-   * 데이터 없음(오프라인/뷰 미적용/아직 fetch 중)이면 패널 자체를 숨긴다.
+   * 주간 랭킹 패널 내용 갱신 — 상위 5명 + (top5 밖이면) 내 순위 행.
+   * 결과 패널을 겸하므로 데이터가 없어도 숨기지 않고 상태 문구를 보여준다.
    */
   private refreshWeeklyPanel(): void {
     const ranks = this.weeklyRanks;
     if (!ranks || ranks.length === 0) {
-      this.weeklyPanel.setVisible(false);
+      // null = 아직 fetch 중(도착 시 재갱신됨) / [] = 오프라인·뷰 미적용 degrade
+      for (const row of this.weeklyRowTexts) row.setText("");
+      this.weeklyRowTexts[0]!
+        .setText(ranks ? "주간 랭킹을 불러올 수 없어요" : "랭킹 불러오는 중…")
+        .setColor("#8899aa")
+        .setFontStyle("normal");
+      this.weeklyMyText.setText("");
       return;
     }
     const myUserId = getUserId(window.localStorage);
@@ -1481,7 +1428,6 @@ export class GameScene extends Phaser.Scene {
         ? rowLabel(ranks[myIdx]!, myIdx + 1, true)
         : "",
     );
-    this.weeklyPanel.setVisible(true);
   }
 
   /** 개인 신기록 달성 팝업 — 화면 중앙에서 위로 올라가며 사라짐 */
