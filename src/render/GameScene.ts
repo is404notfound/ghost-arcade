@@ -84,7 +84,10 @@ const DEAD_PLAYER_ALPHA = 0.25; // 사망 후 내 캐릭터 디밍
 
 // 스프라이트 표시 튜닝 — 아트는 풋프린트(히트박스)보다 크게 overhang 허용(스펙 §1).
 // 충돌은 sim의 직사각형 풋프린트로만 판정되므로 아래 값은 '보이는 크기'일 뿐이다.
-const PLAYER_ART_H = 78; // 라이더 표시 높이(px) — 히트박스 42 + 후드/스카프 overhang
+// 라이더 표시 높이(px) — 히트박스 42 + 후드/스카프 overhang.
+// 78→96: 6프레임 시트(347×300, 세로형)는 구 정지컷(417×192, 가로형)보다 종횡비가 좁아
+// 같은 높이면 시각 면적이 ~35% 줄어 "주인공이 작아졌다"로 인지됨 — 면적 기준으로 복원.
+const PLAYER_ART_H = 96;
 const PLAYER_ART_ORIGIN_X = 0.62; // 아트 내 히트박스 정렬점(왼쪽 트레일 보정 → 우측 치우침)
 const PLAYER_ART_ORIGIN_Y = 0.96; // 바퀴 접지점이 바닥선에 닿도록
 const GHOST_ART_H = 106; // 고스트 러너 표시 높이 (94→106: 주인공 대비 존재감 살짝 더)
@@ -1994,14 +1997,15 @@ export class GameScene extends Phaser.Scene {
     // 네온 트레일: 바이크 뒤로 수평으로 뻗는 속도선 (렌더 전용, Tier 1-3)
     // 플레이어 화면 Y를 넘겨 점프 시 트레일도 함께 따라 올라가게 한다.
     this.drawNeonTrail(s.speed, s.gameOver, toScreenY(s.player.y));
-    // 상태별 컷 전환: 사망 > 피격(무적) > 공중(점프) > 기본 주행
+    // 상태별 컷 전환: 사망 > 피격(무적) > 기본 주행(공중 포함)
+    // 공중에서도 신형 바이커 시트를 유지한다 — 구 player-jump 컷(이전 세대 아트)으로
+    // 바꾸면 점프마다 아트가 퇴행해 보임. 점프감은 아래 기울기 3단이 담당.
+    // (전용 점프 시트 player-jump2 도입 시 여기서 분기 복원)
     const playerTex = s.gameOver
       ? "player-dead"
       : s.invincibleFrames > 0
         ? "player-hit"
-        : s.player.y > 2
-          ? "player-jump"
-          : "player-ride";
+        : "player-ride";
     if (this.playerRect.texture.key !== playerTex) {
       if (playerTex === "player-ride") {
         // 달리기 복귀 — 애니 재개
