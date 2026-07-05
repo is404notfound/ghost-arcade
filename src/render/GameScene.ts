@@ -1091,7 +1091,8 @@ export class GameScene extends Phaser.Scene {
     seed: number,
     allowRemoteUpload = true,
   ): Promise<void> {
-    const flagKey = `ga:bots:v${SIM_VERSION}:${seed}`;
+    // r2 = 반응형 봇 세대 — 봇 알고리즘이 바뀌면 접미사를 올려 같은 시드도 재생성
+    const flagKey = `ga:bots:v${SIM_VERSION}-r2:${seed}`;
     try {
       if (window.localStorage.getItem(flagKey)) return;
     } catch {
