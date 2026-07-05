@@ -33,6 +33,7 @@ import {
   type WeeklyRank,
 } from "../remoteStore";
 import { getUserId, getNickname } from "../identity";
+import { RENDER_DPR } from "./dpr";
 import { compareGhosts, type GhostComparison } from "./ghostCompare";
 import {
   DESIGN_W,
@@ -73,9 +74,10 @@ import signShinyaUrl from "../../assets/images/signage/signage-shinya.png";
 const COLOR_GHOST = 0xb39ddb; // 고스트 — 보라 계열 반투명(스프라이트 틴트)
 
 // 텍스트 렌더 해상도 — Phaser Text는 기본 1x라 작은/저DPR 화면에서 자글거린다.
-// 최소 2x 슈퍼샘플링을 강제하고 고DPR은 3x까지만(메모리/성능 상한). config.resolution이
+// 카메라 줌(RENDER_DPR)으로 확대되는 만큼 글리프 텍스처를 미리 크게 렌더해 1:1 매핑.
+// 하한 2는 데스크톱(DPR 1)에서도 슈퍼샘플링으로 또렷하게. config.resolution이
 // Phaser 3.90에서 제거되어 텍스트마다 개별 지정해야 하므로 단일 상수로 통일한다.
-const TXT_RES = Math.min(Math.max(window.devicePixelRatio || 1, 2), 3);
+const TXT_RES = Math.max(RENDER_DPR, 2);
 
 // 배경(코드 스킨) 팔레트 — docs/design/asset-guide.md §3 컬러 토큰. 전부 렌더 전용.
 // 하늘 색은 BIOMES[0](기본 노을 팔레트)로 이동 — 바이옴 전환 도입
@@ -425,6 +427,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
+    // 레티나 렌더링: 백킹 캔버스는 논리 크기 × RENDER_DPR (main.ts) — 카메라 줌으로
+    // 논리 좌표계(1040×480)를 복원한다. 모든 씬 코드는 논리 좌표 그대로 사용.
+    this.cameras.main.setZoom(RENDER_DPR).centerOn(DESIGN_W / 2, DESIGN_H / 2);
+
     this.startRun();
 
     // 배경 레이어 (하늘·노을 선·패럴랙스 스카이라인·바닥 그리드).
@@ -525,7 +531,9 @@ export class GameScene extends Phaser.Scene {
           0,
           false,
           0.1,
-          12,
+          // 글로우 반경은 백킹 픽셀 단위 — 레티나 백킹(×RENDER_DPR)에서 같은
+          // 시각 크기를 유지하려면 배율 보정 필요
+          12 * RENDER_DPR,
         );
       }
     } catch {

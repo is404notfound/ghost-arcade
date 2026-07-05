@@ -5,6 +5,7 @@ import Phaser from 'phaser';
 import * as Sentry from '@sentry/browser';
 import { GameScene } from './render/GameScene';
 import { DESIGN_W, DESIGN_H } from './render/viewport';
+import { RENDER_DPR } from './render/dpr';
 import { dailySeed } from './dailySeed';
 import { initGameControls } from './controls';
 import { initAnalytics } from './analytics';
@@ -58,8 +59,11 @@ void document.fonts.ready.then(() => {
 try {
   new Phaser.Game({
     type: Phaser.AUTO,
-    width: DESIGN_W,
-    height: DESIGN_H,
+    // 레티나(DPR≥2) 대응: 백킹 캔버스를 물리 픽셀 크기로 확보하고, GameScene의
+    // 메인 카메라 zoom = RENDER_DPR로 논리 좌표(1040×480)를 유지한다 (render/dpr.ts).
+    // 과거 scale.zoom 방식은 CSS 크기만 바꿔 실제로는 저해상도 업스케일이었음.
+    width: DESIGN_W * RENDER_DPR,
+    height: DESIGN_H * RENDER_DPR,
     backgroundColor: '#1a1a2e',
     scene: GameScene,
     // 렌더러 품질 설정.
@@ -69,11 +73,8 @@ try {
     roundPixels: false,
     // Phaser 물리는 안 쓴다 — 충돌/중력은 전부 src/sim/ 안 (D1)
     scale: {
-      mode: Phaser.Scale.FIT, // 논리 해상도 고정 → viewport 매핑이 어느 화면에서나 유효
+      mode: Phaser.Scale.FIT, // CSS 표시는 FIT이 화면에 맞춤 (레터박스)
       autoCenter: Phaser.Scale.CENTER_BOTH,
-      // 레티나(DPR≥2) 기기: zoom = devicePixelRatio 로 캔버스를 물리 픽셀 배율로 키워
-      // CSS Scale.FIT이 줄여서 표시 → 네이티브 해상도로 렌더되어 선명해짐.
-      zoom: window.devicePixelRatio || 1,
     },
   });
 } catch (e) {
