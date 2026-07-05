@@ -141,7 +141,8 @@ const BLACKOUT_DARK_MS = 3000; // 차단 유지(스윕인 포함)
 const BLACKOUT_FADE_OUT_MS = 800; // 부드러운 페이드아웃
 const BLACKOUT_MAX_ALPHA = 1; // 완전 차단 — 실루엣도 안 보이게 (플레이 피드백)
 const BLACKOUT_COLOR = 0x1a1a20; // 더 짙은 연기 회색 (검정보다 살짝 밝은 톤만 유지)
-const BLACKOUT_EDGE0 = DESIGN_W * 0.45; // 스윕 완료 시 그라데이션 경계 시작
+// 0.45→0.7: 절반 차단은 너무 어렵다는 플레이 피드백 — 우측 30%만 차단
+const BLACKOUT_EDGE0 = DESIGN_W * 0.7; // 스윕 완료 시 솔리드 차단 시작 (여기부터 우측 끝까지)
 const BLACKOUT_GRAD_W = DESIGN_W * 0.1; // 경계 그라데이션 폭
 type BlackoutPhase = "idle" | "warn" | "dark" | "recover";
 const SKYLINE_PARALLAX = 0.2; // 먼 스카이라인 스크롤 배수(월드속도 대비)
@@ -406,6 +407,7 @@ export class GameScene extends Phaser.Scene {
   private rankPanelBgs: Phaser.GameObjects.Rectangle[] = [];
   private rankPanelTexts: Phaser.GameObjects.Text[] = [];
   private top3GhostDists: number[] = []; // startRun()에서 캐시, 판 내내 고정
+  private top3GhostNames: string[] = []; // top3GhostDists와 정렬 순서 동일 (순위 칩 닉네임)
   private gameOverDistText!: Phaser.GameObjects.Text; // 이번 판 거리 (결과 패널 상단)
   private hintText!: Phaser.GameObjects.Text; // "탭하여 재시작" / "한 판 더?"
   // ── 결과 패널 = 주간 누적 랭킹 (게임오버 중앙 단일 패널) ──
@@ -1004,9 +1006,19 @@ export class GameScene extends Phaser.Scene {
   private applyGhostField(records: GhostRecord[]): void {
     this.ghosts = records.map((r) => new GhostDriver(r.log));
     this.ghostDistances = records.map((r) => r.distance);
-    this.top3GhostDists = [...this.ghostDistances]
-      .sort((a, b) => b - a)
+    // 상위 3 고스트의 거리+닉네임을 함께 캐시 — 순위 칩에 이름 표시.
+    // 닉네임 없는 기록(봇 등)은 거리 기반 결정론 이름 — 재병합돼도 이름이 안 바뀐다.
+    const top3 = records
+      .map((r) => ({
+        d: r.distance,
+        nick:
+          r.log.meta?.nickname ||
+          deterministicNickname(this.seed ^ Math.imul(Math.round(r.distance * 97), 0x9e3779b9)),
+      }))
+      .sort((a, b) => b.d - a.d)
       .slice(0, 3);
+    this.top3GhostDists = top3.map((x) => x.d);
+    this.top3GhostNames = top3.map((x) => x.nick);
     this.prevRank = this.ghosts.length + 1;
   }
 
@@ -1519,11 +1531,12 @@ export class GameScene extends Phaser.Scene {
       // 원격 비었음(오프라인·뷰 미적용·기록 없음) — 오늘 시드의 로컬 기록(봇 포함)으로
       // 폴백해 빈 패널 대신 경쟁 필드를 보여준다. 닉네임 없는 기록(봇)은 시드 결정론 생성.
       const locals = loadTopRuns(window.localStorage, this.seed);
+      // 결정론 이름 키는 거리 기반 — 인게임 순위 칩(applyGhostField)과 같은 기록엔 같은 이름
       ranks = locals.slice(0, this.weeklyRowTexts.length).map((r, i) => ({
         user_id: `local-${i}`,
         nickname:
           r.log.meta?.nickname ||
-          deterministicNickname(this.seed ^ Math.imul(i + 1, 0x9e3779b9)),
+          deterministicNickname(this.seed ^ Math.imul(Math.round(r.distance * 97), 0x9e3779b9)),
         total_distance: r.distance,
         best_distance: r.distance,
         run_count: 1,
@@ -3048,15 +3061,15 @@ export class GameScene extends Phaser.Scene {
     // 텍스트 갱신: 플레이어 실시간 거리
     this.rankPanelTexts[0]!.setText(`YOU  ${Math.floor(s.distance)}m`);
 
-    // 텍스트 갱신: 고스트 최종거리 + 현재 슬롯(순위) 표시.
-    // 고스트는 전부 '경쟁자'(봇 or 타 유저)이므로 항상 G#. 슬롯0(실시간 플레이어)만 YOU.
-    // (과거: 원격이 비면 ghostsAreOwnRecords=true로 봇까지 전부 YOU로 표기되던 버그.
-    //  내 과거 기록을 'YOU'로 구분하려면 레코드별 playerId 식별이 필요 → Forward-design meta 슬롯으로 추후.)
+    // 텍스트 갱신: 고스트 닉네임 + 최종거리 + 현재 슬롯(순위) 표시.
+    // 고스트는 전부 '경쟁자'(봇 or 타 유저) — 닉네임은 applyGhostField에서 캐시
+    // (meta.nickname 우선, 없으면 거리 기반 결정론 이름). 슬롯0(실시간 플레이어)만 YOU.
     for (let g = 0; g < n; g++) {
       const dist = Math.floor(this.top3GhostDists[g] ?? 0);
       const gSlot = slotOfPanel[g + 1] ?? g; // 현재 표시 슬롯
       const rankLabel = `#${gSlot + 1}`;
-      this.rankPanelTexts[g + 1]!.setText(`${rankLabel} G${g + 1}  ${dist}m`);
+      const name = this.top3GhostNames[g] ?? `G${g + 1}`;
+      this.rankPanelTexts[g + 1]!.setText(`${rankLabel} ${name}  ${dist}m`);
     }
   }
 
