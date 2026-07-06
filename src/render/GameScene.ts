@@ -53,7 +53,8 @@ import { track } from "../analytics";
 
 // 게임 에셋(전처리본 assets/game/*) — Vite가 해시 URL로 번들. scripts/prep-assets.py 산출물.
 import playerRideUrl from "../../assets/game/player-ride.png";
-import playerJumpUrl from "../../assets/game/player-jump.png";
+import playerJump1Url from "../../assets/game/player-jump1.png";
+import playerJump2Url from "../../assets/game/player-jump2.png";
 import playerHitUrl from "../../assets/game/player-hit.png";
 import playerDeadUrl from "../../assets/game/player-dead.png";
 import ghostRunSheetUrl from "../../assets/game/ghost-run.png";
@@ -62,6 +63,10 @@ import fuelCanUrl from "../../assets/game/fuel-can.png";
 import obsCarUrl from "../../assets/game/obs-car.png";
 import obsBarrelUrl from "../../assets/game/obs-barrel.png";
 import obsDebrisUrl from "../../assets/game/obs-debris.png";
+import obsBarricadeUrl from "../../assets/game/obs-barricade.png";
+import obsVendingUrl from "../../assets/game/obs-vending.png";
+import obsFissureUrl from "../../assets/game/obs-fissure.png";
+import hpFrameUrl from "../../assets/game/hp-frame.png";
 // flame-pilar 이미지 제거됨 — 코드 드로우 화염분수(code-flame-*)로 교체
 // bg-sun 이미지는 코드 태양(createCodeSun)으로 대체 — import 제거
 // fx-meteor-*: 코드 드로우 메테오(drawCodeMeteor)로 대체 — import 제거
@@ -155,6 +160,10 @@ const DEAD_PLAYER_ALPHA = 0.25; // 사망 후 내 캐릭터 디밍
 // 78→96: 6프레임 시트(347×300, 세로형)는 구 정지컷(417×192, 가로형)보다 종횡비가 좁아
 // 같은 높이면 시각 면적이 ~35% 줄어 "주인공이 작아졌다"로 인지됨 — 면적 기준으로 복원.
 const PLAYER_ART_H = 96;
+// [Tier B] jump1/jump2/hit 공통 표시 높이: prep-player-jump.py + prep-player-hit.py로
+// 뒷바퀴 지름을 ride 기준으로 구워넣었으므로 세 컷 모두 이 하나의 값으로 setDisplaySize.
+// 유도: PLAYER_ART_H × (COMMON_CANVAS_H / RIDE_TARGET_H) = 96 × 476/300 = 152.
+const JUMP_HIT_ART_H = 152;
 const PLAYER_ART_ORIGIN_X = 0.62; // 아트 내 히트박스 정렬점(왼쪽 트레일 보정 → 우측 치우침)
 const PLAYER_ART_ORIGIN_Y = 0.96; // 바퀴 접지점이 바닥선에 닿도록
 // 고스트 러너 표시 높이. 106→90: 주인공 시트 교체(표시 96) 후 고스트가 주인공보다
@@ -170,11 +179,12 @@ const GHOST_X_OFFSETS = [-72, -42, -20, 18, 40, 64, -54, 32, -10, 50] as const; 
 const MAX_METEORS = 6; // 동시 메테오 상한(스폰당 1~3개가 누적)
 
 // 장애물 아트 텍스처 키(렌더 전용·결정론 무관). 건물은 더 이상 쓰지 않는다.
-const OBS_LOW = ["obs-car", "obs-debris"] as const; // 낮고 넓음
 // code-sludge(초록 오염수 분수)는 "장애물처럼 안 보인다"는 피드백으로 스폰 풀에서 제거.
 // drawSludgeFountain/스모크 프로파일은 추후 재테마 가능성 위해 남겨두되 더 이상 선택되지 않음.
-const OBS_MID = ["obs-barrel"] as const; // 중간 — 불타는 드럼통
-const OBS_TALL = ["code-flame-s", "code-flame-m", "code-flame-l"] as const; // 코드 드로우 화염분수 3종
+// OBS_MID → 낮은 슬롯에서도 읽히는 단순 실루엣 vs 디테일이 있어 중간 이상에서만 나올 것으로 분리.
+const OBS_LOWSAFE = ["obs-car", "obs-debris", "obs-barrel"] as const; // 1단·낮은 h에서도 읽히는 단순 실루엣
+const OBS_MID_DETAIL = ["obs-barricade", "obs-vending"] as const; // 디테일 → h>80 이상에서만 출현
+const OBS_TALL = ["code-flame-s", "code-flame-m", "code-flame-l", "obs-fissure"] as const; // 화염분수 3종 + 용암암맥
 
 // 장애물 아트 폭/높이 상수 (렌더 전용)
 const OBSTACLE_ART_SCALE = 1.2; // 시각 크기 살짝 키움(히트박스는 sim의 o.h 유지)
@@ -183,23 +193,46 @@ const OBSTACLE_MAX_W = 150; // 과도한 가로 오버행 방지 상한
 // 히트박스 대비 시각 폭 상한 — 표시 폭이 판정 폭의 4배(예: 차 150px vs 32px)까지
 // 벌어지면 "겹쳐 보이는데 안 맞는" 히트박스 버그로 인지됨. 오버행을 히트박스에 연동해 제한.
 const OBSTACLE_OVERHANG_PX = 30;
+// 불(barrel)·돌(barricade)은 주인공보다 작아도 됨. 그외 인공물(car/debris/vending/fissure)은
+// '기본적으로 주인공보다 크게' 보이도록 최소 표시 높이를 보장하고, 넓은 폭 상한을 준다.
+// (주인공 화면 높이 ≈ 94px → 그보다 크게)
+const OBSTACLE_MIN_ART_H = 108;
+const OBSTACLE_BIG_MAX_W = 176; // 그외 인공물의 폭 상한(초과 시 찌부 대신 균일 축소)
+const OBSTACLE_SMALL_OK = new Set(["obs-barrel", "obs-barricade"]); // 작아도 되는 불/돌
 
 /**
- * 높이(o.h)·판정 폭(o.w)에 맞는 후보군에서 '직전 장애물과 다른' 타입을 골라 인접 중복을 막는다.
+ * 높이(o.h)·판정 폭(o.w)에 맞는 후보군에서 '최근 2개 히스토리와 다른' 타입을 골라 인접 중복을 막는다.
  * 렌더 전용 — 충돌·거리 판정과 무관(연출).
+ *
+ * 높이 게이트:
+ *   h > OBS_H_MAX  → OBS_TALL 전용(불기둥)
+ *   h > 80         → OBS_MID_DETAIL + OBS_LOWSAFE(배럴) + OBS_TALL
+ *   else(1단/낮음) → OBS_LOWSAFE 전용 (barricade·vending 제외 → 작아도 읽히는 실루엣만)
+ *
+ * 히스토리 회피: lastTypes(최대 2)에 있는 인공물 계열만 제외.
+ * 불/용암(code-flame·obs-fissure)은 자연 반복 허용이므로 히스토리에서 제외.
  */
-function pickObstacleType(h: number, w: number, last: string): string {
+function pickObstacleType(h: number, w: number, lastTypes: string[]): string {
   let pool: readonly string[];
   if (h > C.OBS_H_MAX)
-    pool = OBS_TALL; // TALL 패턴 = 불기둥
-  else if (h > 80) pool = [...OBS_MID, ...OBS_TALL];
-  else pool = [...OBS_LOW, ...OBS_MID];
+    pool = OBS_TALL;
+  else if (h > 80) pool = [...OBS_MID_DETAIL, "obs-barrel", ...OBS_TALL];
+  else pool = OBS_LOWSAFE;
   // 차(원본 종횡비 3.1)는 좁은 히트박스(w=32)에선 폭 캡으로 뭉개짐 — 넓은 장애물 전용
   if (w < 48) pool = pool.filter((k) => k !== "obs-car");
-  if (pool.length === 0) pool = OBS_MID;
-  const avoid = pool.filter((k) => k !== last);
-  const cands = avoid.length > 0 ? avoid : pool;
-  return cands[Math.floor(Math.random() * cands.length)]!;
+  if (pool.length === 0) pool = OBS_LOWSAFE;
+  // 인공물 계열만 히스토리 회피 (불·용암은 자연 반복 허용)
+  const isArtifact = (k: string) => !k.startsWith("code-") && k !== "obs-fissure";
+  const avoid = pool.filter(
+    (k) => !(isArtifact(k) && lastTypes.includes(k)),
+  );
+  // cands 비면 마지막 1개만 회피로 폴백
+  const cands =
+    avoid.length > 0
+      ? avoid
+      : pool.filter((k) => k !== lastTypes[lastTypes.length - 1]);
+  const finalPool = cands.length > 0 ? cands : pool;
+  return finalPool[Math.floor(Math.random() * finalPool.length)]!;
 }
 
 // 장애물 타입별 연기 프로파일 — 종류마다 색/가닥수/높이/굵기/일렁임을 달리한다(렌더 전용).
@@ -274,6 +307,48 @@ function smokeProfile(key: string): SmokeProfile {
         freq: 1.8,
         ember: false,
         glow: 0x7fff6a,
+        fire: false,
+      };
+    case "obs-barricade": // 바리케이드: 낮은 흙먼지·모래 — obs-debris와 같은 계열, 불 없음
+      return {
+        color: 0xa09080,
+        strands: 3,
+        height: 28,
+        baseW: 5,
+        alpha: 0.28,
+        spread: 10,
+        sway: 15,
+        freq: 1.4,
+        ember: false,
+        glow: 0xff5a7a,
+        fire: false,
+      };
+    case "obs-vending": // 자판기: 마젠타·시안 전기 스파크 글로우, 불꽃 없음
+      return {
+        color: 0x36f9f6,
+        strands: 2,
+        height: 44,
+        baseW: 3.5,
+        alpha: 0.25,
+        spread: 5,
+        sway: 8,
+        freq: 3.2,
+        ember: false,
+        glow: 0xff2de1,
+        fire: false,
+      };
+    case "obs-fissure": // 실제 아트=부서진 벽돌 벽(불 없음) → 연기/엠버 없음
+      return {
+        color: 0x8a5a3a,
+        strands: 3,
+        height: 60,
+        baseW: 5,
+        alpha: 0.38,
+        spread: 9,
+        sway: 14,
+        freq: 1.8,
+        ember: false,
+        glow: 0xff6a20,
         fire: false,
       };
     case "obs-car": // 부서진 차: 엔진룸 회색 연기 + 시안 네온 잔광
@@ -359,7 +434,7 @@ export class GameScene extends Phaser.Scene {
   private obstacleRects: Phaser.GameObjects.Image[] = []; // 아포칼립스 장애물(가변 높이)
   private obstacleType: string[] = []; // 슬롯별 배정된 아트 타입 키
   private obstacleWasActive: boolean[] = []; // 활성 전이(스폰) 감지용
-  private lastObstacleType = ""; // 직전 배정 타입 — 인접 중복 방지
+  private lastObstacleTypes: string[] = []; // 최근 2개 배정 타입 히스토리 — 인접 중복 방지
   private fuelSprites: Phaser.GameObjects.Image[] = []; // 연료통(회복=주유)
 
   // 배경 패럴랙스 레이어 (렌더 전용 — sim 무관, world.distance만 읽어 스크롤)
@@ -403,7 +478,9 @@ export class GameScene extends Phaser.Scene {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private playerGlow: any = null;
 
-  private hpFill!: Phaser.GameObjects.Rectangle;
+  private hpFill!: Phaser.GameObjects.Image;
+  private hpGlow!: Phaser.GameObjects.Image;   // 우측 끝 소프트 글로우
+  private hpFillFullScale = 0;                 // ratio=1 일 때 scaleX (= HP_FILL_W / 텍스처폭)
   // #11 가로형 랭킹 패널 — 상단, 3위 고스트(최종거리 고정) + 플레이어(실시간)
   // panel[0]=플레이어, panel[1]=G1, panel[2]=G2, panel[3]=G3 (컨테이너)
   private rankPanels: Phaser.GameObjects.Container[] = [];
@@ -430,7 +507,8 @@ export class GameScene extends Phaser.Scene {
       frameWidth: 347,
       frameHeight: 300,
     });
-    this.load.image("player-jump", playerJumpUrl);
+    this.load.image("player-jump1", playerJump1Url);
+    this.load.image("player-jump2", playerJump2Url);
     this.load.image("player-hit", playerHitUrl);
     this.load.image("player-dead", playerDeadUrl);
     // ghost-run: 6프레임 스프라이트시트(전처리본 1434×300 → 각 239×300). 배경 투명·정렬 완료.
@@ -448,6 +526,10 @@ export class GameScene extends Phaser.Scene {
     this.load.image("obs-car", obsCarUrl);
     this.load.image("obs-barrel", obsBarrelUrl);
     this.load.image("obs-debris", obsDebrisUrl);
+    this.load.image("obs-barricade", obsBarricadeUrl);
+    this.load.image("obs-vending", obsVendingUrl);
+    this.load.image("obs-fissure", obsFissureUrl);
+    this.load.image("hp-frame", hpFrameUrl);
     // flame-pilar-1/2 이미지 사용 안 함 — 코드 드로우 화염분수로 교체
     // bg-sun: 코드 태양으로 대체, 이미지 로드 불필요
     // fx-meteor-*: 코드 드로우(drawCodeMeteor)로 대체, 이미지 로드 불필요
@@ -493,7 +575,8 @@ export class GameScene extends Phaser.Scene {
       "ghost-run",
       "ghost-collapse",
       "player-ride",
-      "player-jump",
+      "player-jump1",
+      "player-jump2",
       "player-hit",
       "player-dead",
     ].forEach((key) => {
@@ -643,34 +726,74 @@ export class GameScene extends Phaser.Scene {
       .setDepth(20);
 
     // HUD: 체력바(하단 중앙) + 거리(우상단) + 랭킹 패널(좌상단)
-    // ── HP바: 네온 시안 테두리 스타일 ──
-    const barW = 260,
-      barH = 12;
-    const barY = DESIGN_H - 22;
-    // 외곽 테두리 (반투명 시안 네온)
-    this.add
-      .rectangle(DESIGN_W / 2, barY, barW + 6, barH + 6, 0x020c18, 0.92)
-      .setStrokeStyle(1.5, 0x00e5ff, 0.45)
-      .setDepth(20);
-    // 바 내부 트랙
-    this.add
-      .rectangle(DESIGN_W / 2, barY, barW, barH, 0x000d1a, 0.85)
-      .setDepth(20);
+    // ── HP바: 종횡비 보존 프레임(hp-frame 780×114 고해상) + 그라데이션 fill ──
+    // 구조: fill Image(depth 20, 무채색 세로 그라데이션 → setTint 로 색 입힘)
+    //       + hp-frame Image(depth 21, 내부 투명 → fill 비침, 우측 하트 아이콘 보존)
+    // ★ 이전 버그: 260×20 강제 리사이즈로 비율 깨짐+저해상, fillGradientStyle→generateTexture
+    //   가 투명 텍스처가 돼 "점만" 보임. → 고해상 프레임 + Canvas 그라데이션으로 교체.
+    // 프레임 종횡비(hp-frame.png = 780×114 ≈ 6.84:1)에 맞춰 barH 산출 → 왜곡 없음.
+    const barW = 260;
+    const barH = Math.round(barW * (114 / 780)); // ≈ 38
+    const barY = DESIGN_H - 24;
+    // 내부(투명 구멍) pad 측정값(소스 비율): 좌 3.1% / 하트 시작 86% / 상하 ~20%.
+    // fill은 하트(우측 아이콘) 앞에서 멈추게 usable 우측을 0.86으로 제한.
+    const HP_L_FRAC = 0.031;
+    const HP_R_FRAC = 0.86;
+    const HP_FILL_W = Math.round((HP_R_FRAC - HP_L_FRAC) * barW); // ≈ 216
+    const fillX = DESIGN_W / 2 - barW / 2 + Math.round(HP_L_FRAC * barW);
+    const HP_TEX_W = 16;
+    const fillTexH = Math.max(2, Math.round(barH * 0.52)); // 내부 높이 근사(테두리 안쪽)
+
+    // ── 무채색 세로 광택 그라데이션 fill 텍스처 (Canvas 로 생성 — 안정적) ──
+    // 원리: 흰(상단)→회(하단) 무채색을 setTint로 물들이면 밝은 픽셀=틴트색, 어두운 픽셀=어두운
+    //   버전 → 어느 색이든 자연스러운 광택 유지. (Graphics.fillGradientStyle→generateTexture 는
+    //   일부 환경에서 투명 텍스처가 되는 버그가 있어 Canvas 2D 그라데이션으로 대체.)
+    if (!this.textures.exists("hp-fill-grad")) {
+      const ct = this.textures.createCanvas("hp-fill-grad", HP_TEX_W, fillTexH);
+      if (ct) {
+        const ctx = ct.getContext();
+        const grad = ctx.createLinearGradient(0, 0, 0, fillTexH);
+        grad.addColorStop(0, "#ffffff");
+        grad.addColorStop(0.45, "#e6e6e6");
+        grad.addColorStop(1, "#7a7a7a");
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, HP_TEX_W, fillTexH);
+        ctx.fillStyle = "rgba(255,255,255,1)"; // 상단 1px 스펙큘러
+        ctx.fillRect(0, 0, HP_TEX_W, 1);
+        ct.refresh();
+      }
+    }
+
+    // ── 우측 끝 소프트 글로우 텍스처 (방사형) ──
+    if (!this.textures.exists("hp-end-glow")) {
+      const gfx = this.add.graphics();
+      const glowR = 7;
+      for (let r = glowR; r >= 1; r--) {
+        gfx.fillStyle(0xffffff, ((glowR - r + 1) / glowR) * 0.5);
+        gfx.fillCircle(glowR, glowR, r);
+      }
+      gfx.generateTexture("hp-end-glow", glowR * 2, glowR * 2);
+      gfx.destroy();
+    }
+
+    this.hpFillFullScale = HP_FILL_W / HP_TEX_W; // ratio=1 일 때 scaleX
     this.hpFill = this.add
-      .rectangle(DESIGN_W / 2 - barW / 2, barY, barW, barH, 0x2ecc71)
+      .image(fillX, barY, "hp-fill-grad")
       .setOrigin(0, 0.5)
-      .setDepth(21);
+      .setDepth(20);
+    this.hpFill.scaleX = this.hpFillFullScale; // 초기: 풀 HP
+
+    this.hpGlow = this.add
+      .image(fillX + HP_FILL_W, barY, "hp-end-glow")
+      .setOrigin(0.5, 0.5)
+      .setDepth(20)
+      .setAlpha(0.65);
+
+    // 프레임: 종횡비 그대로 스케일(왜곡 없음). 내부 투명 → fill 비침, 하트는 우측에 보존.
     this.add
-      .text(DESIGN_W / 2 - barW / 2 - 10, barY, "HP", {
-        fontSize: "11px",
-        fontFamily: "'Orbitron', monospace",
-        fontStyle: "bold",
-        color: "#00e5ff",
-        resolution: TXT_RES,
-      })
-      .setOrigin(1, 0.5)
-      .setDepth(22)
-      .setAlpha(0.85);
+      .image(DESIGN_W / 2, barY, "hp-frame")
+      .setDisplaySize(barW, barH)
+      .setDepth(21);
 
     // ── paceText/overtakeHudText: 랭킹 패널로 대체 → 투명으로 유지 ──
     this.paceText = this.add
@@ -2306,6 +2429,9 @@ export class GameScene extends Phaser.Scene {
       const o = world.obstacles[i]!;
       if (!o.active) continue;
       const p = smokeProfile(this.obstacleType[i] ?? "obs-car");
+      // ★ 불 에셋(barrel·code-flame)만 연기/베이스 글로우 렌더. 그외(잔해·자판기·벽돌 등)는
+      //   "에셋 위 연기"가 어색하다는 피드백으로 제거 — 정적인 잔해에 연기가 안 붙게 한다.
+      if (!p.fire) continue;
       const sx = toScreenX(o.x);
       const topY = GROUND_Y_PX - o.h * OBSTACLE_ART_SCALE; // 시각 꼭대기에서 발생
 
@@ -2415,44 +2541,58 @@ export class GameScene extends Phaser.Scene {
     // 네온 트레일: 바이크 뒤로 수평으로 뻗는 속도선 (렌더 전용, Tier 1-3)
     // 플레이어 화면 Y를 넘겨 점프 시 트레일도 함께 따라 올라가게 한다.
     this.drawNeonTrail(s.speed, s.gameOver, toScreenY(s.player.y));
-    // 상태별 컷 전환: 사망 > 피격(무적) > 기본 주행(공중 포함)
-    // 공중에서도 신형 바이커 시트를 유지한다 — 구 player-jump 컷(이전 세대 아트)으로
-    // 바꾸면 점프마다 아트가 퇴행해 보임. 점프감은 아래 기울기 3단이 담당.
-    // (전용 점프 시트 player-jump2 도입 시 여기서 분기 복원)
+    // 상태별 컷 전환: 사망 > 피격(무적) > 점프(공중) > 기본 주행
+    // 점프 컷(jump1/jump2)은 각도가 아트에 구워져 있으므로 회전 없이 사용.
+    const isAirborne =
+      !s.gameOver && s.invincibleFrames === 0 && s.player.y > 2;
     const playerTex = s.gameOver
       ? "player-dead"
       : s.invincibleFrames > 0
         ? "player-hit"
-        : "player-ride";
+        : isAirborne
+          ? s.player.jumpsUsed >= 2
+            ? "player-jump2"
+            : "player-jump1"
+          : "player-ride";
     if (this.playerRect.texture.key !== playerTex) {
       if (playerTex === "player-ride") {
-        // 달리기 복귀 — 애니 재개
+        // 착지 — 달리기 애니 재개 + origin 원복(ride 초기값과 동일)
         this.playerRect.play("player-ride-anim");
+        this.playerRect.setOrigin(PLAYER_ART_ORIGIN_X, PLAYER_ART_ORIGIN_Y);
+      } else if (
+        playerTex === "player-jump1" ||
+        playerTex === "player-jump2" ||
+        playerTex === "player-hit"
+      ) {
+        // [Tier B] jump1/2/hit 공통: prep에서 동일 캔버스(476px)로 구워짐.
+        // 뒷바퀴 하단 fraction = PLAYER_ART_ORIGIN_Y(0.96) → ride와 동일 originY.
+        this.playerRect.stop();
+        this.playerRect.setTexture(playerTex);
+        this.playerRect.setOrigin(0.5, PLAYER_ART_ORIGIN_Y);
       } else {
-        // jump/hit/dead 정지 컷 전환
+        // dead 정지 컷
         this.playerRect.stop();
         this.playerRect.setTexture(playerTex);
       }
-      // 사망 컷(오토바이에서 날아가는)은 살짝 크게 — 극적이되 과하지 않게.
+      // [Tier B] 렌더 크기: 배율 정규화를 prep 단계에서 구워넣었으므로 분기가 단순해짐.
+      // dead: 극적 연출용 1.25× 유지 / jump+hit: 공통 JUMP_HIT_ART_H / ride: PLAYER_ART_H.
       const artH =
-        playerTex === "player-dead" ? PLAYER_ART_H * 1.25 : PLAYER_ART_H;
+        playerTex === "player-dead"
+          ? PLAYER_ART_H * 1.25
+          : playerTex === "player-jump1" ||
+              playerTex === "player-jump2" ||
+              playerTex === "player-hit"
+            ? JUMP_HIT_ART_H
+            : PLAYER_ART_H;
       this.playerRect.setDisplaySize(
         (this.playerRect.width / this.playerRect.height) * artH,
         artH,
       );
     }
-    // 점프 기울기 3단 — 공중에서만(렌더 전용, sim 읽기만 → 결정론 무관).
-    // 전용 에셋(player-jump2) 전까지의 코드 스톱갭. 화면 좌표 y가 아래로 +라 뒤로 젖힘=음수 각도.
-    //   1단 점프(jumpsUsed<=1, 비피버) → 0° (지금처럼 기울기 없음)
-    //   2단 점프(jumpsUsed>=2, 비피버) → -22° (이전 -40°보다 완만하게)
-    //   피버 무한점프(feverFramesLeft>0) → -40° (최고 경사 유지)
+    // 점프 컷은 각도가 아트에 구워짐 → 공중에서 targetAngle = 0 고정(기울기 로직 무력화).
+    // 착지·피격·사망 시에도 0° 복귀.
     let targetAngle = 0;
-    if (!s.gameOver && s.player.y > 2) {
-      if (s.feverFramesLeft > 0) targetAngle = -40;
-      else if (s.player.jumpsUsed >= 2) targetAngle = -22;
-    }
     if (this.playerRect.angle !== targetAngle) {
-      // 부드럽게 추종(급변 방지) — 프레임당 보간. 계수↓로 단 간 전환을 완만하게.
       const a = Phaser.Math.Linear(this.playerRect.angle, targetAngle, 0.2);
       this.playerRect.setAngle(
         Math.abs(a - targetAngle) < 0.5 ? targetAngle : a,
@@ -2548,11 +2688,15 @@ export class GameScene extends Phaser.Scene {
         this.obstacleWasActive[i] = false;
         continue;
       }
-      // 스폰 순간(비활성→활성)에만 타입 배정 — 직전 타입과 다르게(인접 중복 방지).
+      // 스폰 순간(비활성→활성)에만 타입 배정 — 최근 2개 히스토리와 다르게(인접 중복 방지).
       if (!this.obstacleWasActive[i]) {
-        const t = pickObstacleType(o.h, o.w, this.lastObstacleType);
+        const t = pickObstacleType(o.h, o.w, this.lastObstacleTypes);
         this.obstacleType[i] = t;
-        this.lastObstacleType = t;
+        // 인공물 계열만 히스토리에 기록 (불·용암은 자연 반복 허용)
+        if (!t.startsWith("code-") && t !== "obs-fissure") {
+          this.lastObstacleTypes.push(t);
+          if (this.lastObstacleTypes.length > 2) this.lastObstacleTypes.shift();
+        }
         this.obstacleWasActive[i] = true;
       }
       const key = this.obstacleType[i]!;
@@ -2563,17 +2707,30 @@ export class GameScene extends Phaser.Scene {
       } else {
         r.setVisible(true);
         if (r.texture.key !== key) r.setTexture(key);
-        const artH = o.h * OBSTACLE_ART_SCALE;
-        const aspect = r.width / r.height;
-        const w = Math.max(
-          OBSTACLE_MIN_W,
-          Math.min(artH * aspect, OBSTACLE_MAX_W, o.w + OBSTACLE_OVERHANG_PX * 2),
-        );
+        const smallOk = OBSTACLE_SMALL_OK.has(key);
+        // 불/돌 외 인공물은 최소 높이 보장(주인공보다 크게). 불/돌은 hitbox 기반 그대로.
+        let artH = o.h * OBSTACLE_ART_SCALE;
+        if (!smallOk) artH = Math.max(artH, OBSTACLE_MIN_ART_H);
+        const nativeAspect = r.width / r.height;
+        // 종횡비 보존 균일 스케일: 우선 높이를 artH에 맞춤
+        let dispH = artH;
+        let dispW = artH * nativeAspect;
+        // 폭 상한 초과 시 균일 축소 (높이도 같이 줄여 찌부 방지)
+        //   불/돌: 히트박스 연동 좁은 상한 / 그외: 넓은 상한(작게 눌리지 않게)
+        const capW = smallOk
+          ? Math.min(OBSTACLE_MAX_W, o.w + OBSTACLE_OVERHANG_PX * 2)
+          : OBSTACLE_BIG_MAX_W;
+        if (dispW > capW) {
+          const s = capW / dispW;
+          dispW = capW;
+          dispH = artH * s;
+        }
+        dispW = Math.max(OBSTACLE_MIN_W, dispW);
         const prof = smokeProfile(key);
         const flicker = prof.fire
           ? 1 + 0.05 * Math.sin(this.renderTimeMs * 0.012 + i * 2.1)
           : 1;
-        r.setDisplaySize(w * flicker, artH);
+        r.setDisplaySize(dispW * flicker, dispH);
         r.setPosition(toScreenX(o.x), GROUND_Y_PX);
       }
     }
@@ -2586,12 +2743,15 @@ export class GameScene extends Phaser.Scene {
       if (p.active) c.setPosition(toScreenX(p.x), toScreenY(p.y));
     }
 
-    // HUD
+    // HUD — 광택 그라데이션 HP 바
     const ratio = s.hp / C.HP_MAX;
-    this.hpFill.scaleX = ratio;
-    this.hpFill.setFillStyle(
-      ratio > 0.5 ? 0x2ecc71 : ratio > 0.25 ? 0xf1c40f : 0xff4757,
-    );
+    const hpColor = ratio > 0.5 ? 0x2ecc71 : ratio > 0.25 ? 0xf1c40f : 0xff4757;
+    this.hpFill.scaleX = ratio * this.hpFillFullScale;
+    this.hpFill.setTint(hpColor);
+    // 우측 끝 소프트 글로우: fill 오른쪽 가장자리에 색 맞춰 이동
+    this.hpGlow.x = this.hpFill.x + this.hpFill.displayWidth;
+    this.hpGlow.setTint(hpColor);
+    this.hpGlow.setVisible(ratio > 0.02);
     // 거리 HUD는 랭킹 패널(updateRankPanel)로 이전 — 별도 distText 없음
 
     // 중앙 큰 콤보 — 2 이상일 때, 게임오버/구경 중엔 숨김.

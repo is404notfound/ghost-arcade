@@ -83,7 +83,7 @@
 | ID                                                      | 무엇                             | 풋프린트(게임 px)                  | 상태 | 비고                                                                 |
 | ------------------------------------------------------- | -------------------------------- | ---------------------------------- | ---- | -------------------------------------------------------------------- |
 | `player-rider`                                          | 후드 라이더+네온 오토바이        | 히트박스 30×42 (아트 ~56 overhang) | ✅   | ride/jump/hit/dead 컷. 글로우=코드 postFX                            |
-| `player-jump2` (6프레임)                                | 2단 점프(직각+네온 부스트)        | 30×42 (히트박스 동일)              | ⬜   | **프롬프트 갱신됨** → §5.1. 6프레임 점프 사이클, jumpCount===2 전환  |
+| `player-jump1` / `player-jump2`                         | 1단/2단 점프 정지 컷(2단=직각+네온 부스트) | 30×42 (히트박스 동일)      | 🟡   | **아트 확보(첨부 1024×512 2컷) → 분할·적용 스펙** §5.1. jumpsUsed로 분기 |
 | `ghost-runner`                                          | 발로 뛰는 헤일로 고스트          | 30×42                              | ✅🟡 | **6프레임 시트**(`ghost-run.png`), 런타임 랜덤 위상·속도. (2026-06-28: **후드 유령 컨셉으로 재생성 대기** → §5.2A) |
 | `ghost-collapse` (3프레임)                              | **기록 종료 시 엎어지는 고스트** | 420×320×3                          | ✅   | 전용 3프레임 적용(비틀→무릎→엎어짐). prep-ghost-collapse.py → §5.2B |
 | `fuel-can`                                              | 연료통(회복=주유)                | 26×26                              | ✅   | 쿨 블루. 빨간 주유통 ❌                                              |
@@ -156,38 +156,138 @@ overload, photo, face close-up, rider standing, car, three wheels
 > 추가 컷(동일 스타일·baseline·글로우): `jump`(앞바퀴 들린 버니홉), `hit`(1컷, 깜빡임은 코드),
 > `dead`(라이더가 튕겨 나가 머리 위 골드 헤일로가 생기는 컷 — "죽으면 나도 고스트가 된다" 루프 핵심).
 
-#### ★ player-jump2 — 2단 점프 (6프레임 애니, ⬜ 신규 에셋 필요)
+#### ★ player-hit — 피격 컷 (여성 바이커 소녀 신규, ⬜ 이전 남성 에셋 교체)
 
-2단 점프 시(`player.jumpCount === 2`) **거의 수직(80~90°)으로 꺾인** 더 격렬한 도약 + **네온
-부스트 분사**. 사용자 요구(2026-06-29): 기울기를 직각에 가깝게, 네온 부스트, **6프레임 시퀀스**로
-바퀴·휘날리는 머리 디테일을 살린다. (※ 기존 단일 컷 → 6프레임 점프 사이클로 승격.)
-
-```
-A 6-frame side-view animation strip of the SAME neon hooded rider on the SAME cyan motorcycle as
-player-rider (identical palette #5efce8/#cafff8, glow, line weight, long hair streaming, style) —
-performing an explosive SECOND mid-air jump. Across the 6 frames the bike rotates so the front
-wheel kicks up to NEARLY VERTICAL (about 80-90 degrees above horizontal) at the peak, rear wheel
-angled down, the rider thrown back with long hair and scarf whipping dramatically, both wheels
-spinning with motion-blur glow. A burst of bright cyan (#36f9f6) NEON BOOST flames/jet erupts
-downward-backward from under the rear of the bike, growing across the frames to sell the "punched
-straight up" energy. Frame sequence: (1) crouch/wind-up, (2) front wheel lifting, (3) ~45° rising
-with boost igniting, (4) ~70° with full boost jet, (5) PEAK near-vertical, hair fully streaming,
-(6) tipping back to fall. Horizontal strip of 6 evenly spaced frames, clear gaps, all frames
-identical scale, lighting and baseline anchor (bottom of rear wheel), side profile facing right,
-isolated on a transparent background, no scene, no ground, no shadow, no text, game asset.
-```
+지금 `player-hit.png`는 **구세대 아트(남성 라이더)**가 그대로 굽혀 있어 현행 여성 바이커 소녀
+시트(§5.1 `player-ride`)와 스타일이 어긋난다. 아래로 **여성 라이더 1컷**을 새로 뽑아 교체한다.
+장애물에 부딪힌 순간의 **반동/움찔** 리액션 — 깜빡임(무적)은 코드가 처리하니 **정지 1프레임**이면
+충분하다. 기존 `ride`와 **동일 displaySize·동일 baseline**(사망 컷처럼 확대 금지). 히트박스 30×42 불변.
 
 ```
-NEGATIVE: front wheel down, casual flat hover, gentle angle, 3D, realistic, photo, text, watermark,
-white background, ground shadow, standing rider, car, three wheels, helmet, inconsistent scale
-between frames, frames at different heights
+A single "HIT" reaction cut of the SAME neon hooded BIKER GIRL on the SAME cyan motorcycle as
+player-rider (identical palette: #5efce8 body with #cafff8 highlights, same bike shape, glow and
+line weight, long ponytail hair streaming) — the exact moment she is struck by an obstacle. Side
+view facing right, the rider and bike jolted and recoiling BACKWARD from a frontal impact, front
+wheel knocked slightly up, upper body snapped back, long ponytail and scarf whipping violently,
+a sharp burst of impact sparks and a brief clash flash in cyan (#36f9f6) and danger magenta
+(#ff5fa2) at the FRONT of the bike, a couple of short spark/debris streaks. Clearly a FEMALE
+rider (slim build, long ponytail, no facial detail). Restrained outer glow, synthwave city-pop
+apocalypse, flat vector-like, strong readable silhouette, isolated on a transparent background,
+no scene, no ground, no shadow, no text, side profile, single frame, game asset, wheels on a
+common ground baseline.
 ```
 
-> **구현 노트(렌더 전용):** `assets/images/player/player-jump2-1~6.png`(또는 한 장 스트립) →
-> `scripts/prep-*`로 균일 분할·하단정렬. `s.player.jumpCount === 2`일 때 `player-jump2` 6프레임
-> 애니로 전환(점프 상승~정점에 매핑, 1회 재생 후 정점 프레임 유지). `player-jump`와 동일
-> `displaySize`, sim 히트박스 동일 → **버전 업 없음**. 네온 부스트는 6프레임에 구워도 되고,
-> 부담되면 정점만 코드 파티클로 보강.
+```
+NEGATIVE: male rider, short hair, bald, bare head, detailed realistic face, calm riding pose,
+upright neutral, standing off the bike, gore, blood, 3D, realistic, photo, text, watermark,
+white or black background, ground shadow, car, three wheels, different palette, multiple frames,
+enlarged out of scale
+```
+
+> **일관성:** 현행 `assets/game/player-ride.png`(또는 첨부 점프 아트)를 **참조 이미지로 업로드**하고
+> `match the exact biker girl, hair, bike shape, line weight, glow and palette of this reference,
+> just the hit-reaction pose`로 지시 → 세계관/체형/바이크가 어긋나지 않게 뽑는다.
+>
+> **구현 노트(렌더 전용):** 새 원본 → `player-rider-hit.png`(또는 전용 파일)로 넣고
+> `scripts/prep-assets.py`의 player 그룹에서 함께 굽는다(공통 bbox·배율 → `player-hit.png`).
+> `GameScene`는 `s.invincibleFrames > 0`일 때 이미 `player-hit`로 전환하므로 **텍스처만 교체**하면
+> 끝(§4대로 히트박스 sim 불변 → 버전 업 없음).
+
+#### ★ player-dead — 사망→고스트화 컷 (여성 라이더 신규, ⬜ 이전 남성 에셋 교체)
+
+지금 `player-dead.png`도 **구세대 아트(남성 라이더)**라 현행 여성 바이커 소녀와 어긋난다. 이 컷은
+단순 "죽음"이 아니라 **"죽으면 나도 고스트가 된다"는 정체성 루프의 핵심**(§7)이다 — 그래서 현행
+플레이어(**시안 바이커 소녀** §5.1)가 튕겨 나가면서 **§5.2 고스트로 변해가는 순간**(골드 헤일로 생성 +
+몸이 보라 반투명으로 페이드)을 한 컷에 담아 두 에셋을 시각적으로 잇는다. `EV_GAME_OVER` 시 1회
+전환 후 코드가 페이드아웃하므로 **드라마틱한 정지 1컷**이면 된다(§4대로 히트박스 무관 → 버전 업 없음).
+
+```
+A single dramatic "DEATH → GHOST" transition cut of the SAME neon BIKER GIRL as player-rider
+(same slim build, long ponytail, line weight and style) at the instant she is thrown off her
+motorcycle. Side view facing right: her body is EJECTED and tumbling backward through the air,
+arms and long ponytail flailing, the cyan (#5efce8) motorcycle tumbling away separately below
+her. A LARGE bright glowing GOLDEN angel halo ring (#ffd700 / #ffe9a8) is appearing just above
+her head (the death mark). Her body is mid-TRANSFORMATION from the player into a ghost: the
+cyan (#5efce8) body is bleeding/fading into soft VIOLET (#b39ddb) translucent neon, the trailing
+edges and ponytail dissolving into a wispy semi-transparent spirit. Clearly a FEMALE figure,
+no facial detail. Restrained outer glow, synthwave city-pop apocalypse, flat vector-like, strong
+readable silhouette, isolated on a transparent background, no scene, no ground, no shadow,
+no text, side profile, single frame, game asset.
+```
+
+```
+NEGATIVE: male rider, short hair, bald, bare head, detailed realistic face, calm riding pose,
+upright neutral, still sitting firmly on the bike, gore, blood, dismemberment, 3D, realistic,
+photo, text, watermark, white or black background, ground shadow, car, three wheels, no halo,
+fully opaque solid body, different palette, multiple frames
+```
+
+> **일관성(중요):** 이 컷은 §5.1 `player-ride`(시안 바이커 소녀)와 §5.2 `ghost-runner`(보라 후드
+> 유령 + 골드 헤일로) **둘 다의 브리지**다. 두 참조 이미지를 함께 올려 `keep the biker girl's
+> body/hair, but blend her cyan color and silhouette toward this violet halo ghost — the moment
+> of turning into it`로 지시하면 팔레트 전환(시안→보라)과 헤일로가 두 에셋과 어긋나지 않는다.
+>
+> **구현 노트(렌더 전용):** 새 원본 → `player-rider-dead.png`(또는 전용 파일) → `prep-assets.py`
+> player 처리 → `player-dead.png`. `GameScene`는 `s.gameOver` 시 이미 `player-dead`로 전환하고
+> **`PLAYER_ART_H * 1.25`로 살짝 크게** 표시한 뒤 트윈 페이드아웃(≈780ms, 결과 패널 전 소멸)한다 —
+> **텍스처만 교체**하면 끝. 튕겨 나감 방향상 아트는 위로 overhang 여유를 두고, baseline은 다른 컷과
+> 크게 안 어긋나게(페이드아웃되므로 접지 엄밀성은 낮음).
+
+#### ★ player-jump1 / player-jump2 — 점프 컷 2프레임 (첨부 아트 분할·적용, ✅ 아트 확보)
+
+> **방향 전환(2026-07-06):** 아래 "6프레임 애니" 계획은 **폐기**. 완성 아트 1장(가로 2컷)을 확보해서
+> **정지 2프레임(1단/2단)** 으로 간다. 지금은 공중에서도 주행 시트(`player-ride`)를 코드 기울기
+> (0°/−22°/−40°)로만 굴리는 **스톱갭 상태** → 전용 점프 컷으로 승격한다.
+
+**소스 아트:** `1024×512` RGB(흰 배경), **좌우 512씩 2컷**. 왼쪽 = **1단 점프**(뒷바퀴 근처 짧은
+시안 분사), 오른쪽 = **2단 점프**(앞바퀴가 거의 수직으로 들리고 **시안 네온 부스트가 뒤·아래로 길게
+분사**). 저장 위치: `assets/images/player/player-jump-src.png`.
+
+> **★ 분할의 함정(가장 중요):** 2단 컷의 **시안 부스트가 뒷바퀴 접지점보다 훨씬 아래까지** 흘러내린다.
+> "가장 낮은 불투명 픽셀"로 하단정렬하면 부스트 끝이 바닥에 붙어 **캐릭터가 붕 뜬다.** 반드시
+> **뒷바퀴 하단(접지점)** 을 baseline 앵커로 잡고, 부스트는 글로우처럼 **풋프린트 밖으로 넘치게(장식)**
+> 둔다. (§2 "글로우/불꽃은 풋프린트 밖으로 넘쳐도 됨" 규칙과 동일.)
+
+**아래는 코딩 에이전트에 그대로 넘기는 작업 지시 프롬프트다:**
+
+```
+목표: 첨부한 점프 아트(assets/images/player/player-jump-src.png, 1024×512 RGB 흰배경, 좌우 2컷)를
+      분할·정렬해 전용 점프 컷 2장을 만들고, GameScene에서 1단/2단 점프에 각각 적용한다.
+      렌더 전용 작업 — sim(src/sim/) 절대 금지, 히트박스 30×42 불변 → SIM_VERSION 업 없음.
+
+1) 전처리 스크립트 신규: scripts/prep-player-jump.py
+   - prep-player-sheet.py / prep-ghost-collapse.py를 참고(같은 soft_alpha 배경제거 재사용:
+     채도·어두움 기반 → 네이비 차체 + 시안 부스트는 보존, 흰 배경만 알파 0).
+   - x=512에서 좌(=jump1)·우(=jump2)로 분할.
+   - ★ baseline 앵커 = "뒷바퀴 하단". 최하단 불투명 픽셀이 아님(부스트 꼬리 무시).
+     robust 방법: 아래에서 위로 스캔해 '가로 연속 불투명 폭 ≥ 임계'인 첫 행(바퀴는 넓은 원반,
+     부스트 물방울은 얇고 흩어짐) = 바퀴 하단. 안 되면 prep-player-sheet의 POSES처럼 프레임별
+     wheel-bottom y를 측정해 하드코딩(2컷뿐이라 허용).
+   - 두 컷을 동일 배율로(= player-ride의 화면 크기와 일치하게) 리사이즈. 출력 캔버스에서
+     두 컷의 '뒷바퀴 하단'을 동일한 y(= 캔버스 높이의 wheel-baseline fraction)에 맞춰 배치.
+     부스트는 그 아래로 넘쳐도 됨(필요하면 캔버스 하단 여유를 넉넉히).
+   - 산출: assets/game/player-jump1.png, assets/game/player-jump2.png (RGBA).
+   - 마지막에 wheel-baseline fraction(예: 0.xx)을 print → GameScene originY에 사용.
+
+2) GameScene.ts 배선(렌더 전용):
+   - import/preload: player-jump1, player-jump2 (기존 player-jump 임포트 대체·확장).
+   - 텍스처 선택 블록(현 ~2422, "상태별 컷 전환")에서 dead/hit 다음, ride 앞에 점프 분기 복원:
+       공중 판정(!gameOver && invincibleFrames===0 && s.player.y > 2)일 때
+         jumpsUsed >= 2  → "player-jump2"
+         그 외          → "player-jump1"
+   - 컷 전환 시: stop()(정지 컷) + setDisplaySize는 ride와 동일 PLAYER_ART_H(확대 금지, dead만 1.25).
+     origin은 점프 컷 전용 originY(1)의 print값)로, ride 복귀 시 0.96으로 원복.
+   - ★ 코드 기울기 중복 방지: 점프 컷은 각도가 이미 아트에 구워져 있으니 이 컷을 쓰는 동안
+     targetAngle = 0으로(현 2446~2452 스톱갭 로직을 점프 컷 사용 시 무력화). 피버 무한점프도
+     jump2 아트로 통일 → 각도 0.
+   - 착지(y<=2) → "player-ride" + play("player-ride-anim") + origin 0.96 원복.
+
+3) 검증: 점프 시 바퀴가 바닥선(GROUND_Y_PX)에 물리고 부스트만 아래로 흐르는지, 1단↔2단 전환이
+   즉시 읽히는지, 착지 시 주행 시트로 매끄럽게 복귀하는지. 기존 player-jump.png(구세대)는 미사용→정리.
+```
+
+> **일관성 체크:** 첨부 아트는 이미 현행 바이커 소녀·시안 팔레트라 새 생성 불필요. `prep-player-jump.py`
+> 결과가 `player-ride`와 **동일 화면 배율·동일 바닥선**인지만 맞추면 된다(§9 baseline 체크).
 
 ---
 
@@ -524,17 +624,23 @@ NEGATIVE: colored, text, shape detail, white or black background, star outline
 
 ### 5.7 hp-bar — 체력바 HUD ★신규 (현재 코드 사각형 → 에셋 교체)
 
-화면 **하단 중앙**의 가로 게이지. 현재는 코드 사각형(프레임 260×14 + 초록→노랑→빨강 fill).
-에셋으로 교체할 땐 **3개 파트**로 받아 9-slice/스케일 합성한다(폭 가변, 높이 고정):
+화면 **하단 중앙**의 가로 게이지. `hp-frame` 프레임 1장(우측 하트 아이콘 포함) + 코드 그라데이션 fill.
+
+> **구현 현황(2026-07):** `hp-frame`은 **9-slice가 아니라 종횡비 보존 이미지**로 표시한다.
+> 원본 바가 ≈6.84:1이라 `260×20`(=13:1)으로 강제 리사이즈하면 가로로 눌려 비율이 깨지고 저해상이
+> 됐던 버그가 있었다. → `prep-ui.py`가 **종횡비 보존 고해상(780×114 @3x)** 으로 굽고, `GameScene`은
+> `barH = round(barW·114/780) ≈ 38`로 왜곡 없이 표시. **하트 아이콘은 프레임에 포함**(별도 `hp-icon` 불요).
+> fill은 이미지가 아니라 **Canvas 2D 세로 그라데이션 텍스처**(무채색) + `setTint`(색)로 코드 생성한다.
+> (`Graphics.fillGradientStyle → generateTexture`는 일부 환경에서 투명 텍스처가 돼 "점만" 보이는 버그.)
 
 | 파트            | 용도                  | 권장 크기(@3x)  | 비고                                          |
 | --------------- | --------------------- | --------------- | --------------------------------------------- |
-| `hp-frame`      | 빈 게이지 프레임/그릇 | 816×72 (272×24) | 양끝 캡 + 가운데 반복 → 가로 9-slice          |
-| `hp-fill`       | 채워지는 막대(가로 타일) | 768×48 (256×16) | `scaleX`로 깎아 비율 표시. 무채색→코드 틴트   |
-| `hp-icon`(선택) | 좌측 하트/배터리 아이콘 | 72×72 (24×24)  | 깜빡임은 코드                                  |
+| `hp-frame`      | 프레임(내부 투명)+하트 | **780×114**(종횡비 보존) | 트림 후 폭 780으로 비례 리사이즈. 하트 우측 포함 |
+| ~~`hp-fill`~~   | 채워지는 막대         | (에셋 불요)     | 코드 Canvas 그라데이션 + `setTint`로 대체        |
+| ~~`hp-icon`~~   | 좌측 아이콘           | (에셋 불요)     | 하트가 `hp-frame`에 포함됨                        |
 
-색은 코드에서 틴트(>50% `#2ecc71`, >25% `#f1c40f`, 이하 `#ff4757` + 점멸). 그래서 `hp-fill`은
-**밝은 무채색 그라데이션 + 약한 내부 광택**으로 받아 어느 색으로 틴트해도 자연스럽게.
+색은 코드에서 틴트(>50% `#2ecc71`, >25% `#f1c40f`, 이하 `#ff4757`). fill은 밝은 무채색 세로
+그라데이션(상단 흰 스펙큘러 → 하단 회색)이라 어느 색으로 틴트해도 자연스럽다.
 
 ```
 PROMPT (hp-frame — 빈 게이지 프레임):
@@ -620,6 +726,65 @@ white or black background, busy ornaments, characters, mascots
 > **구현:** 셋 다 9-slice. `rank-panel`은 §updateRankPanel의 slot tween 위치에 그대로 깔고,
 > `tutorial-overlay`/`gameover-panel`은 기존 컨테이너 배경 Rectangle을 Image(9-slice)로 교체.
 > 글자는 지금처럼 코드 텍스트(`resolution: TXT_RES`)로 위에 얹는다 — 버전/언어 무관.
+
+---
+
+### 5.7C 랭킹 전용 패널 — 상단 즉석랭킹 / 최종 주간랭킹 ★신규
+
+> §5.7B (1)/(3)의 범용 프레임을 이 두 용도에 맞춰 **구체화**한 프롬프트. 실제 인게임 화면
+> (상단 4칸 실시간 거리 순위 + 게임오버 시 중앙 "주간 랭킹 · 7일 누적" 결과 박스)에 맞춘다.
+> 공통: 정면 플랫(원근 금지), 투명 배경, **글자·숫자 없이**, 9-slice 가능한 프레임만.
+> 팔레트: 시안 `#36f9f6`/`#00e5ff`, 위험 마젠타 `#ff2d55`, 다크 바디 `#060010`~`#10081f`,
+> 1등 강조 골드 `#ffd35c`.
+
+**(A) rank-hud-instant — 상단 즉석 랭킹 칩 (실시간 거리 순위, 가로 슬롯)**
+
+현재 코드 Rectangle. 에셋은 **단일 칩 프레임 1장**을 받아 4벌 복제 후 코드 틴트
+(슬롯0=플레이어=밝은 시안, 슬롯1~3=고스트=무채색). 필요하면 1등 전용 골드 림 변형 1장 추가.
+
+```
+A single horizontal HUD rank chip for a neon synthwave endless-runner live leaderboard, a small
+wide rounded-rectangle plate with a dark semi-transparent body (#060010, ~90% opacity), a thin
+glowing cyan (#00e5ff) neon outline, a brighter 1px specular line along the top edge, a small
+notch/bevel at both left and right ends for clean 9-slice stretching, a faint outer cyan bloom,
+compact flat vector HUD style, front-facing flat elevation, isolated on a transparent background,
+empty inside, no text, no numbers, no icons, no portrait.
+```
+
+1등 강조 변형(선택):
+
+```
+Same wide rounded-rectangle HUD rank chip but for the #1 leader: a warm gold (#ffd35c) neon outline
+with a soft gold outer glow and a subtle laurel/crown-less gold accent along the top edge, dark
+semi-transparent body, flat vector, front-facing flat, transparent background, empty inside, no text.
+```
+
+**(B) weekly-ranking-panel — 최종 주간 랭킹 결과 패널 (게임오버 중앙 카드)**
+
+현재 코드 Rectangle 컨테이너. 에셋은 **중앙 결과 카드 프레임 1장**. 안쪽은 위→아래로
+① 헤더 리본("주간 랭킹 · 7일 누적" 자리) → ② 큰 수치 배지("거리 1573M" 자리) →
+③ 3~4행 순위 리스트 영역(행 구분선) → ④ 하단 CTA("ONE MORE RUN?") 영역. 전부 **글자는 코드로** 얹음.
+
+```
+A centered vertical result panel frame for a neon synthwave apocalypse runner weekly-leaderboard
+screen, tall rounded rectangle with a very dark glassy body (#0a0018, ~92% opacity) and a glowing
+cyan (#36f9f6) neon border with soft bloom; inside, purely as empty decorative zones with no text:
+a highlighted header ribbon strip across the top, a large emphasized number-badge area just below
+it, a middle list area subdivided by three or four faint horizontal divider lines for ranking rows,
+and a slim call-to-action button slot at the bottom edge; thin gold (#ffd35c) accent reserved near
+the top for the #1 row; front-facing flat elevation, minimal flat vector UI, subtle inner vignette,
+isolated on a transparent background, no text, no letters, no numbers, no icons, no characters.
+```
+
+```
+NEGATIVE: text, letters, numbers, kanji, 3D, perspective, realistic, photo, drop shadow on ground,
+white or black background, busy ornaments, characters, mascots, portraits, tiny illegible details
+```
+
+> **구현:** 둘 다 9-slice. `rank-hud-instant`는 `updateRankPanel`의 slot tween 좌표에 배경으로
+> 깔고 슬롯별 `setTint`(플레이어 시안 / 고스트 회색 / 1등 골드). `weekly-ranking-panel`은 게임오버
+> 컨테이너의 배경 Rectangle을 Image(9-slice)로 교체하고, 리본·수치·순위행·CTA 문구는 기존 코드
+> 텍스트를 각 영역 위에 배치. 색·레이아웃 상수는 HUD와 공유 → 언어/버전 무관.
 
 ---
 

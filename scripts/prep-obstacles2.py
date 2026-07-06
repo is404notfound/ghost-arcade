@@ -115,6 +115,44 @@ def process_white(src_name: str, out_name: str, target_h: int) -> None:
     print(f"  {out_name:18s} {im.size}")
 
 
+# ── (C) 투명배경 단일 이미지 처리 ────────────────────────────────────────
+def process_transparent(src_name: str, out_name: str, target_h: int,
+                        bottom_crop: float = 0.0) -> None:
+    """이미 RGBA 투명배경인 단일 이미지를 trim → (지면 크롭) → 리사이즈 → 알파 스무딩.
+
+    - 알파 > 16 기준 bbox 트림(여백 제거)
+    - bottom_crop > 0 이면 트림 후 콘텐츠 높이의 그만큼을 '하단에서' 잘라낸다.
+      ★ 이유: 이 아트들은 밑동에 '원근 지면 플레인(잔해+네온 지그재그 데칼)'이 그려져 있어,
+        origin(0.5,1) 바닥정렬 시 오브젝트가 그 지면 위에 얹혀 '붕 떠' 보인다. 지면을 잘라내
+        오브젝트 실제 밑동이 PNG 바닥에 오게 한다(§2 no-ground-plane 규칙 근사).
+    - target_h 기준 LANCZOS 리사이즈(종횡비 유지)
+    - 알파 채널 GaussianBlur(0.8) — 계단현상(aliasing) 완화
+    """
+    im = Image.open(os.path.join(SRC, src_name)).convert("RGBA")
+    # 알파 > 16 인 픽셀만 bbox 계산 → 여백 트림
+    amask = im.split()[3].point(lambda v: 255 if v > 16 else 0)
+    bb = amask.getbbox()
+    if bb:
+        im = im.crop(bb)
+    if bottom_crop > 0.0:
+        cw, ch = im.size
+        keep_h = max(1, round(ch * (1.0 - bottom_crop)))
+        im = im.crop((0, 0, cw, keep_h))
+        # 지면 크롭 후 좌우 여백이 남을 수 있으니 재트림(세로는 하단 고정 유지)
+        amask = im.split()[3].point(lambda v: 255 if v > 16 else 0)
+        bb2 = amask.getbbox()
+        if bb2:
+            im = im.crop((bb2[0], 0, bb2[2], im.size[1]))
+    cw, ch = im.size
+    scale = target_h / ch
+    im = im.resize((max(1, round(cw * scale)), target_h), Image.LANCZOS)
+    r_, g_, b_, a_ = im.split()
+    a_ = a_.filter(ImageFilter.GaussianBlur(0.8))
+    im = Image.merge("RGBA", (r_, g_, b_, a_))
+    im.save(os.path.join(OUT, out_name), "PNG")
+    print(f"  {out_name:18s} {im.size}")
+
+
 if __name__ == "__main__":
     print("[obstacles split]")
     split_by_alpha(
@@ -125,4 +163,9 @@ if __name__ == "__main__":
     print("[flame pillars]")
     process_white("flame-pilar-1-src.png", "flame-pilar-1.png", target_h=360)
     process_white("flame-pilar-2-src.png", "flame-pilar-2.png", target_h=360)
+    print("[transparent obstacles]")
+    # bottom_crop: 밑동 지면 플레인(잔해+네온 지그재그) 제거 → 붕뜸 방지·종횡비 세로화
+    process_transparent("debris-barricade-src.png", "obs-barricade.png", target_h=320, bottom_crop=0.20)
+    process_transparent("wreck-vending-src.png",    "obs-vending.png",   target_h=320, bottom_crop=0.20)
+    process_transparent("crater-fissure-src.png",   "obs-fissure.png",   target_h=360, bottom_crop=0.20)
     print("done.")
