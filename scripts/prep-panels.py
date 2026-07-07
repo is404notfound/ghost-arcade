@@ -64,11 +64,13 @@ def _bbox_trim(im: Image.Image, alpha_thresh: int = 10) -> Image.Image:
 
 
 def _clean_edges(im: Image.Image) -> Image.Image:
-    """알파 가장자리 안티에일리어싱: 가우시안 blur로 부드럽게만.
-    ★ median은 알파를 계단식으로 만들어 네온 프레임 테두리가 오히려 자글자글해진다.
-    blur만 걸어 반투명 페더 → 매끈한 가장자리."""
+    """패널 알파 정리: morphological opening(erode→dilate)으로 프레임에서 떨어진 고립 흰 speckle을
+    제거한 뒤 blur로 매끈하게. 네온 프레임 테두리는 두꺼워 opening을 견디고, 작은 점만 사라진다.
+    (median과 달리 opening은 얇은 구조가 아니라 '작은 덩어리'를 제거해 프레임 형태를 보존.)"""
     r_, g_, b_, a_ = im.split()
-    a_ = a_.filter(ImageFilter.GaussianBlur(1.4))
+    a_ = a_.filter(ImageFilter.MinFilter(7))   # erode: 고립 speckle·faint 밴드 소멸
+    a_ = a_.filter(ImageFilter.MaxFilter(7))   # dilate: 프레임 원래 두께 복원
+    a_ = a_.filter(ImageFilter.GaussianBlur(1.2))
     return Image.merge("RGBA", (r_, g_, b_, a_))
 
 
@@ -80,7 +82,7 @@ def _prep_panel(src_name: str, out_name: str) -> None:
     im = _remove_white_bg(im, thresh=212, sat_thresh=0.16)
     im = _hard_cut_alpha(im, min_alpha=36)
     im = _clean_edges(im)
-    im = _hard_cut_alpha(im, min_alpha=18)
+    im = _hard_cut_alpha(im, min_alpha=45)  # 잔여 faint 밴드까지 제거(프레임은 고알파라 유지)
     im = _bbox_trim(im)
     out_path = os.path.join(OUT, out_name)
     im.save(out_path, "PNG")

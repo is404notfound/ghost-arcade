@@ -178,7 +178,7 @@ const PLAYER_ART_ORIGIN_Y = 0.96; // 바퀴 접지점이 바닥선에 닿도록
 // 고스트 러너 표시 높이. 106→90: 주인공 시트 교체(표시 96) 후 고스트가 주인공보다
 // 커 보인다는 피드백 — 주인공보다 살짝 작게 재조정.
 const GHOST_ART_H = 90;
-const GHOST_SPRITE_ALPHA = 0.5; // 디테일 실루엣이 읽히도록 도형(0.22)보다 높임
+const GHOST_SPRITE_ALPHA = 0.78; // 배경(스카이라인/네온)에 묻히지 않게 충분히 불투명하게
 const FUEL_ART_SIZE = 50; // 연료통 표시 한 변(px) — 100→50: 과대 크기 절반으로 축소
 const GHOST_RUN_FPS = 12; // 고스트 달리기 6프레임 사이클 속도(렌더 전용) — 12fps=0.5s/cycle
 // 고스트 x 분산 오프셋 — 렌더 전용. 충돌·거리 판정과 무관.
@@ -509,8 +509,10 @@ export class GameScene extends Phaser.Scene {
   private hintText!: Phaser.GameObjects.Text; // "탭하여 재시작" / "한 판 더?"
   // ── 결과 패널 = 주간 누적 랭킹 (게임오버 중앙 단일 패널) ──
   private weeklyPanel!: Phaser.GameObjects.Container;
-  private weeklyRowTexts: Phaser.GameObjects.Text[] = []; // 상위 5행
-  private weeklyMyText!: Phaser.GameObjects.Text; // top5 밖일 때 내 순위 행
+  private weeklyRowTexts: Phaser.GameObjects.Text[] = []; // 1~4등 이름(좌)
+  private weeklyRowDists: Phaser.GameObjects.Text[] = []; // 1~4등 거리(우측정렬)
+  private weeklyMyText!: Phaser.GameObjects.Text; // 5번째 칸 이름(좌)
+  private weeklyMyDist!: Phaser.GameObjects.Text; // 5번째 칸 거리(우측정렬)
   private weeklyRanks: WeeklyRank[] | null = null; // 게임오버 시 fetch 결과 (null = 아직/실패)
 
   constructor() {
@@ -686,8 +688,8 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < 3; i++) {
       const lbl = this.add
         .text(0, 0, RANK_TEXT[i]!, {
-          // 논리 px 그대로(과거 11*TXT_RES → 22~33px로 과대). 작게+반투명하게 톤다운.
-          fontSize: "10px",
+          // 살짝 키움(10→12) + 약간 더 진하게 — 고스트 위에서 잘 읽히게.
+          fontSize: "12px",
           fontFamily: "'Courier New', monospace",
           color: RANK_COLORS[i],
           resolution: TXT_RES,
@@ -695,7 +697,7 @@ export class GameScene extends Phaser.Scene {
           strokeThickness: 2,
         })
         .setOrigin(0.5, 1)
-        .setAlpha(0.62)
+        .setAlpha(0.72)
         .setVisible(false);
       this.ghostRankLabels.push(lbl);
     }
@@ -797,11 +799,10 @@ export class GameScene extends Phaser.Scene {
     // 내부(투명 구멍) pad 측정값(소스 비율): 좌 3.1% / 하트 시작 86% / 상하 ~20%.
     // fill 우측을 0.905로 설정 — hp=100 시 fill이 하트 밑까지 닿아 "만땅=끝까지 참"으로 읽힘.
     // fill(depth 20) 위에 하트 포함 프레임(depth 21)이 겹쳐 자연스럽게 가려진다.
-    const HP_L_FRAC = 0.031;
-    // 트랙 내부 오른쪽 경계(≈0.968)에 거의 flush. 하트(≈0.89~0.93)는 프레임(depth 21)이
-    // fill(depth 20) 위를 덮으므로, full일 때 하트 양옆까지 초록이 차 gap이 사라진다.
-    // 마스크 우측(barW*0.955)과 일치 → 만땅 시 초록이 마스크 끝까지 차고 글로우도 그 지점에.
-    const HP_R_FRAC = 0.955;
+    // fill 시작을 마스크 좌측(0.025)과 일치 → 좌측에 track(검정)이 새는 빈틈 없음.
+    const HP_L_FRAC = 0.025;
+    // 마스크 우측(0.965)과 일치 → 만땅 시 초록이 마스크 끝까지 차고 글로우도 그 지점에.
+    const HP_R_FRAC = 0.965;
     const HP_FILL_W = Math.round((HP_R_FRAC - HP_L_FRAC) * barW);
     const fillX = DESIGN_W / 2 - barW / 2 + Math.round(HP_L_FRAC * barW);
     // ★ 이전엔 16px 폭 텍스처를 ~14배 X-스트레치 → 늘어나며 대각선 밴딩 + 하단이 너무
@@ -889,11 +890,12 @@ export class GameScene extends Phaser.Scene {
     //   빈틈(하트 주변 검정)이 생겼다. 마스크로 초록 모양을 코드가 직접 정하면 에셋 구멍 형태와 무관하게
     //   항상 정갈하다. 마스크는 네온 테두리 안쪽까지 넉넉히 덮고(테두리가 가장자리를 가림), 하트 앞까지.
     {
-      const mLeft = DESIGN_W / 2 - barW / 2 + barW * 0.045;
-      const mRight = DESIGN_W / 2 - barW / 2 + barW * 0.955;
+      // ★ 마스크는 프레임 구멍(가로 0.029~0.969, 세로 거의 full)보다 살짝 크게 잡아 구멍을 완전히
+      //   덮는다(넘침은 불투명 테두리가 가림). 좁게 잡으면 구멍 가장자리가 검게 샌다(좌측 빈틈).
+      const mLeft = DESIGN_W / 2 - barW / 2 + barW * 0.025;
+      const mRight = DESIGN_W / 2 - barW / 2 + barW * 0.965;
       const mW = mRight - mLeft;
-      // 프레임 내부(≈0.78×높이)를 꽉 채우게 — 낮으면 초록 위아래 어두운 띠, 크면 테두리가 가림.
-      const mH = Math.round(barH * 0.78);
+      const mH = Math.round(barH * 0.84);
       const maskG = this.add.graphics().setVisible(false);
       maskG.fillStyle(0xffffff, 1);
       maskG.fillRoundedRect(mLeft, barY - mH / 2, mW, mH, Math.round(mH * 0.3));
@@ -929,7 +931,7 @@ export class GameScene extends Phaser.Scene {
         .setAlpha(isMe ? 0.95 : 0.82);
       const txt = this.add
         .text(RP_W / 2, RP_H / 2, rpLabels[i]!, {
-          fontSize: isMe ? "13px" : "11px",
+          fontSize: isMe ? "15px" : "13px",
           color: isMe ? "#ffd700" : "#00e5ff",
           fontFamily: "'Orbitron', monospace",
           fontStyle: "bold",
@@ -992,33 +994,52 @@ export class GameScene extends Phaser.Scene {
         wkTitle,
         this.gameOverDistText,
       ];
-      // 순위 행 4개: 1등=노란 강조 박스(0.403), 2~4등=아래 칸(0.507/0.618/0.729)
+      // 순위 행: 이름(좌 origin)/거리(우측 origin) 분리 → 좌우 가장자리에 여백, 거리 우측정렬.
       const rowFy = [0.403, 0.507, 0.618, 0.729] as const;
+      const xL = -PW / 2 + Math.round(PW * 0.13); // 왼쪽 여백
+      const xR = PW / 2 - Math.round(PW * 0.1); // 오른쪽 여백
       this.weeklyRowTexts = [];
+      this.weeklyRowDists = [];
       for (let i = 0; i < 4; i++) {
-        const row = this.add
-          .text(-PW / 2 + 22, fy(rowFy[i]!), "", {
+        const name = this.add
+          .text(xL, fy(rowFy[i]!), "", {
             fontSize: "13px",
             color: "#e0e0e0",
             resolution: TXT_RES,
           })
           .setOrigin(0, 0.5);
-        this.weeklyRowTexts.push(row);
-        children.push(row);
+        const dist = this.add
+          .text(xR, fy(rowFy[i]!), "", {
+            fontSize: "13px",
+            color: "#e0e0e0",
+            resolution: TXT_RES,
+          })
+          .setOrigin(1, 0.5);
+        this.weeklyRowTexts.push(name);
+        this.weeklyRowDists.push(dist);
+        children.push(name, dist);
       }
-      // 마지막(5번째) 칸(0.839)은 항상 '나' — 골드. 폰트 축소·단일행으로 줄바꿈 방지.
+      // 5번째 칸(0.839): 이름(좌)/거리(우). 색은 refresh에서 동적.
       this.weeklyMyText = this.add
-        .text(-PW / 2 + 22, fy(0.839), "", {
-          fontSize: "12px",
+        .text(xL, fy(0.839), "", {
+          fontSize: "13px",
           color: "#ffd700",
           fontStyle: "bold",
           resolution: TXT_RES,
         })
         .setOrigin(0, 0.5);
-      children.push(this.weeklyMyText);
-      // TAP TO RESTART — 하단 캡슐 안(0.912)으로 올려 패널 밖으로 안 나가게.
+      this.weeklyMyDist = this.add
+        .text(xR, fy(0.839), "", {
+          fontSize: "13px",
+          color: "#ffd700",
+          fontStyle: "bold",
+          resolution: TXT_RES,
+        })
+        .setOrigin(1, 0.5);
+      children.push(this.weeklyMyText, this.weeklyMyDist);
+      // TAP TO RESTART — 하단 캡슐 중심(0.945, 실측)에 세로정렬.
       this.hintText = this.add
-        .text(0, fy(0.912), "TAP TO RESTART", {
+        .text(0, fy(0.945), "TAP TO RESTART", {
           fontSize: "11px",
           color: "#00e5ff",
           fontFamily: "'Orbitron', monospace",
@@ -1850,28 +1871,44 @@ export class GameScene extends Phaser.Scene {
       return r.nickname || "이름없는 고스트";
     };
 
-    const rowLabel = (r: WeeklyRank, rank: number, isMe: boolean) => {
-      return `${rank}.  ${displayNick(r)}${isMe ? " (나)" : ""}   ${Math.floor(r.total_distance).toLocaleString()}m`;
-    };
+    const nameLabel = (r: WeeklyRank, rank: number, isMe: boolean) =>
+      `${rank}.  ${displayNick(r)}${isMe ? " (나)" : ""}`;
+    const distLabel = (r: WeeklyRank) =>
+      `${Math.floor(r.total_distance).toLocaleString()}m`;
 
     for (let i = 0; i < this.weeklyRowTexts.length; i++) {
-      const row = this.weeklyRowTexts[i]!;
+      const name = this.weeklyRowTexts[i]!;
+      const dist = this.weeklyRowDists[i]!;
       const r = ranks[i];
       if (!r) {
-        row.setText("");
+        name.setText("");
+        dist.setText("");
         continue;
       }
       const isMe = i === myIdx;
-      row
-        .setText(rowLabel(r, i + 1, isMe))
-        .setColor(isMe ? "#ffd700" : "#e0e0e0")
-        .setFontStyle(isMe ? "bold" : "normal");
+      const col = isMe ? "#ffd700" : "#e0e0e0";
+      const fs = isMe ? "bold" : "normal";
+      name.setText(nameLabel(r, i + 1, isMe)).setColor(col).setFontStyle(fs);
+      dist.setText(distLabel(r)).setColor(col).setFontStyle(fs);
     }
 
-    // 마지막 칸은 항상 '나'. myIdx === -1(제출 실패/집계 레이스)일 때만 조용히 생략.
-    this.weeklyMyText.setText(
-      myIdx >= 0 ? rowLabel(ranks[myIdx]!, myIdx + 1, true) : "",
-    );
+    // 마지막(5번째) 칸: 내가 top4 안이면 5등을 넣어 1~5등 정상 노출(내가 1등이어도 중복 없음),
+    // top4 밖이면 내 순위를 넣는다. 내가 그 칸의 주인이면 골드, 아니면 일반색.
+    const lastInMe = myIdx >= 4;
+    const lastEntry = lastInMe ? ranks[myIdx] : ranks[4];
+    const lastRank = lastInMe ? myIdx + 1 : 5;
+    if (lastEntry) {
+      const col = lastInMe ? "#ffd700" : "#e0e0e0";
+      const fs = lastInMe ? "bold" : "normal";
+      this.weeklyMyText
+        .setText(nameLabel(lastEntry, lastRank, lastInMe))
+        .setColor(col)
+        .setFontStyle(fs);
+      this.weeklyMyDist.setText(distLabel(lastEntry)).setColor(col).setFontStyle(fs);
+    } else {
+      this.weeklyMyText.setText("");
+      this.weeklyMyDist.setText("");
+    }
   }
 
   /** 정전 트랩 간격 롤 — 시드 파생 LCG (렌더 전용, sim RNG와 완전 분리) */
@@ -2134,26 +2171,25 @@ export class GameScene extends Phaser.Scene {
     //       앞으로 진하게. 그래서 이미지 타일을 먼저 add(뒤에 렌더)한다.
     //     prep-bg.py 출력 폭 = 2048. 각 높이는 실제 텍스처 높이 × tileScale(수직 타일링 방지).
     {
-      const tileScale = DESIGN_W / 2048; // ≈ 0.508 — 텍스처 1장이 화면 폭을 꽉 채움
       const texH = (key: string) => this.textures.get(key).getSourceImage().height;
-      const bldH = Math.round(texH("bg-buildings-far") * tileScale);
-      this.bgBuildingsTile = this.add
-        .tileSprite(0, GROUND_Y_PX - bldH, DESIGN_W, bldH, "bg-buildings-far")
-        .setOrigin(0, 0)
-        .setTileScale(tileScale, tileScale)
-        .setAlpha(0.4);
-      const brH = Math.round(texH("bg-bridges-far") * tileScale);
-      this.bgBridgesTile = this.add
-        .tileSprite(0, GROUND_Y_PX - brH, DESIGN_W, brH, "bg-bridges-far")
-        .setOrigin(0, 0)
-        .setTileScale(tileScale, tileScale)
-        .setAlpha(0.0);
-      const bcH = Math.round(texH("bg-bridges-curved-far") * tileScale);
-      this.bgBridgesCurvedTile = this.add
-        .tileSprite(0, GROUND_Y_PX - bcH, DESIGN_W, bcH, "bg-bridges-curved-far")
-        .setOrigin(0, 0)
-        .setTileScale(tileScale, tileScale)
-        .setAlpha(0.0);
+      // ★ 태양 중심(y≈214)의 '절반 위'로 안 넘게 표시 높이를 캡한다. 지면(432)에서 위로 최대
+      //   MAX_BG_H까지 → 건물/다리 top ≥ 227. 폭 배율도 같이 낮춰 종횡비 유지(찌부 방지).
+      //   가로가 화면보다 좁아지면 tileSprite가 seamless로 반복해 채운다.
+      const MAX_BG_H = 205;
+      const fitScale = (key: string) =>
+        Math.min(DESIGN_W / 2048, MAX_BG_H / texH(key));
+      const mkTile = (key: string, alpha: number) => {
+        const s = fitScale(key);
+        const dispH = Math.round(texH(key) * s);
+        return this.add
+          .tileSprite(0, GROUND_Y_PX - dispH, DESIGN_W, dispH, key)
+          .setOrigin(0, 0)
+          .setTileScale(s, s)
+          .setAlpha(alpha);
+      };
+      this.bgBuildingsTile = mkTile("bg-buildings-far", 0.4);
+      this.bgBridgesTile = mkTile("bg-bridges-far", 0.0);
+      this.bgBridgesCurvedTile = mkTile("bg-bridges-curved-far", 0.0);
     }
 
     // 3b) 코드 도시 실루엣 + 일본어 네온 간판 — 이미지 타일 뒤에 add → 앞(전경)에 진하게 렌더.
@@ -2729,7 +2765,9 @@ export class GameScene extends Phaser.Scene {
     // 틴트: 현재 바이옴 grid 색으로 경미하게 물들여 팔레트와 융화.
     {
       const bgIdx = this.biomeTo % 3; // 0=buildings, 1=bridges-far, 2=bridges-curved
-      const tint = BIOMES[this.biomeTo]!.grid;
+      // ★ 소스 아트에 박힌 밝은 시안/마젠타 네온 '외곽선'을 어두운 tint로 눌러 실루엣만 남긴다
+      //   (색 기반 prep 제거는 창문 디테일과 구분이 안 됨). 어두운 보라 곱 → 밝은 엣지가 죽는다.
+      const tint = 0x6a5a85;
       // 원경 이미지 타일은 더 은은하게(0.4) — 전경 코드 스카이라인/간판이 주가 되도록.
       const BG_A = 0.4;
       this.bgBuildingsTile
@@ -3482,7 +3520,7 @@ export class GameScene extends Phaser.Scene {
     for (let g = 0; g < n; g++) {
       const dist = Math.floor(this.top3GhostDists[g] ?? 0);
       const gSlot = slotOfPanel[g + 1] ?? g; // 현재 표시 슬롯
-      const rankLabel = `#${gSlot + 1}`;
+      const rankLabel = ["1st", "2nd", "3rd", "4th", "5th"][gSlot] ?? `${gSlot + 1}th`;
       const name = this.top3GhostNames[g] ?? `G${g + 1}`;
       this.rankPanelTexts[g + 1]!.setText(`${rankLabel} ${name}  ${dist}m`);
     }
