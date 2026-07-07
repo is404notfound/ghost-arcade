@@ -44,7 +44,13 @@ MIN_WHEEL_SPAN = 40   # 스케일 후 픽셀
 
 
 def soft_alpha(img: Image.Image) -> Image.Image:
-    """흰 배경 → 부드러운 알파(채도/어두움 기반). 경계가 매끈해 자글거림 없음."""
+    """흰 배경 → 부드러운 알파(채도/어두움 기반). 경계가 매끈해 자글거림 없음.
+
+    강화 컷오프(이슈 2):
+      - near-white(mx > 238 AND sat < 0.12) → 알파 0 강제 (뿌연 박스 원인 제거).
+      - 그 외 잔류 알파에도 하한 컷 상향: a < 0.35 → 0.0.
+        (부스트 꼬리·머리카락 끝의 옅은 네온 글로우는 sat 높아 이 조건에 걸리지 않음)
+    """
     img = img.convert("RGBA")
     px  = img.load()
     w, h = img.size
@@ -54,10 +60,15 @@ def soft_alpha(img: Image.Image) -> Image.Image:
             mx  = max(r, g, b)
             mn  = min(r, g, b)
             sat = (mx - mn) / mx if mx > 0 else 0.0
+            # near-white 픽셀: 밝고 채도가 낮으면 배경으로 간주 → 완전 투명
+            if mx > 238 and sat < 0.12:
+                px[x, y] = (r, g, b, 0)
+                continue
             sat_c  = min(1.0, sat / 0.30)
             dark_c = min(1.0, (255 - mx) / 70.0)
             a = max(sat_c, dark_c)
-            if a < 0.05:
+            # 하한 컷 상향: 0.05 → 0.35 (faint 잔재 제거)
+            if a < 0.35:
                 a = 0.0
             px[x, y] = (r, g, b, int(255 * a))
     return img

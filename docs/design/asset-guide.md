@@ -22,10 +22,12 @@
 
 ## 1. sim ↔ 렌더 경계 — "무엇을 언제 고쳐도 되는가"
 
-| 레이어                | 위치                         | 성격                                               | 고치면?                                                   |
-| --------------------- | ---------------------------- | -------------------------------------------------- | --------------------------------------------------------- |
-| **sim (결정론 코어)** | `src/sim/`                   | 같은 입력 → 같은 결과. 고스트 재생/리더보드의 토대 | **`SIM_VERSION`이 올라 기존 고스트·리더보드 전부 무효화** |
-| **렌더 레이어**       | `src/render/GameScene.ts` 등 | `sim.state`를 **읽기만** 함. 게임 로직 없음        | **버전 무관 → 고스트 안 깨짐, 언제든 자유**               |
+
+| 레이어              | 위치                          | 성격                               | 고치면?                                     |
+| ---------------- | --------------------------- | -------------------------------- | ---------------------------------------- |
+| **sim (결정론 코어)** | `src/sim/`                  | 같은 입력 → 같은 결과. 고스트 재생/리더보드의 토대   | `**SIM_VERSION`이 올라 기존 고스트·리더보드 전부 무효화** |
+| **렌더 레이어**       | `src/render/GameScene.ts` 등 | `sim.state`를 **읽기만** 함. 게임 로직 없음 | **버전 무관 → 고스트 안 깨짐, 언제든 자유**             |
+
 
 **핵심:** 에셋/연출/UI는 거의 전부 렌더라 자유롭게 작업해도 고스트가 안 깨진다.
 딱 하나 — **장애물 충돌 폭 `OBS_W=32`, 높이 50~120(`constants.ts`)은 sim.** 외형(텍스처)만
@@ -35,16 +37,18 @@
 
 ## 2. 전역 규칙 (모든 에셋 공통 — 위반하면 게임에 못 씀)
 
-| 규칙                | 값                                               | 왜                                                                              |
-| ------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------- |
-| 논리 해상도         | **1040 × 480 (19.5:9 가로)**                     | Phaser `Scale.FIT` 기준 좌표계. 모든 풋프린트는 이 px.                          |
-| 바닥선              | **y = 432 (`GROUND_Y_PX`)**                      | 캐릭터·건물 발이 닿는 baseline.                                                 |
-| 소스 제작 배율      | **@3x 권장(@2x 최소)**                           | 레티나 폰 선명도. 30×42 캐릭터 → 소스 90×126로 그린 뒤 축소.                    |
-| 배경                | **투명 PNG (RGBA-32)**                           | 글로우 오버랩 합성 때문에 흰/검 배경 불가.                                      |
-| 원점(anchor)        | 캐릭터·건물 = **하단 중앙**, 연료통 = **정중앙** | 바닥에 발이 닿게 정렬.                                                          |
-| 히트박스 = 풋프린트 | 아래 표 px                                       | **글로우/안테나/불꽃/연기는 풋프린트 밖으로 넘쳐도 됨. 충돌은 직사각형으로만.** |
-| 결정론 분리         | "장식" 표기 = **렌더 전용**                      | 메테오·패럴랙스·창문 점멸은 sim에 절대 닿지 않음.                               |
-| 성능 예산           | 저사양 폰 60fps                                  | 장애물 풀 16·포션 8 동시. 에셋 가볍게, 블룸 절제.                               |
+
+| 규칙          | 값                                 | 왜                                               |
+| ----------- | --------------------------------- | ----------------------------------------------- |
+| 논리 해상도      | **1040 × 480 (19.5:9 가로)**        | Phaser `Scale.FIT` 기준 좌표계. 모든 풋프린트는 이 px.       |
+| 바닥선         | **y = 432 (`GROUND_Y_PX`)**       | 캐릭터·건물 발이 닿는 baseline.                          |
+| 소스 제작 배율    | **@3x 권장(@2x 최소)**                | 레티나 폰 선명도. 30×42 캐릭터 → 소스 90×126로 그린 뒤 축소.      |
+| 배경          | **투명 PNG (RGBA-32)**              | 글로우 오버랩 합성 때문에 흰/검 배경 불가.                       |
+| 원점(anchor)  | 캐릭터·건물 = **하단 중앙**, 연료통 = **정중앙** | 바닥에 발이 닿게 정렬.                                   |
+| 히트박스 = 풋프린트 | 아래 표 px                           | **글로우/안테나/불꽃/연기는 풋프린트 밖으로 넘쳐도 됨. 충돌은 직사각형으로만.** |
+| 결정론 분리      | "장식" 표기 = **렌더 전용**               | 메테오·패럴랙스·창문 점멸은 sim에 절대 닿지 않음.                  |
+| 성능 예산       | 저사양 폰 60fps                       | 장애물 풀 16·포션 8 동시. 에셋 가볍게, 블룸 절제.                |
+
 
 추천 파이프라인: **투명 PNG @3x 생성 → 여백 트림 → (애니는) 균일 프레임 시트 → Phaser 로드.**
 기하학 조각(태양·그리드 등)은 가능하면 **코드 드로우**가 무손실·초경량.
@@ -53,22 +57,24 @@
 
 ## 3. 컬러 토큰 (이 hex로 통일 — 프롬프트에 그대로 사용)
 
-| 토큰                | hex                                                            | 용도                                                      |
-| ------------------- | -------------------------------------------------------------- | --------------------------------------------------------- |
-| `sky.top`           | `#170a2e`                                                      | 하늘 상단(딥 인디고)                                      |
-| `sky.mid`           | `#3a0f44`                                                      | 하늘 중단(퍼플)                                           |
-| `sky.low`           | `#6b1248`                                                      | 지평선(마젠타-퍼플)                                       |
-| `sun.hot`           | `#ffd36e → #ff5fa2 → #b3247e`                                  | 레트로 선(상→하 그라데이션)                               |
-| `neon.cyan`         | `#36f9f6`                                                      | 건물 외곽선 / 바닥 그리드 / 시안 네온                     |
-| `player.fill`       | `#5efce8` (하이라이트 `#cafff8`)                               | 플레이어                                                  |
-| `ghost.violet`      | `#b39ddb` (alpha ~0.5 표시)                                    | 고스트(발로 뛰는 죽은 라이벌)                             |
-| `halo.gold`         | `#ffe9a8` / `#ffd700`                                          | 고스트 머리 위 천사 헤일로(죽음 표식)                     |
-| `fuel.blue`         | `#4dabf7` (하이라이트 `#9fd4ff`)                               | 연료통(회복=주유). **쿨 블루 유지**(위험 마젠타와 반대축) |
-| `danger.magenta`    | `#ff5fa2` / `#ff6fb0`                                          | 창문 / 위험 신호                                          |
-| `fire.hot`          | `#ffe9a8` 코어 → `#ff7a3c` → `#d62828` (어두운 엣지 `#7a0f12`) | 메테오·불꽃 장애물                                        |
-| `laser.red`         | `#ff4757` / `#ff6b81`                                          | 배경 경고 레이저                                          |
-| `hp.green/warn/low` | `#2ecc71 / #f1c40f / #ff4757`                                  | 체력바                                                    |
-| `fever.gold`        | `#ffd700`                                                      | 피버 연출                                                 |
+
+| 토큰                  | hex                                                     | 용도                                   |
+| ------------------- | ------------------------------------------------------- | ------------------------------------ |
+| `sky.top`           | `#170a2e`                                               | 하늘 상단(딥 인디고)                         |
+| `sky.mid`           | `#3a0f44`                                               | 하늘 중단(퍼플)                            |
+| `sky.low`           | `#6b1248`                                               | 지평선(마젠타-퍼플)                          |
+| `sun.hot`           | `#ffd36e → #ff5fa2 → #b3247e`                           | 레트로 선(상→하 그라데이션)                     |
+| `neon.cyan`         | `#36f9f6`                                               | 건물 외곽선 / 바닥 그리드 / 시안 네온              |
+| `player.fill`       | `#5efce8` (하이라이트 `#cafff8`)                             | 플레이어                                 |
+| `ghost.violet`      | `#b39ddb` (alpha ~0.5 표시)                               | 고스트(발로 뛰는 죽은 라이벌)                    |
+| `halo.gold`         | `#ffe9a8` / `#ffd700`                                   | 고스트 머리 위 천사 헤일로(죽음 표식)               |
+| `fuel.blue`         | `#4dabf7` (하이라이트 `#9fd4ff`)                             | 연료통(회복=주유). **쿨 블루 유지**(위험 마젠타와 반대축) |
+| `danger.magenta`    | `#ff5fa2` / `#ff6fb0`                                   | 창문 / 위험 신호                           |
+| `fire.hot`          | `#ffe9a8` 코어 → `#ff7a3c` → `#d62828` (어두운 엣지 `#7a0f12`) | 메테오·불꽃 장애물                           |
+| `laser.red`         | `#ff4757` / `#ff6b81`                                   | 배경 경고 레이저                            |
+| `hp.green/warn/low` | `#2ecc71 / #f1c40f / #ff4757`                           | 체력바                                  |
+| `fever.gold`        | `#ffd700`                                               | 피버 연출                                |
+
 
 > **게임플레이 4색**(플레이어 시안 / 고스트 바이올렛 / 연료 블루 / 위험 마젠타)은 **절대 닮게
 > 만들지 말 것.** 색이 곧 "피할 것 vs 먹을 것" 정보다. 위험·불은 따뜻한 축(주황·마젠타),
@@ -80,30 +86,32 @@
 
 > ✅구현완료 / 🟡에셋대기(코드 스톱갭 있음) / ⬜미착수 / 💠코드드로우(이미지 불필요)
 
-| ID                                                      | 무엇                             | 풋프린트(게임 px)                  | 상태 | 비고                                                                 |
-| ------------------------------------------------------- | -------------------------------- | ---------------------------------- | ---- | -------------------------------------------------------------------- |
-| `player-rider`                                          | 후드 라이더+네온 오토바이        | 히트박스 30×42 (아트 ~56 overhang) | ✅   | ride/jump/hit/dead 컷. 글로우=코드 postFX                            |
-| `player-jump1` / `player-jump2`                         | 1단/2단 점프 정지 컷(2단=직각+네온 부스트) | 30×42 (히트박스 동일)      | 🟡   | **아트 확보(첨부 1024×512 2컷) → 분할·적용 스펙** §5.1. jumpsUsed로 분기 |
-| `ghost-runner`                                          | 발로 뛰는 헤일로 고스트          | 30×42                              | ✅🟡 | **6프레임 시트**(`ghost-run.png`), 런타임 랜덤 위상·속도. (2026-06-28: **후드 유령 컨셉으로 재생성 대기** → §5.2A) |
-| `ghost-collapse` (3프레임)                              | **기록 종료 시 엎어지는 고스트** | 420×320×3                          | ✅   | 전용 3프레임 적용(비틀→무릎→엎어짐). prep-ghost-collapse.py → §5.2B |
-| `fuel-can`                                              | 연료통(회복=주유)                | 26×26                              | ✅   | 쿨 블루. 빨간 주유통 ❌                                              |
-| `building-kit`                                          | 네온 건물                        | 폭 32, 높이 50–120                 | ⚠️   | **장애물 폐기**(아래 5종으로 전환). 스카이라인 참고용만             |
-| `obs-car` / `obs-debris`                                | **부서진 차 / 잔해더미**(낮고넓음) | 높이=히트박스, 폭 클램프 40–150  | ✅   | `obstacles.png` 3분할 → prep-obstacles2.py. 높이 ≤80 출현            |
-| `obs-barrel`                                            | **불타는 드럼통**(중간)          | 높이=히트박스, 종횡비 유지         | ✅   | `obstacles.png` 3분할. 높이 80–120 출현                              |
-| `flame-pilar-1` / `flame-pilar-2`                       | **불기둥**(높음, 2종)            | 높이=히트박스, 폭 클램프 ≥40       | ✅   | 흰배경 제거 → prep-obstacles2.py. TALL(>120) 출현                    |
-| `wreck-vending`                                          | **부서진 자판기**(중간)          | 높이=히트박스, 종횡비 유지         | ⬜   | 프롬프트 §5.3(9). 일본 거리감, 깨진 화면 글리치                      |
-| `tire-pile`                                              | **쌓인 폐타이어**(낮음~중간)     | 높이=히트박스, 종횡비 유지         | ⬜   | 프롬프트 §5.3(10). 낮고 둥근 더미                                    |
-| `manhole-steam` (6프레임)                               | **맨홀+증기 분출**(낮음, 애니)   | 높이=히트박스(맨홀 융기부)         | ⬜   | 프롬프트 §5.3(11). 증기 6프레임 루프, 충돌박스는 정지               |
-| `hp-bar` (frame/fill/icon)                              | 체력바 HUD                       | 272×24 외                          | ⬜   | **프롬프트 작성됨** → §5.7 (현재 코드 사각형)                        |
-| `bg-sun`                                                | 레트로 선(노을 태양)             | ~360×220                           | 💠   | **코드 드로우**(`updateCodeSun`) — 일렁임 애니 포함, 이미지 제거됨   |
-| `fx-meteor`                                             | 화염 메테오                      | —                                  | 💠   | **코드 드로우**(`drawCodeMeteor`) — 동시 1개로 제한                  |
-| `fx-obstacle-smoke`                                     | 장애물 연기/불빛(타입별)         | —                                  | 💠   | **코드 드로우**(`drawObstacleSmoke`) — 웨이브 연기 선 + 맥동 베이스 글로우. (2026-06-28: 불 타입 **상단 원형 코어 글로우 제거**) |
-| `fx-laser`                                              | 배경 경고 레이저                 | —                                  | 💠   | **코드 드로우**(`drawLasers`) — 태양 뒤 사선 스윕                    |
-| `signage-jp`                                            | 일본어 네온 간판 세트            | 가변                               | ✅   | 배경 패럴랙스 데코                                                   |
-| `bg-skyline-far`                                        | 먼 도시 실루엣                   | 가로 심리스                        | 💠   | 코드 드로우(`drawSkyline`)                                           |
-| `bg-sky` / `ground-grid` / `fx-speedlines` / `fx-trail` | 하늘·바닥그리드·속도선·트레일    | —                                  | 💠   | 코드 권장(이미지 X)                                                  |
-| `fx-particles`                                          | 스파크/+HP/제침 파티클           | ~16×16                             | ⬜   | 흰색 1종 → 코드 틴트                                                 |
-| `intro-video`                                           | 인트로 스토리 영상               | 오버레이                           | ⬜   | 최후 폴리시 → §6                                                     |
+
+| ID                                                      | 무엇                          | 풋프린트(게임 px)                  | 상태  | 비고                                                                                              |
+| ------------------------------------------------------- | --------------------------- | ---------------------------- | --- | ----------------------------------------------------------------------------------------------- |
+| `player-rider`                                          | 후드 라이더+네온 오토바이              | 히트박스 30×42 (아트 ~56 overhang) | ✅   | ride/jump/hit/dead 컷. 글로우=코드 postFX                                                             |
+| `player-jump1` / `player-jump2`                         | 1단/2단 점프 정지 컷(2단=직각+네온 부스트) | 30×42 (히트박스 동일)              | 🟡  | **아트 확보(첨부 1024×512 2컷) → 분할·적용 스펙** §5.1. jumpsUsed로 분기                                        |
+| `ghost-runner`                                          | 발로 뛰는 헤일로 고스트               | 30×42                        | ✅🟡 | **6프레임 시트**(`ghost-run.png`), 런타임 랜덤 위상·속도. (2026-06-28: **후드 유령 컨셉으로 재생성 대기** → §5.2A)         |
+| `ghost-collapse` (3프레임)                                 | **기록 종료 시 엎어지는 고스트**        | 420×320×3                    | ✅   | 전용 3프레임 적용(비틀→무릎→엎어짐). prep-ghost-collapse.py → §5.2B                                           |
+| `fuel-can`                                              | 연료통(회복=주유)                  | 26×26                        | ✅   | 쿨 블루. 빨간 주유통 ❌                                                                                  |
+| `building-kit`                                          | 네온 건물                       | 폭 32, 높이 50–120              | ⚠️  | **장애물 폐기**(아래 5종으로 전환). 스카이라인 참고용만                                                              |
+| `obs-car` / `obs-debris`                                | **부서진 차 / 잔해더미**(낮고넓음)      | 높이=히트박스, 폭 클램프 40–150        | ✅   | `obstacles.png` 3분할 → prep-obstacles2.py. 높이 ≤80 출현                                             |
+| `obs-barrel`                                            | **불타는 드럼통**(중간)             | 높이=히트박스, 종횡비 유지              | ✅   | `obstacles.png` 3분할. 높이 80–120 출현                                                               |
+| `flame-pilar-1` / `flame-pilar-2`                       | **불기둥**(높음, 2종)             | 높이=히트박스, 폭 클램프 ≥40           | ✅   | 흰배경 제거 → prep-obstacles2.py. TALL(>120) 출현                                                      |
+| `wreck-vending`                                         | **부서진 자판기**(중간)             | 높이=히트박스, 종횡비 유지              | ⬜   | 프롬프트 §5.3(9). 일본 거리감, 깨진 화면 글리치                                                                 |
+| `tire-pile`                                             | **쌓인 폐타이어**(낮음~중간)          | 높이=히트박스, 종횡비 유지              | ⬜   | 프롬프트 §5.3(10). 낮고 둥근 더미                                                                         |
+| `manhole-steam` (6프레임)                                  | **맨홀+증기 분출**(낮음, 애니)        | 높이=히트박스(맨홀 융기부)              | ⬜   | 프롬프트 §5.3(11). 증기 6프레임 루프, 충돌박스는 정지                                                             |
+| `hp-bar` (frame/fill/icon)                              | 체력바 HUD                     | 272×24 외                     | ⬜   | **프롬프트 작성됨** → §5.7 (현재 코드 사각형)                                                                 |
+| `bg-sun`                                                | 레트로 선(노을 태양)                | ~360×220                     | 💠  | **코드 드로우**(`updateCodeSun`) — 일렁임 애니 포함, 이미지 제거됨                                                |
+| `fx-meteor`                                             | 화염 메테오                      | —                            | 💠  | **코드 드로우**(`drawCodeMeteor`) — 동시 1개로 제한                                                        |
+| `fx-obstacle-smoke`                                     | 장애물 연기/불빛(타입별)              | —                            | 💠  | **코드 드로우**(`drawObstacleSmoke`) — 웨이브 연기 선 + 맥동 베이스 글로우. (2026-06-28: 불 타입 **상단 원형 코어 글로우 제거**) |
+| `fx-laser`                                              | 배경 경고 레이저                   | —                            | 💠  | **코드 드로우**(`drawLasers`) — 태양 뒤 사선 스윕                                                           |
+| `signage-jp`                                            | 일본어 네온 간판 세트                | 가변                           | ✅   | 배경 패럴랙스 데코                                                                                      |
+| `bg-skyline-far`                                        | 먼 도시 실루엣                    | 가로 심리스                       | 💠  | 코드 드로우(`drawSkyline`)                                                                           |
+| `bg-sky` / `ground-grid` / `fx-speedlines` / `fx-trail` | 하늘·바닥그리드·속도선·트레일            | —                            | 💠  | 코드 권장(이미지 X)                                                                                    |
+| `fx-particles`                                          | 스파크/+HP/제침 파티클              | ~16×16                       | ⬜   | 흰색 1종 → 코드 틴트                                                                                   |
+| `intro-video`                                           | 인트로 스토리 영상                  | 오버레이                         | ⬜   | 최후 폴리시 → §6                                                                                     |
+
 
 > **코드로 두는 게 이득**: 하늘·그리드·속도선·트레일·**태양·메테오·레이저**(이미 코드화 완료).
 > **외부 생성 집중 대상**: 라이더·고스트(+엎어짐)·건물/아포칼립스 장애물·간판·파티클.
@@ -115,7 +123,7 @@
 ### 5.0 생성 6원칙 (먼저 읽기)
 
 1. **투명 배경 명시+검증.** 항상 `isolated on a transparent background, no scene, no ground, no shadow`.
-   흰/검 배경이면 "remove the background, output transparent PNG"로 후속 요청.
+  흰/검 배경이면 "remove the background, output transparent PNG"로 후속 요청.
 2. **글자 금지.** `no text, no letters, no watermark, no UI`를 negative로. (예외: 일본어 간판 §5.7)
 3. **종횡비를 용도에 맞춰.** gpt-image는 `1024²/1536×1024(가로)/1024×1536(세로)`. 배경=가로, 캐릭터=세로, 아이템=정사각.
 4. **"하나만" 그리게.** 한 컷 한 오브젝트. `a single ___, centered`.
@@ -185,8 +193,7 @@ enlarged out of scale
 ```
 
 > **일관성:** 현행 `assets/game/player-ride.png`(또는 첨부 점프 아트)를 **참조 이미지로 업로드**하고
-> `match the exact biker girl, hair, bike shape, line weight, glow and palette of this reference,
-> just the hit-reaction pose`로 지시 → 세계관/체형/바이크가 어긋나지 않게 뽑는다.
+> `match the exact biker girl, hair, bike shape, line weight, glow and palette of this reference, just the hit-reaction pose`로 지시 → 세계관/체형/바이크가 어긋나지 않게 뽑는다.
 >
 > **구현 노트(렌더 전용):** 새 원본 → `player-rider-hit.png`(또는 전용 파일)로 넣고
 > `scripts/prep-assets.py`의 player 그룹에서 함께 굽는다(공통 bbox·배율 → `player-hit.png`).
@@ -223,13 +230,11 @@ fully opaque solid body, different palette, multiple frames
 ```
 
 > **일관성(중요):** 이 컷은 §5.1 `player-ride`(시안 바이커 소녀)와 §5.2 `ghost-runner`(보라 후드
-> 유령 + 골드 헤일로) **둘 다의 브리지**다. 두 참조 이미지를 함께 올려 `keep the biker girl's
-> body/hair, but blend her cyan color and silhouette toward this violet halo ghost — the moment
-> of turning into it`로 지시하면 팔레트 전환(시안→보라)과 헤일로가 두 에셋과 어긋나지 않는다.
+> 유령 + 골드 헤일로) **둘 다의 브리지**다. 두 참조 이미지를 함께 올려 `keep the biker girl's body/hair, but blend her cyan color and silhouette toward this violet halo ghost — the moment of turning into it`로 지시하면 팔레트 전환(시안→보라)과 헤일로가 두 에셋과 어긋나지 않는다.
 >
 > **구현 노트(렌더 전용):** 새 원본 → `player-rider-dead.png`(또는 전용 파일) → `prep-assets.py`
 > player 처리 → `player-dead.png`. `GameScene`는 `s.gameOver` 시 이미 `player-dead`로 전환하고
-> **`PLAYER_ART_H * 1.25`로 살짝 크게** 표시한 뒤 트윈 페이드아웃(≈780ms, 결과 패널 전 소멸)한다 —
+> `**PLAYER_ART_H * 1.25`로 살짝 크게** 표시한 뒤 트윈 페이드아웃(≈780ms, 결과 패널 전 소멸)한다 —
 > **텍스처만 교체**하면 끝. 튕겨 나감 방향상 아트는 위로 overhang 여유를 두고, baseline은 다른 컷과
 > 크게 안 어긋나게(페이드아웃되므로 접지 엄밀성은 낮음).
 
@@ -314,12 +319,10 @@ NEGATIVE: motorcycle, vehicle, wheels, bare head, helmet, visible face, gore, re
 different palette, opaque solid body, text, watermark, white or black background.
 ```
 
-> **일관성:** 주인공 후드 라이더(§5.1)를 참조 이미지로 올려 `match the hood shape, line weight,
-> glow and palette` 지시 → 같은 세계관의 "달리는 유령 버전"으로 뽑는다.
+> **일관성:** 주인공 후드 라이더(§5.1)를 참조 이미지로 올려 `match the hood shape, line weight, glow and palette` 지시 → 같은 세계관의 "달리는 유령 버전"으로 뽑는다.
 
 > 멀티프레임: 포즈별 1장씩 6장 권장 — foot-strike → mid-flight → toe-off → recovery 등 위상 변화.
-> 한 장 시트로 받을 땐 `as a horizontal strip of 6 run-cycle frames, evenly spaced with clear
-gaps, all frames identical scale and lighting`. 시트는 `scripts/prep-ghost-sheet.py`로
+> 한 장 시트로 받을 땐 `as a horizontal strip of 6 run-cycle frames, evenly spaced with clear gaps, all frames identical scale and lighting`. 시트는 `scripts/prep-ghost-sheet.py`로
 > 포즈별 분할·배경제거·상체정렬(프레임 섞임/흔들림 제거) 후 사용.
 
 **(B) ★ 엎어짐(collapse) — ✅ 적용됨.** 고스트가 **자기 최고기록 거리에 도달해 기록이 끝나는 순간**
@@ -591,18 +594,24 @@ watermark, white background, realistic bricks, heavy detail, people, cars
 
 풋프린트 26×26, 정중앙 origin. **쿨 블루 글로우(`#4dabf7`/`#9fd4ff`) 유지** — 빨간 주유통 ❌
 (위험 마젠타와 헷갈림). 옆면에 연료 방울/번개 픽토그램.
+**입체감 고도화**: 완전 플랫이 아니라 셀셰이딩 볼륨(위쪽 하이라이트·아래쪽 그림자면),
+비스듬한 3/4 앵글, 모서리 베벨, 상단 림라이트로 "떠 있는 에너지 캔" 느낌. 단, 실사 금속·사진은 금지.
 
 ```
-A small neon fuel jerrycan power-up for a side-view game, compact rectangular fuel canister with
-a top handle and a short spout, dark body (#0a2740) with a glowing cool blue (#4dabf7) neon
-outline and lighter cyan (#9fd4ff) highlight, a small glowing fuel-drop / energy symbol on the
-side, soft radial glow halo, minimal flat vector style, centered, isolated on a transparent
-background, no text, game item asset, slight pulse.
+A small glowing neon fuel/energy canister power-up for a side-view synthwave game, shown at a
+slight 3/4 angle so its front and top faces both read, compact rounded-rectangular jerrycan with a
+top handle and short spout, dark teal body (#0a2740) with a bright cool-blue (#4dabf7) neon rim
+light and lighter cyan (#9fd4ff) top highlight, soft cel-shaded volume: brighter top face, darker
+lower-side shadow face and a subtle inner core glow, beveled glossy edges giving a sense of depth
+and mass, a small glowing energy fuel-drop / lightning symbol embossed on the front, soft radial
+glow halo underneath, clean stylized game-icon look (semi-flat with dimensional shading), centered,
+isolated on a transparent background, no text, floating game item asset, gentle pulse.
 ```
 
 ```
-NEGATIVE: red canister, realistic gas can, oil drum, bottle, liquid splash, label text, words,
-magenta, white background, realistic metal, 3D, photo
+NEGATIVE: flat sticker, fully flat 2D, red canister, realistic gas can, oil drum, bottle, liquid
+splash, label text, words, magenta, white background, realistic metal, photorealistic, photo,
+harsh shadow, clutter
 ```
 
 ---
@@ -633,11 +642,13 @@ NEGATIVE: colored, text, shape detail, white or black background, star outline
 > fill은 이미지가 아니라 **Canvas 2D 세로 그라데이션 텍스처**(무채색) + `setTint`(색)로 코드 생성한다.
 > (`Graphics.fillGradientStyle → generateTexture`는 일부 환경에서 투명 텍스처가 돼 "점만" 보이는 버그.)
 
-| 파트            | 용도                  | 권장 크기(@3x)  | 비고                                          |
-| --------------- | --------------------- | --------------- | --------------------------------------------- |
-| `hp-frame`      | 프레임(내부 투명)+하트 | **780×114**(종횡비 보존) | 트림 후 폭 780으로 비례 리사이즈. 하트 우측 포함 |
-| ~~`hp-fill`~~   | 채워지는 막대         | (에셋 불요)     | 코드 Canvas 그라데이션 + `setTint`로 대체        |
-| ~~`hp-icon`~~   | 좌측 아이콘           | (에셋 불요)     | 하트가 `hp-frame`에 포함됨                        |
+
+| 파트            | 용도            | 권장 크기(@3x)          | 비고                              |
+| ------------- | ------------- | ------------------- | ------------------------------- |
+| `hp-frame`    | 프레임(내부 투명)+하트 | **780×114**(종횡비 보존) | 트림 후 폭 780으로 비례 리사이즈. 하트 우측 포함  |
+| ~~`hp-fill`~~ | 채워지는 막대       | (에셋 불요)             | 코드 Canvas 그라데이션 + `setTint`로 대체 |
+| ~~`hp-icon`~~ | 좌측 아이콘        | (에셋 불요)             | 하트가 `hp-frame`에 포함됨             |
+
 
 색은 코드에서 틴트(>50% `#2ecc71`, >25% `#f1c40f`, 이하 `#ff4757`). fill은 밝은 무채색 세로
 그라데이션(상단 흰 스펙큘러 → 하단 회색)이라 어느 색으로 틴트해도 자연스럽다.
@@ -645,11 +656,15 @@ NEGATIVE: colored, text, shape detail, white or black background, star outline
 ```
 PROMPT (hp-frame — 빈 게이지 프레임):
 A horizontal HUD health-bar FRAME (empty gauge container) for a neon synthwave cyberpunk runner,
-long thin horizontal capsule, dark semi-transparent inset track (#10081f) with a glowing cyan
-(#36f9f6) thin outline and small notch ticks along the inside, subtle beveled end caps on left and
-right so it can be 9-sliced horizontally, faint outer glow, minimal flat vector UI, strictly
-front-facing flat (no perspective), isolated on a transparent background, empty inside (no fill),
-no text, no numbers.
+long thin horizontal capsule with a glowing cyan (#36f9f6) thin outline and faint outer glow.
+CRITICAL: the inner gauge cavity MUST be a PERFECT HORIZONTAL RECTANGLE — flat straight top and
+bottom edges that are exactly parallel (no slope, no taper, no trapezoid), only tiny uniform corner
+rounding, so a plain rectangular fill sits inside it with no gaps or overflow. The gauge cavity is
+empty and fully transparent (no fill, no diagonal gloss streak, no glare line, no notch ticks
+across it). A small heart icon sits in its OWN separate compartment at the far right, divided from
+the rectangular gauge cavity by a thin vertical neon separator (the heart must NOT overlap the
+gauge rectangle). Minimal flat vector UI, strictly front-facing flat (no perspective), isolated on
+a transparent background, no text, no numbers.
 ```
 
 ```
@@ -734,8 +749,7 @@ white or black background, busy ornaments, characters, mascots
 > §5.7B (1)/(3)의 범용 프레임을 이 두 용도에 맞춰 **구체화**한 프롬프트. 실제 인게임 화면
 > (상단 4칸 실시간 거리 순위 + 게임오버 시 중앙 "주간 랭킹 · 7일 누적" 결과 박스)에 맞춘다.
 > 공통: 정면 플랫(원근 금지), 투명 배경, **글자·숫자 없이**, 9-slice 가능한 프레임만.
-> 팔레트: 시안 `#36f9f6`/`#00e5ff`, 위험 마젠타 `#ff2d55`, 다크 바디 `#060010`~`#10081f`,
-> 1등 강조 골드 `#ffd35c`.
+> 팔레트: 시안 `#36f9f6`/`#00e5ff`, 위험 마젠타 `#ff2d55`, 다크 바디 `#060010`~`#10081f`, 1등 강조 골드` #ffd35c`.
 
 **(A) rank-hud-instant — 상단 즉석 랭킹 칩 (실시간 거리 순위, 가로 슬롯)**
 
@@ -811,14 +825,85 @@ people, photo, white background, daytime, cluttered street, 3D
 
 ---
 
+### 5.7E bg-city — 배경 스카이라인 고도화 ★신규 (현재 코드 드로우 `drawSkyline` → 에셋 교체)
+
+> 현재 배경은 `drawSkyline`/`drawSky` **코드 드로우 실루엣**(단색 사각형 빌딩). 이를 **가로 심리스
+> 패럴랙스 PNG 2종**으로 교체해 왕복 전환한다(바이옴 `BIOMES[0]`↔`BIOMES[1]`와 연동). 둘 다:
+> **가로로 이어붙여도 이음매가 안 보이게(seamless/tileable), 정면 측면도(원근 금지), 투명 PNG,
+> 상단·하단 여백은 투명**(하늘은 `drawSky`가 그리므로 건물/구조물만). 팔레트는 기존 톤 유지 —
+> 다크 실루엣 `#0a0a18`~`#1a1330`, 창문/네온 시안` #36f9f6`·마젠타` #ff2d55`·앰버` #ffb347`, 연기 회보라` #3a3350`. **폭은 화면 주기(≈1040px)의 정수배**로 받아` drawSkyline`처럼 2벌 배치.
+>
+> **창문 질문 답:** 넣는 게 좋다 — 단, **드문드문·저광량**으로. 대부분 어두운 창 + 소수만 점등
+> (시안/앰버)하면 "종말 후 드문 생존 불빛" 무드가 살고, 과밀하면 미니멀 톤이 깨진다.
+
+**(1) bg-buildings-far — 부서진·연기 나는 아파트 스카이라인**
+
+```
+A seamless horizontally-tileable background layer of a post-apocalyptic synthwave city skyline:
+a row of tall dark apartment/office towers in flat silhouette (deep indigo #12102a to #1a1330),
+some buildings partially collapsed or broken at the top with jagged rubble edges, thin plumes of
+dark smoke rising from a few rooftops, sparse scattered lit windows (most windows dark, only a few
+glowing faint cyan #36f9f6 and amber #ffb347) suggesting rare survivors, subtle restrained neon
+rim light, strict front-facing side elevation (no perspective, no vanishing point), the top and
+bottom edges left empty/transparent (sky drawn separately), clean minimal flat vector style,
+isolated on a transparent background, the left and right edges must match so it tiles seamlessly,
+no ground, no text, no characters, no foreground objects.
+```
+
+**(2) bg-bridges-far — 고가 다리·고가도로 실루엣**
+
+```
+A seamless horizontally-tileable background layer of elevated highway overpasses and bridges in a
+post-apocalyptic synthwave city: several layered flat silhouettes of raised roadways on tall
+support pillars crossing at different heights (deep indigo #12102a to #1a1330), a few broken deck
+sections with dangling cables and thin rising smoke, sparse faint neon strip lights along the
+guardrails (cyan #36f9f6 and magenta #ff2d55, most unlit), restrained glow, strict front-facing
+side elevation (no perspective), top and bottom edges left empty/transparent, clean minimal flat
+vector style, isolated on a transparent background, left and right edges must match for seamless
+tiling, no ground, no text, no vehicles, no characters.
+```
+
+**(3) bg-bridges-curved-far — 곡선형(아치·현수) 다리 실루엣**
+
+> (2)는 직선 고가도로. 이건 **곡선 다리 변형** — 아치교/현수교의 부드러운 커브로 실루엣에 리듬을 준다.
+> (2)와 왔다갔다 쓰거나 바이옴별로 나눠 쓸 수 있게 **같은 톤·같은 심리스 규칙**으로 뽑는다.
+
+```
+A seamless horizontally-tileable background layer of large CURVED bridges in a post-apocalyptic
+synthwave city: flat silhouettes of arched and suspension bridges with smooth sweeping curved
+spans and gently curving cables/arches (deep indigo #12102a to #1a1330), tall slender towers,
+a few broken or sagging deck sections with dangling cables and thin rising smoke, sparse faint
+neon strip lights following the curves of the arches and cables (cyan #36f9f6 and magenta #ff2d55,
+most unlit), restrained glow, strict front-facing side elevation (no perspective, no vanishing
+point), top and bottom edges left empty/transparent, clean minimal flat vector style, isolated on
+a transparent background, left and right edges must match for seamless tiling, no ground, no text,
+no vehicles, no characters.
+```
+
+```
+NEGATIVE: perspective, vanishing point, 3D, realistic, photo, ground, street level, foreground
+objects, characters, vehicles, text, watermark, white or black background, dense bright windows,
+seams at edges, drop shadow, straight-only flat overpass
+```
+
+> **구현:** `drawSkyline`가 그리던 자리에 `bg-buildings-far`/`bg-bridges-far`/`bg-bridges-curved-far`
+> 중 택일한 Image 2벌을 `SKYLINE_PARALLAX` 속도로 배치(1040px 주기 심리스), 바이옴 전환 시 크로스페이드로 교체.
+> (직선 다리 ↔ 곡선 다리 ↔ 빌딩을 바이옴/구간별로 번갈아 쓰면 장거리에서 배경 단조로움이 준다.)
+> 연기는 (a) 에셋에 옅게 베이크 + (b) 필요하면 굴뚝 위 코드 파티클(렌더 전용)로 애니메이션 보강.
+> 창 점등 깜빡임도 코드로 소수만 랜덤 알파 펄스 → 정적 실루엣에 미세한 생동감.
+
+---
+
 ### 5.8 코드 드로우로 대체된 것 (이미지 생성 불필요)
 
-| 요소                                 | 함수                  | 메모                                                                    |
-| ------------------------------------ | --------------------- | ----------------------------------------------------------------------- |
-| 노을 태양                            | `updateCodeSun()`     | 그라데이션 원 + 스캔라인 + 줄무늬 일렁임 + 맥동 글로우 링               |
-| 화염 메테오                          | `drawCodeMeteor()`    | 난류 불혀 다발 + 깜빡이는 코어 + 튀는 불티(이글이글), 점→원 성장·페이드 |
-| 경고 레이저                          | `drawLasers()`        | 태양 뒤 사선 스윕, yMid를 태양 세로 범위 내 고정, 속도 연동             |
-| 하늘/스카이라인/그리드/속도선/트레일 | `createBackground` 외 | 패럴랙스·점프 연동 포함                                                 |
+
+| 요소                   | 함수                   | 메모                                           |
+| -------------------- | -------------------- | -------------------------------------------- |
+| 노을 태양                | `updateCodeSun()`    | 그라데이션 원 + 스캔라인 + 줄무늬 일렁임 + 맥동 글로우 링          |
+| 화염 메테오               | `drawCodeMeteor()`   | 난류 불혀 다발 + 깜빡이는 코어 + 튀는 불티(이글이글), 점→원 성장·페이드 |
+| 경고 레이저               | `drawLasers()`       | 태양 뒤 사선 스윕, yMid를 태양 세로 범위 내 고정, 속도 연동       |
+| 하늘/스카이라인/그리드/속도선/트레일 | `createBackground` 외 | 패럴랙스·점프 연동 포함                                |
+
 
 > 이들은 정지 이미지보다 가볍고 60fps에 유리하며 `sim.state`에 읽기 전용 연동된다.
 > 굳이 이미지로 되살릴 이유가 생기면 이 표를 갱신하고 프롬프트를 §5에 추가한다.
@@ -848,13 +933,15 @@ NEGATIVE: happy upbeat pop, acoustic guitar, orchestral strings, choir, loud sir
 
 ### 6.2 SFX 목록 (전부 기존 sim 이벤트에 얹음 — 렌더 전용)
 
-| 트리거                               | 검색/프롬프트                                                    | 길이                             |
-| ------------------------------------ | ---------------------------------------------------------------- | -------------------------------- |
-| 점프 (EV_JUMP)                       | "quick high-rev motorcycle engine burst, aggressive exhaust pop" | 0.3–0.5s (2단 점프 `detune:200`) |
-| 피격 (EV_HIT)                        | "electric sparks and metal scrape collision, short sharp impact" | 0.2s                             |
-| 연료 획득 (EV_POTION)                | "quick liquid refuel sound, small pour and clunk, satisfying"    | 0.3s                             |
-| 피버 시작 (EV_FEVER_START)           | "retro synthwave power surge, ascending sweep and sparkle"       | 0.8s                             |
-| 제침/등수↑/콤보틱/사망/UI탭/니어미스 | 짧은 신스 틱·스윕                                                | 짧게·프리로드                    |
+
+| 트리거                    | 검색/프롬프트                                                          | 길이                            |
+| ---------------------- | ---------------------------------------------------------------- | ----------------------------- |
+| 점프 (EV_JUMP)           | "quick high-rev motorcycle engine burst, aggressive exhaust pop" | 0.3–0.5s (2단 점프 `detune:200`) |
+| 피격 (EV_HIT)            | "electric sparks and metal scrape collision, short sharp impact" | 0.2s                          |
+| 연료 획득 (EV_POTION)      | "quick liquid refuel sound, small pour and clunk, satisfying"    | 0.3s                          |
+| 피버 시작 (EV_FEVER_START) | "retro synthwave power surge, ascending sweep and sparkle"       | 0.8s                          |
+| 제침/등수↑/콤보틱/사망/UI탭/니어미스 | 짧은 신스 틱·스윕                                                       | 짧게·프리로드                       |
+
 
 > 구현: `preload()`에서 `load.audio` → `syncVisuals()`에서 이벤트 비트마스크 읽어 재생.
 > WebView 자동재생 정책: 첫 탭(TAP TO START) 후 오디오 컨텍스트 언락. 음소거 토글 제공.
@@ -893,16 +980,18 @@ bright cheerful colors, cluttered detail, camera shake overload
 보상 토큰이 없으니 **쾌감만으로 재시도**를 만든다. 비주얼의 임무: 추월·신기록·피버의 쾌감을 과장.
 전부 기존 sim 이벤트에 얹는 **렌더 전용** 트리거.
 
-| 순간 (sim 트리거)                | 비주얼 훅                                                                    | 왜 재시도를 부르나                             |
-| -------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------- |
-| **추월** (고스트 finished)       | 추월당한 고스트가 헤일로 번쩍 + **엎어짐 연출**(§5.2B) + `제침!` 보라 버스트 | "내가 이겼다" 도파민                           |
-| **등수 상승**                    | 랭킹 패널 슬라이드 + 1등 림 골드 글로우                                      | 순위는 가장 강한 비교 동기                     |
-| **콤보 상승**                    | 중앙 콤보 숫자 성장 + 화면 따뜻해짐(피버 예고)                               | "조금만 더하면 피버"                           |
-| **피버** (EV_FEVER_START)        | 황금 플래시 + 속도선 폭발 + 무한점프 트레일, 메테오 더 붉게/잦게             | 최고 쾌감 구간                                 |
-| **니어미스**                     | 장애물 모서리 스파크 + 찰나 플래시                                           | "방금 죽을 뻔"의 긴장 쾌감                     |
-| **연료통** (EV_POTION)           | 블루 주유 링 + `+FUEL` 부유                                                  | 작은 보상 리듬                                 |
-| **사망→고스트화** (EV_GAME_OVER) | 라이더가 튕겨 나가 골드 헤일로를 달고 고스트가 됨                            | "내 기록이 남들의 고스트로 남는다" 정체성 루프 |
-| **결과 패널**                    | 박빙이면 `한 판 더?` + 신기록 시 도시 번쩍                                   | 박빙·신기록 직후가 재시도 전환율 최고점        |
+
+| 순간 (sim 트리거)               | 비주얼 훅                                               | 왜 재시도를 부르나                  |
+| -------------------------- | --------------------------------------------------- | --------------------------- |
+| **추월** (고스트 finished)      | 추월당한 고스트가 헤일로 번쩍 + **엎어짐 연출**(§5.2B) + `제침!` 보라 버스트 | "내가 이겼다" 도파민                |
+| **등수 상승**                  | 랭킹 패널 슬라이드 + 1등 림 골드 글로우                            | 순위는 가장 강한 비교 동기             |
+| **콤보 상승**                  | 중앙 콤보 숫자 성장 + 화면 따뜻해짐(피버 예고)                        | "조금만 더하면 피버"                |
+| **피버** (EV_FEVER_START)    | 황금 플래시 + 속도선 폭발 + 무한점프 트레일, 메테오 더 붉게/잦게             | 최고 쾌감 구간                    |
+| **니어미스**                   | 장애물 모서리 스파크 + 찰나 플래시                                | "방금 죽을 뻔"의 긴장 쾌감            |
+| **연료통** (EV_POTION)        | 블루 주유 링 + `+FUEL` 부유                                | 작은 보상 리듬                    |
+| **사망→고스트화** (EV_GAME_OVER) | 라이더가 튕겨 나가 골드 헤일로를 달고 고스트가 됨                        | "내 기록이 남들의 고스트로 남는다" 정체성 루프 |
+| **결과 패널**                  | 박빙이면 `한 판 더?` + 신기록 시 도시 번쩍                         | 박빙·신기록 직후가 재시도 전환율 최고점      |
+
 
 ---
 
@@ -913,25 +1002,25 @@ bright cheerful colors, cluttered detail, camera shake overload
 
 **작업 전 체크:**
 
-- [ ] sim(`src/sim/`)을 건드렸는가 → 건드리면 SIM_VERSION 업 = 고스트 무효화(의도된 경우만)
-- [ ] 장애물 변종이 충돌 폭 32(WIDE 64)·높이 50–120 유지(텍스처만 교체)인가
-- [ ] 새 연출이 전부 `sim.state` 읽기 전용인가
-- [ ] 메테오·레이저·태양이 플레이 레인(하단) 가독성을 안 해치는가
-- [ ] 고스트 흩뿌리기가 플레이어를 안 가리는가(뒤/옆 분포)
-- [ ] 랭킹 패널 색 구분(고스트 회색 / 주인공 시안)이 명확한가
-- [ ] 새 에셋이 투명 배경·무텍스트·컬러 토큰 hex 준수인가
-- [ ] 엎어짐/달리기 프레임 baseline이 일치하는가
-- [ ] 저사양 60fps 유지(postFX·메테오·영상 디코드)되는가
+- sim(`src/sim/`)을 건드렸는가 → 건드리면 SIM_VERSION 업 = 고스트 무효화(의도된 경우만)
+- 장애물 변종이 충돌 폭 32(WIDE 64)·높이 50–120 유지(텍스처만 교체)인가
+- 새 연출이 전부 `sim.state` 읽기 전용인가
+- 메테오·레이저·태양이 플레이 레인(하단) 가독성을 안 해치는가
+- 고스트 흩뿌리기가 플레이어를 안 가리는가(뒤/옆 분포)
+- 랭킹 패널 색 구분(고스트 회색 / 주인공 시안)이 명확한가
+- 새 에셋이 투명 배경·무텍스트·컬러 토큰 hex 준수인가
+- 엎어짐/달리기 프레임 baseline이 일치하는가
+- 저사양 60fps 유지(postFX·메테오·영상 디코드)되는가
 
 ---
 
 ## 9. 외부 생성 일관성 체크리스트
 
-- [ ] 투명 배경(흰/검 아님)으로 나왔는가
-- [ ] 컬러 토큰(§3) hex를 벗어나지 않았는가(특히 게임플레이 4색)
-- [ ] 라이더(오토바이) vs 고스트(도보+헤일로) 실루엣이 30px에서 즉시 구분되는가
-- [ ] 건물/장애물이 폭 32 비율(WIDE 64)인가
-- [ ] 연료통이 쿨 블루(빨간 주유통 아님)인가
-- [ ] 일본어 간판이 가공어인가(실상호·로고·영문 아님), 플레이 레인을 안 가리는가
-- [ ] 워터마크/영문/드롭섀도 등 불필요 요소가 없는가
-- [ ] 프레임마다 baseline이 일치하는가
+- 투명 배경(흰/검 아님)으로 나왔는가
+- 컬러 토큰(§3) hex를 벗어나지 않았는가(특히 게임플레이 4색)
+- 라이더(오토바이) vs 고스트(도보+헤일로) 실루엣이 30px에서 즉시 구분되는가
+- 건물/장애물이 폭 32 비율(WIDE 64)인가
+- 연료통이 쿨 블루(빨간 주유통 아님)인가
+- 일본어 간판이 가공어인가(실상호·로고·영문 아님), 플레이 레인을 안 가리는가
+- 워터마크/영문/드롭섀도 등 불필요 요소가 없는가
+- 프레임마다 baseline이 일치하는가
