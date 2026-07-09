@@ -498,7 +498,7 @@ export class GameScene extends Phaser.Scene {
   /** 피버 — 코드 드로우 스파이크 FEVER! 뱃지 (우측 하단, 띠지 대체) */
   private feverBadge!: Phaser.GameObjects.Container;
   private feverBadgeVisible = false;
-  private rankHudLabel!: Phaser.GameObjects.Text; // 「실시간」 안내
+  private rankHudLabel!: Phaser.GameObjects.Text; // 「👑 TODAY」 안내
   private blackoutPhase: BlackoutPhase = "idle";
   private blackoutPhaseStartMs = 0; // 현재 phase 진입 시점(renderTimeMs)
   private blackoutNextAtM = Infinity; // 다음 발동 거리(m) — 시드 LCG로 갱신
@@ -960,23 +960,23 @@ export class GameScene extends Phaser.Scene {
       .setDisplaySize(barW, barH)
       .setDepth(21);
     // 하트 스트로크 안을 회색으로 채움 — 프레임(21) 아래, 게이지 fill(20) 위.
-    // 하트는 프레임 우측 ~8% 구획 중앙. 에셋 아웃라인만 있고 속이 비어 배경이 비침.
+    // 에셋 하트 아웃라인보다 살짝 작게 그려 스트로크 밖으로 안 넘치게.
     {
-      const heartCx = DESIGN_W / 2 + barW * 0.42;
-      const heartCy = barY - 1;
-      const hs = barH * 0.22; // 하트 반경 스케일
+      const heartCx = DESIGN_W / 2 + barW * 0.425;
+      const heartCy = barY - 0.5;
+      const hs = barH * 0.155; // 에셋 하트보다 작게 (이전 0.22는 아웃라인 밖으로 넘침)
       const heart = this.add.graphics().setDepth(20.5);
       heart.fillStyle(0x6a7580, 0.92);
       // 두 원(상단 lobe) + 하단 다이아몬드
-      heart.fillCircle(heartCx - hs * 0.55, heartCy - hs * 0.15, hs * 0.72);
-      heart.fillCircle(heartCx + hs * 0.55, heartCy - hs * 0.15, hs * 0.72);
+      heart.fillCircle(heartCx - hs * 0.52, heartCy - hs * 0.12, hs * 0.62);
+      heart.fillCircle(heartCx + hs * 0.52, heartCy - hs * 0.12, hs * 0.62);
       heart.fillTriangle(
-        heartCx - hs * 1.2,
-        heartCy - hs * 0.05,
-        heartCx + hs * 1.2,
-        heartCy - hs * 0.05,
+        heartCx - hs * 1.05,
+        heartCy + hs * 0.05,
+        heartCx + hs * 1.05,
+        heartCy + hs * 0.05,
         heartCx,
-        heartCy + hs * 1.35,
+        heartCy + hs * 1.15,
       );
     }
     // 포션 "HP+" 토스트 앵커 — 체력바 좌상단
@@ -1059,9 +1059,9 @@ export class GameScene extends Phaser.Scene {
       this.rankPanelBgs.push(bg);
       this.rankPanelTexts.push(txt);
     }
-    // 「실시간」 — 칩 열 왼쪽 위. x는 updateRankPanel에서 칩 startX에 맞춤.
+    // 「👑 TODAY」 — 칩 열 왼쪽 위. x는 updateRankPanel에서 칩 startX에 맞춤.
     this.rankHudLabel = this.add
-      .text(0, 10, "👑 실시간", {
+      .text(0, 10, "👑 TODAY", {
         fontSize: "11px",
         fontFamily: FONT_KR,
         color: "#36f9f6",
@@ -2605,9 +2605,16 @@ export class GameScene extends Phaser.Scene {
       this.milestoneToast.destroy();
       this.milestoneToast = undefined;
     }
+    const m = meters.toLocaleString();
     const lines = [
-      `${meters.toLocaleString()}m, 대단한데?`,
-      `${meters.toLocaleString()}m, 계속 가보자구!`,
+      `${m}m, 대단한데?`,
+      `${m}m, 계속 가보자구!`,
+      `${m}m, 조금 더 가보자!`,
+      `${m}m, 이 기세로 가자!`,
+      `${m}m, 아직 끝이 아니야!`,
+      `${m}m, 리듬 좋다!`,
+      `${m}m, 한 번 더 밀어봐!`,
+      `${m}m, 불꽃 질주 중!`,
     ];
     const msg = lines[Math.floor(Math.random() * lines.length)]!;
 
