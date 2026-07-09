@@ -741,8 +741,8 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < 3; i++) {
       const lbl = this.add
         .text(0, 0, RANK_TEXT[i]!, {
-          // 14px — 이전 16px에서 살짝 축소(머리 위 과점유 완화).
-          fontSize: "14px",
+          // 12px — 머리 위 과점유 완화(16→14→12).
+          fontSize: "12px",
           fontFamily: FONT_HUD,
           fontStyle: "bold",
           color: RANK_COLORS[i],
@@ -1003,13 +1003,13 @@ export class GameScene extends Phaser.Scene {
         .setDisplaySize(RP_W - inset * 2, RP_H - inset * 2)
         // 시안 칩은 알파를 낮춰 화면 전체와 조화(번쩍임 완화). YOU만 조금 더 또렷.
         .setAlpha(isMe ? 0.88 : 0.62);
-      // 벡터 림 — 화면 전체와 조화되게 알파를 낮춤(번쩍임 완화). YOU만 살짝 더 밝게.
+      // 벡터 림 — 알파를 올려 축소 시 자글거림(저알파 AA)을 줄임. YOU는 더 또렷.
       const rimColor = isMe ? 0xffd35c : 0x36f9f6;
       const rimHi = isMe ? 0xffe9a8 : 0x9afcff;
       const rim = this.add.graphics();
-      rim.lineStyle(2.4, rimColor, isMe ? 0.55 : 0.32);
+      rim.lineStyle(2.6, rimColor, isMe ? 0.85 : 0.72);
       rim.strokeRoundedRect(0.5, 0.5, RP_W - 1, RP_H - 1, 11);
-      rim.lineStyle(1.1, rimHi, isMe ? 0.28 : 0.16);
+      rim.lineStyle(1.2, rimHi, isMe ? 0.55 : 0.42);
       rim.strokeRoundedRect(2, 2, RP_W - 4, RP_H - 4, 9);
       // y: 칩 세로 중앙보다 2px 위 — 네온 림·하단 글로우 때문에 시각 중심이 살짝 아래로 보임
       const txt = this.add
@@ -1120,8 +1120,9 @@ export class GameScene extends Phaser.Scene {
       const colR = PW / 2 + gap / 2 + BW / 2;
       // 아트 구획 y (텍스처 세로 fraction, 실측) → 컨테이너 로컬 좌표
       const fy = (f: number, h: number) => (f - 0.5) * h;
-      // 오렌지 헤더 아래 5행 슬롯 (divider 실측 기반)
+      // 오렌지 헤더 아래 5행 슬롯 — 실측 fraction + 아래로 8px(세로 정렬·헤더 여유)
       const rowFy = [0.302, 0.42, 0.547, 0.668, 0.813] as const;
+      const rowYPad = 8;
       // 네온 림·노치 안쪽까지 글자가 붙지 않게 좌우 인셋 (기존 0.12/0.10 → 살짝 여유)
       const xL = -PW / 2 + Math.round(PW * 0.17);
       const xR = PW / 2 - Math.round(PW * 0.15);
@@ -1159,9 +1160,9 @@ export class GameScene extends Phaser.Scene {
           PH + mattePad * 2,
           matteR,
         );
-        // 시안 soft stroke — 톱니 커버용. 알파는 낮게(결과 화면이 림에 먹히지 않게).
+        // 시안 soft stroke — 알파를 올려 축소 시 자글거림 완화.
         const rim = this.add.graphics();
-        rim.lineStyle(2.0, 0x36f9f6, 0.28);
+        rim.lineStyle(2.2, 0x36f9f6, 0.62);
         rim.strokeRoundedRect(
           -PW / 2 + 3,
           -PH / 2 + 3,
@@ -1169,7 +1170,7 @@ export class GameScene extends Phaser.Scene {
           PH - 6,
           Math.max(12, matteR - 6),
         );
-        rim.lineStyle(1.0, 0x9afcff, 0.16);
+        rim.lineStyle(1.2, 0x9afcff, 0.38);
         rim.strokeRoundedRect(
           -PW / 2 + 5,
           -PH / 2 + 5,
@@ -1197,14 +1198,14 @@ export class GameScene extends Phaser.Scene {
         const rowDists: Phaser.GameObjects.Text[] = [];
         for (let i = 0; i < 4; i++) {
           const name = this.add
-            .text(xL, fy(rowFy[i]!, PH), "", {
+            .text(xL, fy(rowFy[i]!, PH) + rowYPad, "", {
               fontSize: "11px",
               color: "#e0e0e0",
               resolution: TXT_RES,
             })
             .setOrigin(0, 0.5);
           const dist = this.add
-            .text(xR, fy(rowFy[i]!, PH), "", {
+            .text(xR, fy(rowFy[i]!, PH) + rowYPad, "", {
               fontSize: "11px",
               color: "#e0e0e0",
               resolution: TXT_RES,
@@ -1215,7 +1216,7 @@ export class GameScene extends Phaser.Scene {
           children.push(name, dist);
         }
         const myName = this.add
-          .text(xL, fy(rowFy[4]!, PH), "", {
+          .text(xL, fy(rowFy[4]!, PH) + rowYPad, "", {
             fontSize: "11px",
             color: "#ffd700",
             fontStyle: "bold",
@@ -1223,7 +1224,7 @@ export class GameScene extends Phaser.Scene {
           })
           .setOrigin(0, 0.5);
         const myDist = this.add
-          .text(xR, fy(rowFy[4]!, PH), "", {
+          .text(xR, fy(rowFy[4]!, PH) + rowYPad, "", {
             fontSize: "11px",
             color: "#ffd700",
             fontStyle: "bold",
@@ -1333,7 +1334,7 @@ export class GameScene extends Phaser.Scene {
         .setVisible(false);
     }
 
-    // 일시정지 오버레이 — 게임오버 패널 위에 렌더되도록 마지막에 생성
+    // 일시정지 오버레이 — 중앙에 || 정지 아이콘만 (문구·우상단 안내 제거).
     const poBg = this.add.rectangle(
       DESIGN_W / 2,
       DESIGN_H / 2,
@@ -1342,26 +1343,20 @@ export class GameScene extends Phaser.Scene {
       0x000000,
       0.55,
     );
-    const poText = this.add
-      .text(DESIGN_W / 2, DESIGN_H / 2, "일시정지\n탭하여 계속", {
-        fontSize: "28px",
-        color: "#ffffff",
-        fontStyle: "bold",
-        align: "center",
-      })
-      .setOrigin(0.5)
-      .setStroke("#1a1a2e", 6);
-    // 다시하기 버튼 안내 — 우상단 DOM 버튼(↺)과 연동
-    const poRestartHint = this.add
-      .text(DESIGN_W / 2, DESIGN_H / 2 + 54, "↺  우상단 버튼으로 처음부터", {
-        fontSize: "13px",
-        color: "#00e5ff",
-        align: "center",
-      })
-      .setOrigin(0.5)
-      .setAlpha(0.7);
+    // 반투명 흰 세로 막대 2개 = pause 아이콘 (가로바가 아니라 표준 ||)
+    const poIcon = this.add.graphics();
+    {
+      const cx = DESIGN_W / 2;
+      const cy = DESIGN_H / 2;
+      const barW = 14;
+      const barH = 56;
+      const gap = 18;
+      poIcon.fillStyle(0xffffff, 0.72);
+      poIcon.fillRoundedRect(cx - gap / 2 - barW, cy - barH / 2, barW, barH, 4);
+      poIcon.fillRoundedRect(cx + gap / 2, cy - barH / 2, barW, barH, 4);
+    }
     this.pauseOverlay = this.add
-      .container(0, 0, [poBg, poText, poRestartHint])
+      .container(0, 0, [poBg, poIcon])
       .setVisible(false);
 
     // 시작 오버레이 — 판마다 항상 표시. 이력 있으면 최고 등수, 없으면 조작 안내.
@@ -3407,15 +3402,19 @@ export class GameScene extends Phaser.Scene {
           : 0.9
         : 1;
     this.playerRect.setY(toScreenY(s.player.y)).setAlpha(playerAlpha);
-    // 주인공 닉네임: 머리 위 추적. 인트로/게임오버/사망 시 숨김.
+    // 주인공 닉네임: 머리 위 추적. 점프 컷(JUMP_HIT_ART_H)일 땐 더 위로 — 에셋에 가리지 않게.
     if (this.playerNickLabel) {
       const showNick =
         !s.gameOver && !this.introActive && !this.gamePaused;
       this.playerNickLabel.setVisible(showNick);
       if (showNick) {
+        const artH =
+          this.playerRect.texture.key === "player-ride"
+            ? PLAYER_ART_H
+            : JUMP_HIT_ART_H;
         this.playerNickLabel.setPosition(
           toScreenX(C.PLAYER_X),
-          toScreenY(s.player.y) - PLAYER_ART_H - 4,
+          toScreenY(s.player.y) - artH - 8,
         );
         this.playerNickLabel.setAlpha(playerAlpha);
       }

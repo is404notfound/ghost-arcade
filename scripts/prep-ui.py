@@ -37,8 +37,8 @@ HP_FRAME_TARGET_W = 780
 FUEL_CAN_SIZE = 104
 # warn-bubble: 인게임 ~360px 표시 → @3x ≈ 1080 (소스 1024에 가깝게 유지해 다운스케일 뭉개짐 완화)
 WARN_BUBBLE_TARGET_W = 1024
-# 흰 스트로크 두께(소스 해상도 기준 px)
-WARN_STROKE_PX = 5
+# 흰 스트로크 두께(소스 해상도 기준 px) — 두껍게 + 하드 엣지로 자글거림 완화
+WARN_STROKE_PX = 8
 
 
 def _remove_white_bg(im: Image.Image, thresh: int = 238, sat_thresh: float = 0.12) -> Image.Image:
@@ -218,24 +218,26 @@ def prep_fuel_can() -> None:
     print(f"  fuel-can.png → {canvas.size}  (content {tw}×{th})")
 
 
-def _add_white_stroke(im: Image.Image, width: int = 5) -> Image.Image:
-    """실루엣 바깥에 흰 스트로크를 깐다 (알파 마스크 팽창 → 흰 밑판 + 원본 합성)."""
+def _add_white_stroke(im: Image.Image, width: int = 8) -> Image.Image:
+    """실루엣 바깥에 불투명 흰 스트로크를 깐다.
+
+    MaxFilter로 여러 번 팽창한 뒤 원본 알파를 빼 스트로크 마스크를 만들고,
+    알파를 하드컷해 반투명 fringe(축소 시 자글거림 원인)를 제거한다.
+    """
     from PIL import ImageChops, ImageFilter as IF
 
     alpha = im.split()[3]
-    # MaxFilter는 홀수 커널 — 팽창으로 스트로크 두께 확보
-    k = max(3, width * 2 + 1)
-    if k % 2 == 0:
-        k += 1
-    expanded = alpha.filter(IF.MaxFilter(k))
-    # 스트로크만 = 팽창 − 원본 알파
+    expanded = alpha
+    for _ in range(max(1, width)):
+        expanded = expanded.filter(IF.MaxFilter(3))
     stroke_a = ImageChops.subtract(expanded, alpha)
+    # 하드컷 — mid-alpha fringe 제거 (자글거림의 주원인)
+    stroke_a = stroke_a.point(lambda v: 255 if v >= 40 else 0)
+    # 1px만 살짝 블러 후 다시 하드컷 → 초미세 톱니만 완화, 반투명 띠는 안 남김
+    stroke_a = stroke_a.filter(IF.GaussianBlur(0.4))
+    stroke_a = stroke_a.point(lambda v: 255 if v >= 90 else 0)
     stroke = Image.new("RGBA", im.size, (255, 255, 255, 0))
     stroke.putalpha(stroke_a)
-    # 스트로크를 살짝 소프트해 톱니 완화
-    sr, sg, sb, sa = stroke.split()
-    sa = sa.filter(IF.GaussianBlur(0.6))
-    stroke = Image.merge("RGBA", (sr, sg, sb, sa))
     out = Image.new("RGBA", im.size, (0, 0, 0, 0))
     out.alpha_composite(stroke)
     out.alpha_composite(im)
@@ -243,14 +245,11 @@ def _add_white_stroke(im: Image.Image, width: int = 5) -> Image.Image:
 
 
 def prep_warn_bubble() -> None:
-    """암전 WARNING 뱃지 — 흰 배경 → RGBA + 흰 스트로크, 고해상 유지."""
+    """암전 WARNING 뱃지 — 흰 배경 → RGBA + 불투명 흰 스트로크, 고해상 유지."""
     im = Image.open(os.path.join(SRC, "warn-bubble-src.png")).convert("RGBA")
-    # 흰/밝은 회색 배경 제거 (JPEG 압축으로 순백이 아닐 수 있음)
     im = _remove_white_bg(im, thresh=220, sat_thresh=0.12)
-    # 네온 핑크 글로우 가장자리의 밝은 fringe만 가볍게 컷
     im = _defringe(im, alpha_hi=100, lum_hi=200, sat_max=0.20)
     im = _hard_cut_alpha(im, min_alpha=20)
-    # bbox 트림 (약한 글로우 포함)
     amask = im.split()[3].point(lambda v: 255 if v > 10 else 0)
     bb = amask.getbbox()
     if bb:
@@ -258,24 +257,19 @@ def prep_warn_bubble() -> None:
     cw, ch = im.size
     tw = WARN_BUBBLE_TARGET_W
     th = max(1, round(ch * tw / cw))
-    # 소스≈목표면 리사이즈 스킵 — 불필요한 LANCZOS 뭉개짐 방지
     if abs(cw - tw) > 2 or abs(ch - th) > 2:
         im = im.resize((tw, th), Image.LANCZOS)
     else:
         tw, th = cw, ch
-    # 알파 살짝만 — 과블러는 화질 저하 원인
-    r_, g_, b_, a_ = im.split()
-    a_ = a_.filter(ImageFilter.GaussianBlur(0.35))
-    im = Image.merge("RGBA", (r_, g_, b_, a_))
-    im = _hard_cut_alpha(im, min_alpha=14)
-    # 흰 스트로크 — 인게임 대비·윤곽 선명도
-    pad = WARN_STROKE_PX + 4
+    # 본체 알파도 하드에 가깝게 — 외곽 fringe가 스트로크와 섞여 자글거리지 않게
+    im = _hard_cut_alpha(im, min_alpha=28)
+    pad = WARN_STROKE_PX + 6
     canvas = Image.new("RGBA", (im.size[0] + pad * 2, im.size[1] + pad * 2), (0, 0, 0, 0))
     canvas.paste(im, (pad, pad), im)
     im = _add_white_stroke(canvas, width=WARN_STROKE_PX)
     out_path = os.path.join(OUT, "warn-bubble.png")
     im.save(out_path, "PNG")
-    print(f"  warn-bubble.png → {im.size}  (content≈{tw}×{th}, white stroke)")
+    print(f"  warn-bubble.png → {im.size}  (content≈{tw}×{th}, hard white stroke)")
 
 
 if __name__ == "__main__":
