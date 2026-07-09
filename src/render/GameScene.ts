@@ -1456,8 +1456,8 @@ export class GameScene extends Phaser.Scene {
         .setDepth(110)
         .setVisible(false);
       this.introOverlay.setData("dispH", dispH);
-      // 시작: 화면 하단에서 꽤 위(≈130px)에서 슬라이드 — 맨 아래에서 올라오는 느낌 완화
-      this.introOverlay.setData("startY", DESIGN_H - 130);
+      // 시작: 뷰포트 바닥보다 더 아래(≈48px)에서 슬라이드 — 맨 아래에서 올라오는 연출 강화
+      this.introOverlay.setData("startY", DESIGN_H + 48);
       // 끝: 이미지 상단이 뷰포트 상단에 오도록 (origin bottom → y = dispH)
       this.introOverlay.setData("endY", dispH);
       this.beginIntro();
