@@ -70,12 +70,16 @@ import hpFrameUrl from "../../assets/game/hp-frame.png";
 import bgBuildingsFarUrl from "../../assets/game/bg-buildings-far.png";
 import bgBridgesFarUrl from "../../assets/game/bg-bridges-far.png";
 import bgBridgesCurvedFarUrl from "../../assets/game/bg-bridges-curved-far.png";
-// UI 패널 5종 — 9-slice 프레임 (prep-panels.py 산출물)
+// UI 패널 — 9-slice 프레임 (prep-panels.py 산출물)
 import panelRankHudUrl from "../../assets/game/panel-rank-hud.png";
 import panelRankHudGoldUrl from "../../assets/game/panel-rank-hud-gold.png";
+import panelDailyUrl from "../../assets/game/panel-daily.png";
 import panelWeeklyUrl from "../../assets/game/panel-weekly.png";
 import panelGameoverUrl from "../../assets/game/panel-gameover.png";
 import panelTutorialUrl from "../../assets/game/panel-tutorial.png";
+import btnReplayUrl from "../../assets/game/btn-replay.png";
+import introSlideUrl from "../../assets/game/intro-slide.png";
+import warnBubbleUrl from "../../assets/game/warn-bubble.png";
 // flame-pilar 이미지 제거됨 — 코드 드로우 화염분수(code-flame-*)로 교체
 // bg-sun 이미지는 코드 태양(createCodeSun)으로 대체 — import 제거
 // fx-meteor-*: 코드 드로우 메테오(drawCodeMeteor)로 대체 — import 제거
@@ -120,7 +124,7 @@ const BIOMES: readonly BiomePalette[] = [
   { skyTop: 0x1f060e, skyLow: 0x7a1430, groundTop: 0x4a0f28, grid: 0xff5f7a },
 ];
 const BIOME_METERS = 1000; // 구간 길이(m)
-const BIOME_FADE_MS = 2000; // 크로스페이드 시간
+const BIOME_FADE_MS = 3500; // 크로스페이드 시간 — 원경 타일·하늘이 같이 녹아 바뀌게 (휙 스왑 방지)
 
 function lerpColor(a: number, b: number, t: number): number {
   const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255;
@@ -175,10 +179,11 @@ const PLAYER_ART_H = 96;
 const JUMP_HIT_ART_H = 152;
 const PLAYER_ART_ORIGIN_X = 0.62; // 아트 내 히트박스 정렬점(왼쪽 트레일 보정 → 우측 치우침)
 const PLAYER_ART_ORIGIN_Y = 0.96; // 바퀴 접지점이 바닥선에 닿도록
-// 고스트 러너 표시 높이. 106→90: 주인공 시트 교체(표시 96) 후 고스트가 주인공보다
-// 커 보인다는 피드백 — 주인공보다 살짝 작게 재조정.
-const GHOST_ART_H = 90;
-const GHOST_SPRITE_ALPHA = 0.78; // 배경(스카이라인/네온)에 묻히지 않게 충분히 불투명하게
+// 고스트 러너 표시 높이. 90→104: 배경이 화려해 반투명·소형 고스트가 안 보임 →
+// 주인공(96)보다 살짝 크게 + 알파 1.0으로 실루엣 가시성 확보 (히트박스는 sim 그대로).
+const INTRO_MS = 8500; // 세로 슬라이드 — 천천히 감상 (Next로만 종료)
+const GHOST_ART_H = 104;
+const GHOST_SPRITE_ALPHA = 1; // 100% 불투명 — 네온 배경에 묻히지 않게
 const FUEL_ART_SIZE = 50; // 연료통 표시 한 변(px) — 100→50: 과대 크기 절반으로 축소
 const GHOST_RUN_FPS = 12; // 고스트 달리기 6프레임 사이클 속도(렌더 전용) — 12fps=0.5s/cycle
 // 고스트 x 분산 오프셋 — 렌더 전용. 충돌·거리 판정과 무관.
@@ -409,7 +414,10 @@ export class GameScene extends Phaser.Scene {
 
   private paceText!: Phaser.GameObjects.Text; // 현재 등수 "N / M등"
   private overtakeHudText!: Phaser.GameObjects.Text; // "제침 X/N"
-  private comboDisplay!: Phaser.GameObjects.Text; // 화면 중앙 큰 콤보 숫자 (combo >= 2)
+  private comboRibbon!: Phaser.GameObjects.Container; // 우측 중상단 콤보 띠지 (우→좌 슬라이드)
+  private comboRibbonBg!: Phaser.GameObjects.Rectangle;
+  private comboDisplay!: Phaser.GameObjects.Text; // 띠지 위 콤보 숫자 (combo >= 2)
+  private comboRibbonVisible = false; // 슬라이드 인/아웃 중복 방지
   private prevCombo = 0; // 이전 프레임 combo 값 — 증가 감지용
   private prevRank = 0; // 이전 프레임 등수 — 상승 감지용
   private feverCount = 0; // 이번 판 피버 발동 횟수 — game_over 이벤트용
@@ -421,6 +429,10 @@ export class GameScene extends Phaser.Scene {
   private gamePaused = false;
   // 인게임 안내
   private startOverlay!: Phaser.GameObjects.Container; // 판 시작마다 표시되는 오버레이
+  private introOverlay!: Phaser.GameObjects.Container; // 첫 진입 세로 슬라이드 인트로 (§6.3)
+  private introImage!: Phaser.GameObjects.Image;
+  private introActive = false;
+  private introNextBtn!: Phaser.GameObjects.Text;
   private startBestRankText!: Phaser.GameObjects.Text; // 최고 등수 (이력 있으면 표시)
   private startSubText!: Phaser.GameObjects.Text; // 고스트 경쟁 안내 / 첫판 조작 힌트
   private feverTutorial: Phaser.GameObjects.Container | null = null; // 첫 피버 일시정지 안내
@@ -477,7 +489,8 @@ export class GameScene extends Phaser.Scene {
   private sunRedrawToggle = false; // 태양 재드로우 30fps 스로틀용 토글
   // ── 정전 트랩 상태 (렌더 전용) ──
   private blackoutGfx!: Phaser.GameObjects.Graphics;
-  private blackoutWarnText!: Phaser.GameObjects.Text;
+  private blackoutWarnBubble!: Phaser.GameObjects.Image; // warn-bubble 에셋 (WARNING baked)
+  private rankHudLabel!: Phaser.GameObjects.Text; // 「실시간 일간랭킹」 안내
   private blackoutPhase: BlackoutPhase = "idle";
   private blackoutPhaseStartMs = 0; // 현재 phase 진입 시점(renderTimeMs)
   private blackoutNextAtM = Infinity; // 다음 발동 거리(m) — 시드 LCG로 갱신
@@ -505,15 +518,26 @@ export class GameScene extends Phaser.Scene {
   private rankPanelTexts: Phaser.GameObjects.Text[] = [];
   private top3GhostDists: number[] = []; // startRun()에서 캐시, 판 내내 고정
   private top3GhostNames: string[] = []; // top3GhostDists와 정렬 순서 동일 (순위 칩 닉네임)
-  private gameOverDistText!: Phaser.GameObjects.Text; // 이번 판 거리 (결과 패널 상단)
-  private hintText!: Phaser.GameObjects.Text; // "탭하여 재시작" / "한 판 더?"
-  // ── 결과 패널 = 주간 누적 랭킹 (게임오버 중앙 단일 패널) ──
+  private gameOverDistText!: Phaser.GameObjects.Text; // 이번 판 거리 (중앙 상단 칩)
+  private gameOverDistChipBg!: Phaser.GameObjects.Graphics; // 거리 칩 검정 캡슐
+  private hintText!: Phaser.GameObjects.Text; // "ONE MORE RUN?" (Replay 아래)
+  // ── 결과 UI = 일간 | Replay | 주간 3분할 ──
+  private gameOverRoot!: Phaser.GameObjects.Container;
+  private dailyPanel!: Phaser.GameObjects.Container;
   private weeklyPanel!: Phaser.GameObjects.Container;
+  private replayBtn!: Phaser.GameObjects.Container;
+  private dailyRowTexts: Phaser.GameObjects.Text[] = [];
+  private dailyRowDists: Phaser.GameObjects.Text[] = [];
+  private dailyMyText!: Phaser.GameObjects.Text;
+  private dailyMyDist!: Phaser.GameObjects.Text;
   private weeklyRowTexts: Phaser.GameObjects.Text[] = []; // 1~4등 이름(좌)
   private weeklyRowDists: Phaser.GameObjects.Text[] = []; // 1~4등 거리(우측정렬)
   private weeklyMyText!: Phaser.GameObjects.Text; // 5번째 칸 이름(좌)
   private weeklyMyDist!: Phaser.GameObjects.Text; // 5번째 칸 거리(우측정렬)
   private weeklyRanks: WeeklyRank[] | null = null; // 게임오버 시 fetch 결과 (null = 아직/실패)
+  private lastResultMyDist = 0; // showResultPanel 시점 거리 — 일간 패널 갱신용
+  /** Replay 탭 → startRun 직후 같은 pointerdown이 window onTap으로 점프 먹는 것 방지 */
+  private ignoreNextWindowTap = false;
 
   constructor() {
     super({ key: "GameScene" });
@@ -560,12 +584,16 @@ export class GameScene extends Phaser.Scene {
     this.load.image("bg-buildings-far", bgBuildingsFarUrl);
     this.load.image("bg-bridges-far", bgBridgesFarUrl);
     this.load.image("bg-bridges-curved-far", bgBridgesCurvedFarUrl);
-    // UI 패널 5종 (9-slice)
+    // UI 패널 (9-slice) + 게임오버 Replay CTA
     this.load.image("panel-rank-hud", panelRankHudUrl);
     this.load.image("panel-rank-hud-gold", panelRankHudGoldUrl);
+    this.load.image("panel-daily", panelDailyUrl);
     this.load.image("panel-weekly", panelWeeklyUrl);
     this.load.image("panel-gameover", panelGameoverUrl);
     this.load.image("panel-tutorial", panelTutorialUrl);
+    this.load.image("btn-replay", btnReplayUrl);
+    this.load.image("intro-slide", introSlideUrl);
+    this.load.image("warn-bubble", warnBubbleUrl);
   }
 
   create() {
@@ -581,15 +609,12 @@ export class GameScene extends Phaser.Scene {
 
     // 정전 트랩 오버레이 — 월드(depth 0) 위, HUD 텍스트(10+)·순위 칩(22) 아래.
     this.blackoutGfx = this.add.graphics().setDepth(6);
-    this.blackoutWarnText = this.add
-      .text(DESIGN_W * 0.75, 140, "⚠ 정전 경고", {
-        fontSize: "20px",
-        color: "#ff5fa2",
-        fontStyle: "bold",
-        resolution: TXT_RES,
-      })
+    // 암전 예고: warn-bubble 에셋(WARNING baked) + 알파 사인 점멸.
+    // 표시 폭 168 — prep @3x(504)에서 다운스케일. 위치는 우측 중상단(시야 방해 최소).
+    this.blackoutWarnBubble = this.add
+      .image(DESIGN_W * 0.78, 128, "warn-bubble")
       .setOrigin(0.5)
-      .setStroke("#1a0010", 5)
+      .setDisplaySize(168, Math.round(168 * (164 / 504)))
       .setDepth(7)
       .setVisible(false);
 
@@ -612,12 +637,16 @@ export class GameScene extends Phaser.Scene {
       "bg-buildings-far",
       "bg-bridges-far",
       "bg-bridges-curved-far",
+      "panel-daily",
       "panel-weekly",
       "panel-tutorial",
       "panel-gameover",
       "panel-rank-hud",
       "panel-rank-hud-gold",
+      "btn-replay",
       "hp-frame",
+      "intro-slide",
+      "warn-bubble",
     ].forEach((key) => {
       const tex = this.textures.get(key);
       if (tex) tex.setFilter(Phaser.Textures.FilterMode.LINEAR);
@@ -683,21 +712,22 @@ export class GameScene extends Phaser.Scene {
     // 고스트 순위 라벨 (#1 #2 #3) — 고스트 스프라이트보다 나중에 add → depth가 위에 올라옴.
     // 1위=골드, 2·3위=연한 시안/화이트.
     // 무채색 계조 — 1등=밝은 회백, 3등으로 갈수록 어둡게. 눈에 덜 띄게.
-    const RANK_COLORS = ["#f0f0f0", "#bcbcbc", "#8f8f8f"] as const;
+    const RANK_COLORS = ["#ffe9a8", "#e8e8e8", "#c8c8c8"] as const;
     const RANK_TEXT = ["1st", "2nd", "3rd"] as const;
     for (let i = 0; i < 3; i++) {
       const lbl = this.add
         .text(0, 0, RANK_TEXT[i]!, {
-          // 살짝 키움(10→12) + 약간 더 진하게 — 고스트 위에서 잘 읽히게.
-          fontSize: "12px",
-          fontFamily: "'Courier New', monospace",
+          // 16px + 강한 스트로크 — 화려한 배경 위에서도 등수가 읽히게.
+          fontSize: "16px",
+          fontFamily: "'Orbitron', monospace",
+          fontStyle: "bold",
           color: RANK_COLORS[i],
           resolution: TXT_RES,
-          stroke: "#1a0010",
-          strokeThickness: 2,
+          stroke: "#0a0018",
+          strokeThickness: 4,
         })
         .setOrigin(0.5, 1)
-        .setAlpha(0.72)
+        .setAlpha(0.95)
         .setVisible(false);
       this.ghostRankLabels.push(lbl);
     }
@@ -787,40 +817,39 @@ export class GameScene extends Phaser.Scene {
       .setDepth(20);
 
     // HUD: 체력바(하단 중앙) + 거리(우상단) + 랭킹 패널(좌상단)
-    // ── HP바: 종횡비 보존 프레임(hp-frame 780×114 고해상) + 그라데이션 fill ──
+    // ── HP바: 종횡비 보존 프레임(hp-frame 780×104 고해상) + 그라데이션 fill ──
     // 구조: fill Image(depth 20, 무채색 세로 그라데이션 → setTint 로 색 입힘)
     //       + hp-frame Image(depth 21, 내부 투명 → fill 비침, 우측 하트 아이콘 보존)
     // ★ 이전 버그: 260×20 강제 리사이즈로 비율 깨짐+저해상, fillGradientStyle→generateTexture
     //   가 투명 텍스처가 돼 "점만" 보임. → 고해상 프레임 + Canvas 그라데이션으로 교체.
-    // 프레임 종횡비(hp-frame.png = 780×114 ≈ 6.84:1)에 맞춰 barH 산출 → 왜곡 없음.
+    // 프레임 종횡비(hp-frame.png = 780×126 ≈ 6.19:1, 글로우 보존 prep)에 맞춰 barH 산출 → 왜곡 없음.
     const barW = 260;
-    const barH = Math.round(barW * (114 / 780)); // ≈ 38
+    const barH = Math.round(barW * (126 / 780)); // ≈ 42
     const barY = DESIGN_H - 24;
-    // 내부(투명 구멍) pad 측정값(소스 비율): 좌 3.1% / 하트 시작 86% / 상하 ~20%.
-    // fill 우측을 0.905로 설정 — hp=100 시 fill이 하트 밑까지 닿아 "만땅=끝까지 참"으로 읽힘.
+    // 내부(투명 구멍) pad 측정값(780×126): 게이지 캐비티 ≈0.04~0.90 / 하트 구획 ≈0.90+.
+    // fill 우측을 하트 구획까지(0.95) — hp=100 시 fill이 하트 밑까지 닿아 "만땅"으로 읽힘.
     // fill(depth 20) 위에 하트 포함 프레임(depth 21)이 겹쳐 자연스럽게 가려진다.
-    // fill 시작을 마스크 좌측(0.025)과 일치 → 좌측에 track(검정)이 새는 빈틈 없음.
-    const HP_L_FRAC = 0.025;
-    // 마스크 우측(0.965)과 일치 → 만땅 시 초록이 마스크 끝까지 차고 글로우도 그 지점에.
-    const HP_R_FRAC = 0.965;
+    // fill 시작을 마스크 좌측과 일치 → 좌측에 track(검정)이 새는 빈틈 없음.
+    const HP_L_FRAC = 0.04;
+    // 마스크 우측과 일치 → 만땅 시 초록이 마스크 끝까지 차고 글로우도 그 지점에.
+    const HP_R_FRAC = 0.95;
     const HP_FILL_W = Math.round((HP_R_FRAC - HP_L_FRAC) * barW);
     const fillX = DESIGN_W / 2 - barW / 2 + Math.round(HP_L_FRAC * barW);
     // ★ 이전엔 16px 폭 텍스처를 ~14배 X-스트레치 → 늘어나며 대각선 밴딩 + 하단이 너무
     //   어두워 초록이 "듬성듬성"하게 보였다. 텍스처 폭을 채움 폭과 동일(고DPR 반영)하게
     //   만들어 X 스트레치를 없애고, 하단을 밝게 유지해 솔리드한 광택으로 정리한다.
     const HP_TEX_W = Math.max(64, Math.round(HP_FILL_W * RENDER_DPR));
-    // ★ 프레임 내부 구멍은 윗변이 기울어져(좌 0.18h → 우 0.27h) 있어, 예전 0.6배 높이의
-    //   납작한 fill로는 기운 윗변·하트 주변을 못 덮어 어두운 배경이 새어(듬성듬성) 보였다.
-    //   구멍 최대 범위(≈0.18~0.80h)를 넘어서게 크게 채우고, 넘치는 부분은 불투명 테두리가 가린다.
-    // 프레임 full 높이(1.02배)로 채워 기운 윗변·하트 주변 구멍을 완전히 덮는다(넘침은 테두리가 가림).
-    const fillTexH = Math.max(6, Math.round(barH * 1.02 * RENDER_DPR));
+    // ★ 프레임 캐비티를 거의 full 높이로 채움. 마스크가 낮으면(0.78) 위·아래 어두운 띠가
+    //   남아 게이지가 "듬성듬성/속이 빔"으로 읽힌다. 넘침은 네온 테두리가 가림.
+    const fillTexH = Math.max(6, Math.round(barH * 1.08 * RENDER_DPR));
 
     // ── 무채색 세로 광택 그라데이션 fill 텍스처 (Canvas 로 생성 — 안정적) ──
     // 원리: 흰(상단)→밝은 회(하단) 무채색을 setTint로 물들이면 어느 색이든 솔리드한 광택 유지.
     //   (Graphics.fillGradientStyle→generateTexture 는 일부 환경에서 투명 텍스처가 되는
     //   버그가 있어 Canvas 2D 그라데이션으로 대체.)
-    if (!this.textures.exists("hp-fill-grad3")) {
-      const ct = this.textures.createCanvas("hp-fill-grad3", HP_TEX_W, fillTexH);
+    // 키 버전업: 마스크/높이 변경 시 HMR 캐시 무효화.
+    if (!this.textures.exists("hp-fill-grad5")) {
+      const ct = this.textures.createCanvas("hp-fill-grad5", HP_TEX_W, fillTexH);
       if (ct) {
         const ctx = ct.getContext();
         const grad = ctx.createLinearGradient(0, 0, 0, fillTexH);
@@ -856,7 +885,7 @@ export class GameScene extends Phaser.Scene {
     // 빈(소진) 구간용 어두운 트랙 — 항상 풀 폭. 없으면 소진 구간에 게임 배경이 투명하게
     // 비쳐 "뚫린 구멍"처럼 보였다. fill(depth20) 밑(depth19)에 깔아 빈 게이지처럼 읽히게 한다.
     this.hpTrack = this.add
-      .image(fillX, barY, "hp-fill-grad3")
+      .image(fillX, barY, "hp-fill-grad5")
       .setOrigin(0, 0.5)
       .setDepth(19)
       .setTint(0x0b1f1a)
@@ -865,7 +894,7 @@ export class GameScene extends Phaser.Scene {
     this.hpTrack.scaleY = this.hpFillFullScale;
 
     this.hpFill = this.add
-      .image(fillX, barY, "hp-fill-grad3")
+      .image(fillX, barY, "hp-fill-grad5")
       .setOrigin(0, 0.5)
       .setDepth(20)
       .setTint(0x2ecc71); // 초기 틴트 — syncVisuals 전(타이틀)에 흰색으로 보이지 않게
@@ -886,19 +915,16 @@ export class GameScene extends Phaser.Scene {
       .setDepth(21);
 
     // ★ fill/track을 '깔끔한 라운드 사각형' geometry 마스크로 클립.
-    //   프레임 내부 구멍이 기울어진 사다리꼴+라운드라 직사각형 fill이 모서리로 삐져나오거나(초록 튀어나옴)
-    //   빈틈(하트 주변 검정)이 생겼다. 마스크로 초록 모양을 코드가 직접 정하면 에셋 구멍 형태와 무관하게
-    //   항상 정갈하다. 마스크는 네온 테두리 안쪽까지 넉넉히 덮고(테두리가 가장자리를 가림), 하트 앞까지.
+    //   마스크 세로를 barH×0.92로 키워 캐비티를 거의 채움(0.78이면 위·아래 어두운 띠 → 듬성듬성).
+    //   가로도 테두리 안쪽까지. 넘침은 네온 프레임(depth 21)이 가림.
     {
-      // ★ 마스크는 프레임 구멍(가로 0.029~0.969, 세로 거의 full)보다 살짝 크게 잡아 구멍을 완전히
-      //   덮는다(넘침은 불투명 테두리가 가림). 좁게 잡으면 구멍 가장자리가 검게 샌다(좌측 빈틈).
-      const mLeft = DESIGN_W / 2 - barW / 2 + barW * 0.025;
-      const mRight = DESIGN_W / 2 - barW / 2 + barW * 0.965;
+      const mLeft = DESIGN_W / 2 - barW / 2 + barW * HP_L_FRAC;
+      const mRight = DESIGN_W / 2 - barW / 2 + barW * HP_R_FRAC;
       const mW = mRight - mLeft;
-      const mH = Math.round(barH * 0.84);
+      const mH = Math.round(barH * 0.92);
       const maskG = this.add.graphics().setVisible(false);
       maskG.fillStyle(0xffffff, 1);
-      maskG.fillRoundedRect(mLeft, barY - mH / 2, mW, mH, Math.round(mH * 0.3));
+      maskG.fillRoundedRect(mLeft, barY - mH / 2, mW, mH, Math.round(mH * 0.35));
       const hpMask = maskG.createGeometryMask();
       this.hpFill.setMask(hpMask);
       this.hpTrack.setMask(hpMask);
@@ -924,13 +950,29 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < 4; i++) {
       const isMe = rpIsPlayer[i]!;
       const bgKey = isMe ? "panel-rank-hud-gold" : "panel-rank-hud";
+      // 검정 매트 — 래스터 외곽 fringe가 배경에 번지지 않게 먼저 가림.
+      const matte = this.add.graphics();
+      matte.fillStyle(0x060010, 0.94);
+      matte.fillRoundedRect(0, 0, RP_W, RP_H, 11);
+      // 래스터는 1.5px inset — 축소 시 톱니·흰 할로가 생기는 최외곽을 잘라냄.
+      const inset = 1.5;
       const bg = this.add
-        .image(0, 0, bgKey)
+        .image(inset, inset, bgKey)
         .setOrigin(0, 0)
-        .setDisplaySize(RP_W, RP_H)
-        .setAlpha(isMe ? 0.95 : 0.82);
+        .setDisplaySize(RP_W - inset * 2, RP_H - inset * 2)
+        // 시안 칩은 알파를 낮춰 화면 전체와 조화(번쩍임 완화). YOU만 조금 더 또렷.
+        .setAlpha(isMe ? 0.88 : 0.62);
+      // 벡터 림 — 화면 전체와 조화되게 알파를 낮춤(번쩍임 완화). YOU만 살짝 더 밝게.
+      const rimColor = isMe ? 0xffd35c : 0x36f9f6;
+      const rimHi = isMe ? 0xffe9a8 : 0x9afcff;
+      const rim = this.add.graphics();
+      rim.lineStyle(2.4, rimColor, isMe ? 0.55 : 0.32);
+      rim.strokeRoundedRect(0.5, 0.5, RP_W - 1, RP_H - 1, 11);
+      rim.lineStyle(1.1, rimHi, isMe ? 0.28 : 0.16);
+      rim.strokeRoundedRect(2, 2, RP_W - 4, RP_H - 4, 9);
+      // y: 칩 세로 중앙보다 2px 위 — 네온 림·하단 글로우 때문에 시각 중심이 살짝 아래로 보임
       const txt = this.add
-        .text(RP_W / 2, RP_H / 2, rpLabels[i]!, {
+        .text(RP_W / 2, RP_H / 2 - 2, rpLabels[i]!, {
           fontSize: isMe ? "15px" : "13px",
           color: isMe ? "#ffd700" : "#00e5ff",
           fontFamily: "'Orbitron', monospace",
@@ -939,117 +981,280 @@ export class GameScene extends Phaser.Scene {
           align: "center",
         })
         .setOrigin(0.5, 0.5);
+      // y=20: 「실시간 일간랭킹」 라벨(y≈2, ~14px) 아래에 두어 겹침 방지
       const container = this.add
-        .container(-9999, 4, [bg, txt])
+        .container(-9999, 20, [matte, bg, rim, txt])
         .setDepth(22)
         .setVisible(false);
       this.rankPanels.push(container);
       this.rankPanelBgs.push(bg);
       this.rankPanelTexts.push(txt);
     }
-    // 화면 중앙 큰 콤보 숫자 — combo >= 2 일 때만 표시, 플레이 레인 위쪽에 배치
-    this.comboDisplay = this.add
-      .text(DESIGN_W / 2, 130, "", {
-        fontSize: "50px",
-        fontFamily: "'Orbitron', monospace",
-        fontStyle: "bold",
-        color: "#ffd166",
+    // 「실시간 일간랭킹」 — 칩 열 왼쪽 위. x는 updateRankPanel에서 칩 startX에 맞춤.
+    this.rankHudLabel = this.add
+      .text(0, 2, "👑 실시간 일간랭킹", {
+        fontSize: "11px",
+        fontFamily: "'Noto Sans KR', sans-serif",
+        color: "#36f9f6",
         resolution: TXT_RES,
       })
-      .setOrigin(0.5)
-      .setAlpha(0.8)
-      .setStroke("#1a1a2e", 6)
-      .setVisible(false)
-      .setDepth(10);
+      .setOrigin(0, 0)
+      .setAlpha(0.85)
+      .setStroke("#0a0018", 3)
+      .setDepth(22)
+      .setVisible(false);
 
-    // ── 결과 패널 = 주간 누적 랭킹 (중앙 단일 패널) ──
-    // 별도 YOU LOSE 패널은 제거 — 이번 판 거리·재시작 힌트를 여기에 흡수.
-    // 사망 자체는 상단 "당신은 죽었습니다" + 좌상단 순위 칩이 이미 전달한다.
+    // 좌측 끝 콤보 띠지 — 랭킹 칩 아래(y 유지), x는 항상 화면 왼쪽. 좌→우 슬라이드 인.
     {
-      // panel-weekly: prep 산출 실제 크기의 종횡비 그대로 표시(늘림 0). 화면 높이(480)에 맞춰 PH 고정.
-      const wkSrc = this.textures.get("panel-weekly").getSourceImage();
-      const PH = 456;
-      const PW = Math.round((PH * wkSrc.width) / wkSrc.height);
-      const wkBg = this.add.image(0, 0, "panel-weekly").setDisplaySize(PW, PH);
-      // 아트 구획 y (텍스처 세로 fraction, 실측) → 컨테이너 좌표 변환
-      const fy = (f: number) => (f - 0.5) * PH;
-      const wkTitle = this.add
-        .text(0, fy(0.068), "주간 랭킹 · 7일 누적", {
-          fontSize: "15px",
-          color: "#36f9f6",
+      const ribbonW = 118;
+      const ribbonH = 26;
+      const restX = 0; // 화면 왼쪽 끝 밀착 (여백 없음)
+      const restY = 20 + 42 + 6 + ribbonH / 2; // 칩(y=20,h=42) 아래 여백
+      this.comboRibbonBg = this.add
+        .rectangle(0, 0, ribbonW, ribbonH, 0x060010, 0.88)
+        .setOrigin(0, 0.5);
+      this.comboDisplay = this.add
+        .text(ribbonW / 2, 0, "", {
+          fontSize: "14px",
+          fontFamily: "'Orbitron', monospace",
           fontStyle: "bold",
+          color: "#ffd166",
           resolution: TXT_RES,
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5, 0.5)
+        .setStroke("#1a1a2e", 3);
+      this.comboRibbon = this.add
+        .container(-ribbonW - 8, restY, [this.comboRibbonBg, this.comboDisplay])
+        .setDepth(23)
+        .setVisible(false);
+      this.comboRibbon.setData("restX", restX);
+      this.comboRibbon.setData("hiddenX", -ribbonW - 8);
+    }
+
+    // ── 결과 UI = 일간 | Replay | 주간 3분할 ──
+    // 좌/우는 같은 세로 패널 프레임(panel-daily / panel-weekly). 가운데만 Replay CTA.
+    // 전체 화면 탭 재시작은 제거 — Replay 히트영역만 startRun(true).
+    {
+      const rankSrc = this.textures.get("panel-daily").getSourceImage();
+      const btnSrc = this.textures.get("btn-replay").getSourceImage();
+      // 화면 폭 1040 — 좌·우 패널 + 중앙 버튼 + 여백이 한 줄에 들어가게 스케일.
+      const PH = 400;
+      const PW = Math.round((PH * rankSrc.width) / rankSrc.height); // ≈210
+      const BH = 220;
+      const BW = Math.round((BH * btnSrc.width) / btnSrc.height); // ≈82
+      const gap = 18;
+      const colL = -(PW / 2 + gap / 2 + BW / 2);
+      const colR = PW / 2 + gap / 2 + BW / 2;
+      // 아트 구획 y (텍스처 세로 fraction, 실측) → 컨테이너 로컬 좌표
+      const fy = (f: number, h: number) => (f - 0.5) * h;
+      // 오렌지 헤더 아래 5행 슬롯 (divider 실측 기반)
+      const rowFy = [0.302, 0.42, 0.547, 0.668, 0.813] as const;
+      // 네온 림·노치 안쪽까지 글자가 붙지 않게 좌우 인셋 (기존 0.12/0.10 → 살짝 여유)
+      const xL = -PW / 2 + Math.round(PW * 0.17);
+      const xR = PW / 2 - Math.round(PW * 0.15);
+
+      const buildRankPanel = (
+        texKey: string,
+        title: string,
+        titleColor: string,
+      ): {
+        container: Phaser.GameObjects.Container;
+        rowNames: Phaser.GameObjects.Text[];
+        rowDists: Phaser.GameObjects.Text[];
+        myName: Phaser.GameObjects.Text;
+        myDist: Phaser.GameObjects.Text;
+      } => {
+        // 패널 뒤 얇은 검정 매트 — 글로우 fringe만 가리고 프레임처럼 두껍게 보이지 않게.
+        const mattePad = 5;
+        const matteR = 20;
+        const matte = this.add.graphics();
+        matte.fillStyle(0x000000, 0.88);
+        matte.fillRoundedRect(
+          -PW / 2 - mattePad,
+          -PH / 2 - mattePad,
+          PW + mattePad * 2,
+          PH + mattePad * 2,
+          matteR,
+        );
+        matte.lineStyle(3, 0x000000, 1);
+        matte.strokeRoundedRect(
+          -PW / 2 - mattePad,
+          -PH / 2 - mattePad,
+          PW + mattePad * 2,
+          PH + mattePad * 2,
+          matteR,
+        );
+        // 시안 soft stroke — 톱니 커버용. 알파는 낮게(결과 화면이 림에 먹히지 않게).
+        const rim = this.add.graphics();
+        rim.lineStyle(2.0, 0x36f9f6, 0.28);
+        rim.strokeRoundedRect(
+          -PW / 2 + 3,
+          -PH / 2 + 3,
+          PW - 6,
+          PH - 6,
+          Math.max(12, matteR - 6),
+        );
+        rim.lineStyle(1.0, 0x9afcff, 0.16);
+        rim.strokeRoundedRect(
+          -PW / 2 + 5,
+          -PH / 2 + 5,
+          PW - 10,
+          PH - 10,
+          Math.max(10, matteR - 8),
+        );
+        const bg = this.add.image(0, 0, texKey).setDisplaySize(PW, PH);
+        // 오렌지 헤더 박스 안 — 살짝 아래로 (0.185는 박스 상단에 붙음)
+        const titleText = this.add
+          .text(0, fy(0.198, PH), title, {
+            fontSize: "13px",
+            color: titleColor,
+            fontStyle: "bold",
+            resolution: TXT_RES,
+          })
+          .setOrigin(0.5);
+        const children: Phaser.GameObjects.GameObject[] = [
+          matte,
+          bg,
+          rim,
+          titleText,
+        ];
+        const rowNames: Phaser.GameObjects.Text[] = [];
+        const rowDists: Phaser.GameObjects.Text[] = [];
+        for (let i = 0; i < 4; i++) {
+          const name = this.add
+            .text(xL, fy(rowFy[i]!, PH), "", {
+              fontSize: "11px",
+              color: "#e0e0e0",
+              resolution: TXT_RES,
+            })
+            .setOrigin(0, 0.5);
+          const dist = this.add
+            .text(xR, fy(rowFy[i]!, PH), "", {
+              fontSize: "11px",
+              color: "#e0e0e0",
+              resolution: TXT_RES,
+            })
+            .setOrigin(1, 0.5);
+          rowNames.push(name);
+          rowDists.push(dist);
+          children.push(name, dist);
+        }
+        const myName = this.add
+          .text(xL, fy(rowFy[4]!, PH), "", {
+            fontSize: "11px",
+            color: "#ffd700",
+            fontStyle: "bold",
+            resolution: TXT_RES,
+          })
+          .setOrigin(0, 0.5);
+        const myDist = this.add
+          .text(xR, fy(rowFy[4]!, PH), "", {
+            fontSize: "11px",
+            color: "#ffd700",
+            fontStyle: "bold",
+            resolution: TXT_RES,
+          })
+          .setOrigin(1, 0.5);
+        children.push(myName, myDist);
+        return {
+          container: this.add.container(0, 0, children),
+          rowNames,
+          rowDists,
+          myName,
+          myDist,
+        };
+      };
+
+      const daily = buildRankPanel(
+        "panel-daily",
+        "일간 랭킹 · 오늘",
+        "#ffb347",
+      );
+      daily.container.x = colL;
+      this.dailyPanel = daily.container;
+      this.dailyRowTexts = daily.rowNames;
+      this.dailyRowDists = daily.rowDists;
+      this.dailyMyText = daily.myName;
+      this.dailyMyDist = daily.myDist;
+
+      const weekly = buildRankPanel(
+        "panel-weekly",
+        "주간 랭킹 · 7일",
+        "#ffb347",
+      );
+      weekly.container.x = colR;
+      this.weeklyPanel = weekly.container;
+      this.weeklyRowTexts = weekly.rowNames;
+      this.weeklyRowDists = weekly.rowDists;
+      this.weeklyMyText = weekly.myName;
+      this.weeklyMyDist = weekly.myDist;
+
+      // 가운데 Replay — 에셋 프레임 + 세로 스택 글자. 탭 히트만 재시작.
+      const replayBg = this.add.image(0, 0, "btn-replay").setDisplaySize(BW, BH);
+      // 거리 칩: Replay 위 · 좌우 패널 상단(y=-PH/2)과 정렬. 검정 캡슐로 태양 대비 확보.
+      this.gameOverDistChipBg = this.add.graphics();
       this.gameOverDistText = this.add
-        .text(0, fy(0.228), "", {
-          fontSize: "20px",
+        .text(0, 0, "", {
+          fontSize: "15px",
           color: "#ffffff",
           fontFamily: "'Orbitron', monospace",
           resolution: TXT_RES,
         })
-        .setOrigin(0.5);
-      const children: Phaser.GameObjects.GameObject[] = [
-        wkBg,
-        wkTitle,
+        .setOrigin(0.5)
+        .setStroke("#000000", 3);
+      const distChip = this.add.container(0, -PH / 2, [
+        this.gameOverDistChipBg,
         this.gameOverDistText,
-      ];
-      // 순위 행: 이름(좌 origin)/거리(우측 origin) 분리 → 좌우 가장자리에 여백, 거리 우측정렬.
-      const rowFy = [0.403, 0.507, 0.618, 0.729] as const;
-      const xL = -PW / 2 + Math.round(PW * 0.13); // 왼쪽 여백
-      const xR = PW / 2 - Math.round(PW * 0.1); // 오른쪽 여백
-      this.weeklyRowTexts = [];
-      this.weeklyRowDists = [];
-      for (let i = 0; i < 4; i++) {
-        const name = this.add
-          .text(xL, fy(rowFy[i]!), "", {
-            fontSize: "13px",
-            color: "#e0e0e0",
-            resolution: TXT_RES,
-          })
-          .setOrigin(0, 0.5);
-        const dist = this.add
-          .text(xR, fy(rowFy[i]!), "", {
-            fontSize: "13px",
-            color: "#e0e0e0",
-            resolution: TXT_RES,
-          })
-          .setOrigin(1, 0.5);
-        this.weeklyRowTexts.push(name);
-        this.weeklyRowDists.push(dist);
-        children.push(name, dist);
-      }
-      // 5번째 칸(0.839): 이름(좌)/거리(우). 색은 refresh에서 동적.
-      this.weeklyMyText = this.add
-        .text(xL, fy(0.839), "", {
-          fontSize: "13px",
-          color: "#ffd700",
+      ]);
+      // 세로로 긴 버튼이라 가로 REPLAY는 답답함 → 글자 스택(위에서 아래로 읽기)
+      const replayLabel = this.add
+        .text(0, -4, "R\nE\nP\nL\nA\nY", {
+          fontSize: "16px",
+          color: "#36f9f6",
           fontStyle: "bold",
+          fontFamily: "'Orbitron', monospace",
+          align: "center",
+          lineSpacing: 4,
           resolution: TXT_RES,
         })
-        .setOrigin(0, 0.5);
-      this.weeklyMyDist = this.add
-        .text(xR, fy(0.839), "", {
-          fontSize: "13px",
-          color: "#ffd700",
-          fontStyle: "bold",
-          resolution: TXT_RES,
-        })
-        .setOrigin(1, 0.5);
-      children.push(this.weeklyMyText, this.weeklyMyDist);
-      // TAP TO RESTART — 하단 캡슐 중심(0.945, 실측)에 세로정렬.
+        .setOrigin(0.5)
+        .setStroke("#0a0018", 4);
       this.hintText = this.add
-        .text(0, fy(0.945), "TAP TO RESTART", {
-          fontSize: "11px",
+        .text(0, BH / 2 + 14, "", {
+          fontSize: "10px",
           color: "#00e5ff",
           fontFamily: "'Orbitron', monospace",
           resolution: TXT_RES,
         })
         .setOrigin(0.5)
         .setAlpha(0.85);
-      children.push(this.hintText);
-      this.weeklyPanel = this.add
-        .container(DESIGN_W / 2, DESIGN_H * 0.5, children)
+      // 투명 히트영역 — 글로우 가장자리까지 탭 가능하게 버튼보다 살짝 크게
+      const replayHit = this.add
+        .rectangle(0, 0, BW + 16, BH + 16, 0x000000, 0.001)
+        .setInteractive({ useHandCursor: true });
+      replayHit.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+        // window pointerdown(onTap)으로 버블되면 startRun 직후 점프로 먹히므로 차단.
+        const ev = pointer.event as Event | undefined;
+        ev?.stopPropagation?.();
+        if (!this.gameOverRoot.visible) return;
+        this.ignoreNextWindowTap = true;
+        this.startRun(true);
+      });
+      this.replayBtn = this.add.container(0, 8, [
+        replayBg,
+        replayLabel,
+        this.hintText,
+        replayHit,
+      ]);
+
+      this.gameOverRoot = this.add
+        .container(DESIGN_W / 2, DESIGN_H * 0.52, [
+          this.dailyPanel,
+          this.weeklyPanel,
+          this.replayBtn,
+          distChip,
+        ])
+        .setDepth(40)
         .setVisible(false);
     }
 
@@ -1130,6 +1335,78 @@ export class GameScene extends Phaser.Scene {
         .setDepth(100);
       // 첫 표시 내용 채우기
       this.refreshStartOverlay();
+    }
+
+    // ── 인트로 세로 슬라이드 (§6.3) — 매 판 표시. Start로만 종료 → 바로 플레이.
+    {
+      const src = this.textures.get("intro-slide").getSourceImage();
+      const dispW = DESIGN_W;
+      const dispH = Math.round((dispW * src.height) / src.width);
+      // origin(0.5,1): 하단(땅)이 뷰포트 바닥에 맞춰 시작 → 위로 슬라이드하면 하늘이 드러남
+      this.introImage = this.add
+        .image(DESIGN_W / 2, DESIGN_H, "intro-slide")
+        .setOrigin(0.5, 1)
+        .setDisplaySize(dispW, dispH);
+      const veil = this.add
+        .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.22);
+      const copy = this.add
+        .text(
+          DESIGN_W / 2,
+          DESIGN_H * 0.38,
+          "종말이 되돌아오자, 수많은 이들이\n그 비밀을 쫓다 쓰러졌다.\n\n마지막 등불, 그 흔적을 밟으며 다시 달린다.",
+          {
+            fontSize: "17px",
+            fontFamily: "'Noto Sans KR', sans-serif",
+            color: "#e8e0ff",
+            align: "center",
+            lineSpacing: 6,
+            resolution: TXT_RES,
+            wordWrap: { width: DESIGN_W - 80 },
+          },
+        )
+        .setOrigin(0.5)
+        .setStroke("#0a0018", 5);
+      // 카피 바로 아래 중앙 Start — 가시성↑(2배) + 부드러운 점멸(CTA)
+      this.introNextBtn = this.add
+        .text(DESIGN_W / 2, DESIGN_H * 0.38 + 92, "Start →", {
+          fontSize: "36px",
+          fontFamily: "'Orbitron', monospace",
+          fontStyle: "bold",
+          color: "#5efce8",
+          resolution: TXT_RES,
+        })
+        .setOrigin(0.5, 0)
+        .setStroke("#0a0018", 6)
+        .setPadding(24, 14, 24, 14)
+        .setInteractive({ useHandCursor: true });
+      this.introNextBtn.on(
+        "pointerdown",
+        (
+          pointer: Phaser.Input.Pointer,
+          _lx: number,
+          _ly: number,
+          event: Phaser.Types.Input.EventData,
+        ) => {
+          // window pointerdown으로 버블되면 Start 직후 첫 탭이 점프로 먹히거나,
+          // stopPropagation 시 ignore 플래그가 남아 다음 탭을 삼킨다 → DOM+Phaser 둘 다 차단.
+          event.stopPropagation();
+          pointer.event?.stopPropagation?.();
+          pointer.event?.stopImmediatePropagation?.();
+          this.endIntro(true);
+        },
+      );
+      // 호버 알파 핸들러 없음 — 점멸 트윈과 충돌하므로 스케일만 살짝 키움
+      this.introNextBtn.on("pointerover", () => this.introNextBtn.setScale(1.06));
+      this.introNextBtn.on("pointerout", () => this.introNextBtn.setScale(1));
+      this.introOverlay = this.add
+        .container(0, 0, [this.introImage, veil, copy, this.introNextBtn])
+        .setDepth(110)
+        .setVisible(false);
+      this.introOverlay.setData("dispH", dispH);
+      this.introOverlay.setData("startY", DESIGN_H);
+      // 끝: 이미지 상단이 뷰포트 상단에 오도록 (origin bottom → y = dispH)
+      this.introOverlay.setData("endY", dispH);
+      this.beginIntro();
     }
 
     // 피버 튜토리얼 — localStorage 'ga:fever-tutorial' 없으면 최초 1회 표시.
@@ -1372,8 +1649,14 @@ export class GameScene extends Phaser.Scene {
     }
     // 순위 라벨 리셋 — 새 판 시작 시 숨김
     for (const lbl of this.ghostRankLabels) lbl.setVisible(false);
-    if (this.weeklyPanel) this.weeklyPanel.setVisible(false);
-    if (this.comboDisplay) this.comboDisplay.setVisible(false);
+    if (this.gameOverRoot) this.gameOverRoot.setVisible(false);
+    if (this.comboRibbon) {
+      this.tweens.killTweensOf(this.comboRibbon);
+      this.comboRibbon.setVisible(false);
+      this.comboRibbon.x = this.comboRibbon.getData("hiddenX") ?? DESIGN_W + 8;
+      this.comboRibbonVisible = false;
+    }
+    if (this.rankHudLabel) this.rankHudLabel.setVisible(false);
     // 바이옴/마일스톤 리셋 — 새 판은 항상 기본 노을 팔레트에서 시작
     this.biomeFrom = 0;
     this.biomeTo = 0;
@@ -1389,17 +1672,66 @@ export class GameScene extends Phaser.Scene {
     this.blackoutNextAtM = BLACKOUT_START_M + this.blackoutRoll(BLACKOUT_GAP_JITTER_M);
     this.blackoutPhase = "idle";
     if (this.blackoutGfx) this.blackoutGfx.clear();
-    if (this.blackoutWarnText) this.blackoutWarnText.setVisible(false);
+    if (this.blackoutWarnBubble) this.blackoutWarnBubble.setVisible(false);
     if (this.feverOverlay) this.feverOverlay.setVisible(false);
     if (this.infiniteJumpText) this.infiniteJumpText.setVisible(false);
     if (this.spectateHintText) this.spectateHintText.setVisible(false);
     if (this.youDiedText) this.youDiedText.setVisible(false);
     if (this.pauseOverlay) this.pauseOverlay.setVisible(false);
     setPauseButtonState(false, true);
-    // 재시작 시 오버레이를 다시 올리고 내용 갱신 (create()에서 첫 판 시 이미 visible)
-    if (this.startOverlay) {
+    // 매 판 인트로 표시 (재시도 포함). create() 초반엔 introOverlay가 아직 없을 수 있음.
+    if (this.introOverlay) {
+      this.beginIntro();
+    } else if (this.startOverlay) {
       this.refreshStartOverlay();
       this.startOverlay.setVisible(true);
+    }
+  }
+
+  /** 인트로 시작 — 시작 오버레이를 가리고 천천히 세로 슬라이드. Start로만 종료. */
+  private beginIntro(): void {
+    this.introActive = true;
+    if (this.startOverlay) this.startOverlay.setVisible(false);
+    const startY = (this.introOverlay.getData("startY") as number) ?? DESIGN_H;
+    const endY = (this.introOverlay.getData("endY") as number) ?? DESIGN_H;
+    this.introImage.y = startY;
+    this.introOverlay.setVisible(true).setAlpha(1);
+    this.tweens.killTweensOf(this.introImage);
+    this.tweens.add({
+      targets: this.introImage,
+      y: endY,
+      duration: INTRO_MS,
+      ease: "Linear", // 급가속 없이 일정 속도로 천천히
+      // 끝나면 마지막 프레임에 머무름 — Start를 눌러야 진행
+    });
+    // Start CTA 부드러운 점멸 — 알파를 완전히 끄지 않아 읽기 유지
+    if (this.introNextBtn) {
+      this.tweens.killTweensOf(this.introNextBtn);
+      this.introNextBtn.setAlpha(1).setScale(1);
+      this.tweens.add({
+        targets: this.introNextBtn,
+        alpha: 0.35,
+        duration: 650,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+    }
+  }
+
+  /** 인트로 종료(Start) → 시작 안내 창 없이 바로 플레이. */
+  private endIntro(_fromStart: boolean): void {
+    if (!this.introActive && !this.introOverlay?.visible) return;
+    this.introActive = false;
+    this.tweens.killTweensOf(this.introImage);
+    if (this.introNextBtn) this.tweens.killTweensOf(this.introNextBtn);
+    this.introOverlay.setVisible(false);
+    // 시작 오버레이("탭하여 점프…")는 건너뜀 — Start = 즉시 인게임
+    if (this.startOverlay) this.startOverlay.setVisible(false);
+    try {
+      window.localStorage.setItem("ga:onboarded", "1");
+    } catch {
+      /* 무시 */
     }
   }
 
@@ -1470,6 +1802,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onTap() {
+    // Replay 버튼이 같은 pointerdown으로 startRun한 직후 — 점프 한 번 무시
+    if (this.ignoreNextWindowTap) {
+      this.ignoreNextWindowTap = false;
+      return;
+    }
+    // 인트로 중엔 Start만 진행 (화면 아무 곳 탭으로는 스킵 안 함)
+    if (this.introActive) return;
     // 시작 오버레이 표시 중: 닫기 + 이후 점프로 이어짐 (return 없음)
     if (this.startOverlay.visible) {
       this.startOverlay.setVisible(false);
@@ -1494,8 +1833,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     if (this.sim.state.gameOver) {
-      // 결과 패널 표시 상태에서 탭 = 자발적 재시작 (game_start에 is_retry=true로 기록)
-      this.startRun(true);
+      // 3분할 결과 UI: 전체 화면 탭 재시작 제거 — Replay 버튼만 startRun(true).
+      // 좌/우 패널·빈 영역 탭은 무시 (스크롤·오탭으로 판이 날아가지 않게).
       return;
     }
     // 기록 먼저, 큐잉 다음 — 같은 frame 값을 공유해야 재생이 일치한다
@@ -1528,8 +1867,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tick(delta: number) {
-    // 시작 오버레이 표시 중: 시뮬·렌더 대기 (탭하면 닫히고 게임 시작)
-    if (this.startOverlay.visible) return;
+    // 인트로/시작 오버레이 표시 중: 시뮬·렌더 대기
+    if (this.introActive || this.startOverlay.visible) return;
     if (!this.gamePaused) {
       // 렌더 전용 시계 — 레이저·이펙트 연출에만 사용 (sim과 완전 분리)
       this.renderTimeMs += delta;
@@ -1699,7 +2038,10 @@ export class GameScene extends Phaser.Scene {
           // 원격 도착본으로 교체 (낙관적 주입본과 중복되지 않게 mergeGhostRecords가 dedup)
           if (fresh.length > 0) this.remoteRuns = fresh;
           this.weeklyRanks = ranks;
-          if (this.weeklyPanel.visible) this.refreshWeeklyPanel();
+          if (this.gameOverRoot?.visible) {
+            this.refreshDailyPanel(this.lastResultMyDist);
+            this.refreshWeeklyPanel();
+          }
         });
 
       // 구경 모드 제거: 게임오버 즉시 모든 고스트가 함께 쓰러지고(연출은 syncVisuals),
@@ -1761,10 +2103,34 @@ export class GameScene extends Phaser.Scene {
       /* localStorage 차단 환경 — 무시 */
     }
 
-    // 거리 텍스트 — 개인 신기록이면 골드 강조
+    // 거리 칩 — 개인 신기록이면 골드 강조. 텍스트 폭에 맞춰 검정 캡슐 재그림.
     this.gameOverDistText
       .setText(`거리  ${Math.floor(myDist)}M`)
-      .setColor(isPersonalBest ? "#ffd700" : "#e0e0e0");
+      .setColor(isPersonalBest ? "#ffd700" : "#ffffff");
+    {
+      const tw = Math.max(72, this.gameOverDistText.width);
+      const th = Math.max(16, this.gameOverDistText.height);
+      const padX = 14;
+      const padY = 7;
+      const r = Math.round((th + padY * 2) / 2);
+      this.gameOverDistChipBg.clear();
+      this.gameOverDistChipBg.fillStyle(0x000000, 0.86);
+      this.gameOverDistChipBg.fillRoundedRect(
+        -tw / 2 - padX,
+        -th / 2 - padY,
+        tw + padX * 2,
+        th + padY * 2,
+        r,
+      );
+      this.gameOverDistChipBg.lineStyle(1.5, 0x36f9f6, 0.45);
+      this.gameOverDistChipBg.strokeRoundedRect(
+        -tw / 2 - padX,
+        -th / 2 - padY,
+        tw + padX * 2,
+        th + padY * 2,
+        r,
+      );
+    }
 
     // 개인 신기록 팝업 — 화면 중앙에서 위로 올라가며 사라짐
     if (isPersonalBest) {
@@ -1787,16 +2153,85 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // 고스트 비교 문구는 패널 통합으로 제거 — 아깝게 진(isClose) 판만 힌트로 재도전 유도.
-    // 최종 순위는 좌상단 순위 칩이 이미 보여준다.
+    // 아깝게 진(isClose) 판만 Replay 아래 힌트로 재도전 유도.
     this.hintText.setText(
-      cmp.hasGhosts && !cmp.isRecord && cmp.isClose
-        ? "ONE MORE RUN?"
-        : "TAP TO RESTART",
+      cmp.hasGhosts && !cmp.isRecord && cmp.isClose ? "ONE MORE RUN?" : "",
     );
 
+    this.lastResultMyDist = myDist;
+    this.refreshDailyPanel(myDist);
     this.refreshWeeklyPanel();
-    this.weeklyPanel.setVisible(true);
+    this.gameOverRoot.setVisible(true);
+  }
+
+  /**
+   * 일간(오늘 시드) 거리 순위 — 상단 칩/원격 일간과 같은 기록 풀.
+   * 상위 4 + (밖이면) 내 순위. 봇 이름은 applyGhostField와 동일 공식.
+   */
+  private refreshDailyPanel(myDist: number): void {
+    const myNick = getNickname(window.localStorage);
+    const local = loadTopRuns(window.localStorage, this.seed);
+    const merged = this.mergeGhostRecords(
+      [{ distance: myDist, log: this.log }, ...this.remoteRuns],
+      local,
+    );
+
+    type Row = { distance: number; nickname: string; isMe: boolean };
+    const rows: Row[] = merged.map((r, i) => {
+      const nick =
+        r.log.meta?.nickname ||
+        deterministicNickname(Math.imul(i + 1, 0x9e3779b9));
+      const isMe =
+        Math.abs(r.distance - myDist) < 0.5 &&
+        (r.log.meta?.nickname === myNick || r.log === this.log);
+      return { distance: r.distance, nickname: nick, isMe };
+    });
+    // 방금 판이 merge에 빠졌을 때만 보강 (낙관적 주입 실패 대비)
+    if (!rows.some((r) => r.isMe) && myDist > 0) {
+      rows.push({ distance: myDist, nickname: myNick, isMe: true });
+      rows.sort((a, b) => b.distance - a.distance);
+    }
+    const myIdx = rows.findIndex((r) => r.isMe);
+
+    // "(나)" 접미는 좁은 패널에서 거리 숫자와 겹치므로 생략 — 내 행은 골드 색으로만 구분.
+    // 닉과 거리 사이는 중점(·)으로 분리 — "-55 1471"이 "551471"로 읽히는 걸 막음.
+    const nameLabel = (r: Row, rank: number) => `${rank}.  ${r.nickname}`;
+    const distLabel = (r: Row) =>
+      `·  ${Math.floor(r.distance).toLocaleString()}m`;
+
+    for (let i = 0; i < this.dailyRowTexts.length; i++) {
+      const name = this.dailyRowTexts[i]!;
+      const dist = this.dailyRowDists[i]!;
+      const r = rows[i];
+      if (!r) {
+        name.setText("");
+        dist.setText("");
+        continue;
+      }
+      const col = r.isMe ? "#ffd700" : "#e0e0e0";
+      const fs = r.isMe ? "bold" : "normal";
+      name.setText(nameLabel(r, i + 1)).setColor(col).setFontStyle(fs);
+      dist.setText(distLabel(r)).setColor(col).setFontStyle(fs);
+    }
+
+    const lastInMe = myIdx >= 4;
+    const lastEntry = lastInMe ? rows[myIdx] : rows[4];
+    const lastRank = lastInMe ? myIdx + 1 : 5;
+    if (lastEntry) {
+      const col = lastInMe || lastEntry.isMe ? "#ffd700" : "#e0e0e0";
+      const fs = lastInMe || lastEntry.isMe ? "bold" : "normal";
+      this.dailyMyText
+        .setText(nameLabel(lastEntry, lastRank))
+        .setColor(col)
+        .setFontStyle(fs);
+      this.dailyMyDist
+        .setText(distLabel(lastEntry))
+        .setColor(col)
+        .setFontStyle(fs);
+    } else {
+      this.dailyMyText.setText("");
+      this.dailyMyDist.setText("");
+    }
   }
 
   /**
@@ -1871,10 +2306,12 @@ export class GameScene extends Phaser.Scene {
       return r.nickname || "이름없는 고스트";
     };
 
-    const nameLabel = (r: WeeklyRank, rank: number, isMe: boolean) =>
-      `${rank}.  ${displayNick(r)}${isMe ? " (나)" : ""}`;
+    // (나) 접미사는 붙이지 않음 — 닉이 길면 점수와 겹침. 내 행은 골드/볼드로만 구분.
+    // 닉·거리 사이 중점(·)으로 "-55 1471" → "551471" 오독을 막음.
+    const nameLabel = (r: WeeklyRank, rank: number) =>
+      `${rank}.  ${displayNick(r)}`;
     const distLabel = (r: WeeklyRank) =>
-      `${Math.floor(r.total_distance).toLocaleString()}m`;
+      `·  ${Math.floor(r.total_distance).toLocaleString()}m`;
 
     for (let i = 0; i < this.weeklyRowTexts.length; i++) {
       const name = this.weeklyRowTexts[i]!;
@@ -1888,7 +2325,7 @@ export class GameScene extends Phaser.Scene {
       const isMe = i === myIdx;
       const col = isMe ? "#ffd700" : "#e0e0e0";
       const fs = isMe ? "bold" : "normal";
-      name.setText(nameLabel(r, i + 1, isMe)).setColor(col).setFontStyle(fs);
+      name.setText(nameLabel(r, i + 1)).setColor(col).setFontStyle(fs);
       dist.setText(distLabel(r)).setColor(col).setFontStyle(fs);
     }
 
@@ -1901,7 +2338,7 @@ export class GameScene extends Phaser.Scene {
       const col = lastInMe ? "#ffd700" : "#e0e0e0";
       const fs = lastInMe ? "bold" : "normal";
       this.weeklyMyText
-        .setText(nameLabel(lastEntry, lastRank, lastInMe))
+        .setText(nameLabel(lastEntry, lastRank))
         .setColor(col)
         .setFontStyle(fs);
       this.weeklyMyDist.setText(distLabel(lastEntry)).setColor(col).setFontStyle(fs);
@@ -1932,7 +2369,7 @@ export class GameScene extends Phaser.Scene {
       if (this.blackoutPhase !== "idle") {
         this.blackoutPhase = "idle";
         this.blackoutGfx.clear();
-        this.blackoutWarnText.setVisible(false);
+        this.blackoutWarnBubble.setVisible(false);
       }
       return;
     }
@@ -1947,17 +2384,17 @@ export class GameScene extends Phaser.Scene {
           if (s.feverFramesLeft > 0) break; // 피버 중엔 스킵 — 무적이라 무의미
           this.blackoutPhase = "warn";
           this.blackoutPhaseStartMs = now;
-          this.blackoutWarnText.setVisible(true);
+          this.blackoutWarnBubble.setVisible(true);
         }
         break;
       case "warn": {
-        // 우측 끝에서 연기 기운이 살짝 어른거림 + 경고 점멸
+        // 우측 끝에서 연기 기운이 살짝 어른거림 + WARNING 뱃지 알람형 점멸(0.25↔1.0)
         this.drawBlackoutOverlay(0.1 + 0.08 * Math.abs(Math.sin(now * 0.03)), 0.25);
-        this.blackoutWarnText.setAlpha(0.4 + 0.6 * Math.abs(Math.sin(now * 0.015)));
+        this.blackoutWarnBubble.setAlpha(0.25 + 0.75 * Math.abs(Math.sin(now * 0.022)));
         if (el >= BLACKOUT_WARN_MS) {
           this.blackoutPhase = "dark";
           this.blackoutPhaseStartMs = now;
-          this.blackoutWarnText.setVisible(false);
+          this.blackoutWarnBubble.setVisible(false);
         }
         break;
       }
@@ -2131,10 +2568,10 @@ export class GameScene extends Phaser.Scene {
   private makeSignageDecor(): Phaser.GameObjects.Image[] {
     // [텍스처키, x, 바닥y, 표시높이] — 원경이므로 작게·은은하게, 플레이 레인(하단) 위에만.
     const defs: [string, number, number, number][] = [
-      ["sign-yakou", 120, 362, 92],
-      ["sign-hotel", 470, 350, 86],
-      ["sign-shinya", 720, 374, 66],
-      ["sign-music", 905, 356, 96],
+      ["sign-yakou", 120, 386, 92],
+      ["sign-hotel", 470, 374, 86],
+      ["sign-shinya", 720, 398, 66],
+      ["sign-music", 905, 380, 96],
     ];
     const out: Phaser.GameObjects.Image[] = [];
     for (const [key, x, by, h] of defs) {
@@ -2157,9 +2594,10 @@ export class GameScene extends Phaser.Scene {
     // 1a) 레이저 이펙트 Graphics — 하늘 직후, 메테오·태양보다 먼저 add → 태양 뒤에 렌더.
     this.laserGraphics = this.add.graphics();
 
-    // 1b) 코드 드로우 메테오 Graphics — 하늘 직후, 태양보다 먼저 add → 태양 뒤에 렌더.
-    //     이미지 풀 방식을 벗어나 매 프레임 drawCodeMeteor()로 직접 그림.
-    this.meteorGfx = this.add.graphics();
+    // 1b) 코드 드로우 메테오 Graphics — HUD(랭킹 칩 depth 22) 앞을 지나가게 depth 24.
+    //     이유: 배경(태양 뒤)에 두면 메테오가 일간랭킹 뒤로 가려져 "뒤로 지나감"처럼 보임.
+    //     플레이·HUD 연출용이라 월드 오브젝트보다 위에 두는 게 맞다.
+    this.meteorGfx = this.add.graphics().setDepth(24);
 
     // 2) 레트로웨이브 코드 태양 — syncVisuals에서 매 프레임 일렁이며 재드로우.
     // Graphics.setPosition(0, 214) 으로 기준점을 scene y=214에 두고, 드로우는 로컬 좌표(y=0이 센터).
@@ -2761,24 +3199,24 @@ export class GameScene extends Phaser.Scene {
     }
     this.biomeLastMs = this.renderTimeMs;
 
-    // 바이옴별 원경 bg 타일 스왑 (0→buildings, 1→bridges-far, 2→bridges-curved, 3→buildings...)
-    // 틴트: 현재 바이옴 grid 색으로 경미하게 물들여 팔레트와 융화.
+    // 바이옴별 원경 bg 타일 — biomeMix로 크로스페이드 (하드 스왑 "휙" 방지).
+    // 0→buildings, 1→bridges-far, 2→bridges-curved 순환.
     {
-      const bgIdx = this.biomeTo % 3; // 0=buildings, 1=bridges-far, 2=bridges-curved
-      // ★ 소스 아트에 박힌 밝은 시안/마젠타 네온 '외곽선'을 어두운 tint로 눌러 실루엣만 남긴다
-      //   (색 기반 prep 제거는 창문 디테일과 구분이 안 됨). 어두운 보라 곱 → 밝은 엣지가 죽는다.
+      const fromIdx = this.biomeFrom % 3;
+      const toIdx = this.biomeTo % 3;
       const tint = 0x6a5a85;
-      // 원경 이미지 타일은 더 은은하게(0.4) — 전경 코드 스카이라인/간판이 주가 되도록.
       const BG_A = 0.4;
-      this.bgBuildingsTile
-        .setAlpha(bgIdx === 0 ? BG_A : 0.0)
-        .setTint(bgIdx === 0 ? tint : 0xffffff);
-      this.bgBridgesTile
-        .setAlpha(bgIdx === 1 ? BG_A : 0.0)
-        .setTint(bgIdx === 1 ? tint : 0xffffff);
-      this.bgBridgesCurvedTile
-        .setAlpha(bgIdx === 2 ? BG_A : 0.0)
-        .setTint(bgIdx === 2 ? tint : 0xffffff);
+      const mix = this.biomeMix; // 0=from, 1=to
+      const alphaFor = (idx: number) => {
+        if (fromIdx === toIdx) return idx === toIdx ? BG_A : 0;
+        let a = 0;
+        if (idx === fromIdx) a += BG_A * (1 - mix);
+        if (idx === toIdx) a += BG_A * mix;
+        return a;
+      };
+      this.bgBuildingsTile.setAlpha(alphaFor(0)).setTint(tint);
+      this.bgBridgesTile.setAlpha(alphaFor(1)).setTint(tint);
+      this.bgBridgesCurvedTile.setAlpha(alphaFor(2)).setTint(tint);
     }
 
     this.drawGroundGrid(worldPx, pal);
@@ -3041,36 +3479,51 @@ export class GameScene extends Phaser.Scene {
     this.hpGlow.setVisible(hpVisible && ratio > 0.02);
     // 거리 HUD는 랭킹 패널(updateRankPanel)로 이전 — 별도 distText 없음
 
-    // 중앙 큰 콤보 — 2 이상일 때, 게임오버/구경 중엔 숨김.
+    // 좌측 콤보 띠지 — 랭킹 칩 아래. 2 이상일 때 좌→우 슬라이드 인, 끊기면 좌로 아웃.
     const showCombo = s.combo >= 2 && !s.gameOver;
-    this.comboDisplay.setVisible(showCombo);
+    const restX = (this.comboRibbon.getData("restX") as number) ?? 0;
+    const hiddenX = (this.comboRibbon.getData("hiddenX") as number) ?? -126;
     if (showCombo) {
       this.comboDisplay.setText(`${s.combo} combo`);
-      // 피버 대기 중: 연한 금색. 피버 활성 중: 밝은 황금 (오버레이와 통일)
       this.comboDisplay.setColor(s.feverFramesLeft > 0 ? "#ffd700" : "#ffd166");
-      // 피버 타이머 진행도로 스케일 — 피버 중: 최대, 평시: 타이머 비율(0→1) × 최대
-      const timerRatio =
-        s.feverFramesLeft > 0
-          ? 1
-          : s.feverTimerFrames / Math.round(C.FEVER_INTERVAL_SEC * C.SIM_FPS);
-      const growthScale = 1 + timerRatio * 1.2;
-      // 화면 폭의 80%를 넘지 않도록 클램프 (자릿수 증가 시에도 안전)
-      const maxScale = (DESIGN_W * 0.8) / Math.max(1, this.comboDisplay.width);
-      const targetScale = Math.min(growthScale, maxScale);
-      if (s.combo > this.prevCombo) {
-        // 콤보 증가 순간: 목표 배율보다 15% 크게 튀어올랐다 수렴
-        this.tweens.killTweensOf(this.comboDisplay);
-        this.comboDisplay.setScale(targetScale * 1.15);
+      if (!this.comboRibbonVisible) {
+        this.comboRibbonVisible = true;
+        this.comboRibbon.setVisible(true);
+        this.comboRibbon.x = hiddenX;
+        this.tweens.killTweensOf(this.comboRibbon);
         this.tweens.add({
-          targets: this.comboDisplay,
-          scaleX: targetScale,
-          scaleY: targetScale,
-          duration: 200,
-          ease: "Back.out",
+          targets: this.comboRibbon,
+          x: restX,
+          duration: 280,
+          ease: "Cubic.out",
         });
-      } else if (!this.tweens.isTweening(this.comboDisplay)) {
-        this.comboDisplay.setScale(targetScale);
+      } else {
+        // 칩 열 startX가 바뀌면(고스트 수 변화) 좌측 정렬 유지
+        if (!this.tweens.isTweening(this.comboRibbon)) {
+          this.comboRibbon.x = restX;
+        }
+        if (s.combo > this.prevCombo) {
+          this.tweens.killTweensOf(this.comboDisplay);
+          this.comboDisplay.setScale(1.12);
+          this.tweens.add({
+            targets: this.comboDisplay,
+            scaleX: 1,
+            scaleY: 1,
+            duration: 160,
+            ease: "Back.out",
+          });
+        }
       }
+    } else if (this.comboRibbonVisible) {
+      this.comboRibbonVisible = false;
+      this.tweens.killTweensOf(this.comboRibbon);
+      this.tweens.add({
+        targets: this.comboRibbon,
+        x: hiddenX,
+        duration: 220,
+        ease: "Cubic.in",
+        onComplete: () => this.comboRibbon.setVisible(false),
+      });
     }
     this.prevCombo = s.combo;
 
@@ -3464,8 +3917,10 @@ export class GameScene extends Phaser.Scene {
     // 고스트 없거나 게임오버: 패널 숨김 (게임오버 시 주간 패널을 덮지 않게)
     if (n === 0 || s.gameOver) {
       for (const p of this.rankPanels) p.setVisible(false);
+      this.rankHudLabel.setVisible(false);
       return;
     }
+    this.rankHudLabel.setVisible(true);
 
     // panel[0]=플레이어 거리(실시간), panel[1..n]=고스트 최종거리(고정)
     const dists: number[] = [
@@ -3490,6 +3945,8 @@ export class GameScene extends Phaser.Scene {
       PG = 8;
     const totalW = panelCount * PW + (panelCount - 1) * PG;
     const startX = (DESIGN_W - totalW) / 2;
+    // 라벨만 칩 열 왼쪽 여백에 맞춤 (콤보 띠지는 화면 왼쪽 끝 고정)
+    this.rankHudLabel.setX(startX);
     const slotX = (slot: number) => startX + slot * (PW + PG);
 
     for (let i = 0; i < 4; i++) {
@@ -3512,7 +3969,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 텍스트 갱신: 플레이어 실시간 거리
-    this.rankPanelTexts[0]!.setText(`YOU  ${Math.floor(s.distance)}m`);
+    this.rankPanelTexts[0]!.setText(`YOU  ·  ${Math.floor(s.distance)}m`);
 
     // 텍스트 갱신: 고스트 닉네임 + 최종거리 + 현재 슬롯(순위) 표시.
     // 고스트는 전부 '경쟁자'(봇 or 타 유저) — 닉네임은 applyGhostField에서 캐시
@@ -3522,7 +3979,7 @@ export class GameScene extends Phaser.Scene {
       const gSlot = slotOfPanel[g + 1] ?? g; // 현재 표시 슬롯
       const rankLabel = ["1st", "2nd", "3rd", "4th", "5th"][gSlot] ?? `${gSlot + 1}th`;
       const name = this.top3GhostNames[g] ?? `G${g + 1}`;
-      this.rankPanelTexts[g + 1]!.setText(`${rankLabel} ${name}  ${dist}m`);
+      this.rankPanelTexts[g + 1]!.setText(`${rankLabel} ${name}  ·  ${dist}m`);
     }
   }
 

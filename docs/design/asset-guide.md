@@ -110,7 +110,7 @@
 | `bg-skyline-far`                                        | 먼 도시 실루엣                    | 가로 심리스                       | 💠  | 코드 드로우(`drawSkyline`)                                                                           |
 | `bg-sky` / `ground-grid` / `fx-speedlines` / `fx-trail` | 하늘·바닥그리드·속도선·트레일            | —                            | 💠  | 코드 권장(이미지 X)                                                                                    |
 | `fx-particles`                                          | 스파크/+HP/제침 파티클              | ~16×16                       | ⬜   | 흰색 1종 → 코드 틴트                                                                                   |
-| `intro-video`                                           | 인트로 스토리 영상                  | 오버레이                         | ⬜   | 최후 폴리시 → §6                                                                                     |
+| `intro-slide`                                           | 인트로 스토리 이미지(세로 슬라이드)        | 오버레이                         | ✅   | §6.3. 매 판·Start→바로 플레이. 고화질 재생성 권장(≥1536w)                                                      |
 
 
 > **코드로 두는 게 이득**: 하늘·그리드·속도선·트레일·**태양·메테오·레이저**(이미 코드화 완료).
@@ -325,30 +325,39 @@ different palette, opaque solid body, text, watermark, white or black background
 > 한 장 시트로 받을 땐 `as a horizontal strip of 6 run-cycle frames, evenly spaced with clear gaps, all frames identical scale and lighting`. 시트는 `scripts/prep-ghost-sheet.py`로
 > 포즈별 분할·배경제거·상체정렬(프레임 섞임/흔들림 제거) 후 사용.
 
-**(B) ★ 엎어짐(collapse) — ✅ 적용됨.** 고스트가 **자기 최고기록 거리에 도달해 기록이 끝나는 순간**
-앞으로 고꾸라져 엎어지는 연출용. 전용 3프레임(비틀→무릎→완전히 엎어짐)을 받아 적용했다.
-원본 `assets/images/ghost/ghost-collapse-1~3.png` → `scripts/prep-ghost-collapse.py`로
-배경제거·동일배율(높이300, run과 동일)·하단정렬 후 `assets/game/ghost-collapse.png`(420×320×3) 시트로
-묶고, `ghost-collapse` 애니(6fps, 1회)로 재생 후 페이드 아웃.
+**(B) ★ 엎어짐(collapse) — 🔄 현재 run 시트와 컨셉 재통일 필요.**
+
+현재 `ghost-collapse.png`는 **옛 맨몸 반투명 러너**(티셔츠·반바지·운동화) 버전이라,
+`ghost-run.png`(후드 업 · 노란 눈 · 골드 헤일로 · 다크 퍼플 후디)와 실루엣이 어긋난다.
+아래 프롬프트로 **지금 run과 동일 캐릭터**의 3프레임 collapse를 다시 뽑는다.
+원본 `assets/images/ghost/ghost-collapse-1~3.png` → `scripts/prep-ghost-collapse.py` →
+`assets/game/ghost-collapse.png` 시트. 렌더 훅(`ghost-collapse` 애니)은 그대로.
 
 ```
-EXACT SAME ghost runner as the reference (identical soft violet #b39ddb translucent neon body,
-the LARGE golden angel halo #ffd700, same scale and style) — but COLLAPSING forward and falling
-face-down to the ground, as a short 3-frame sequence: (1) stumbling, upper body pitched forward
-with arms flailing, (2) hands hitting the ground, body folding over, (3) lying face-down flat on
-the ground, the golden halo slipping off and fading. Side view facing right, feet/baseline
-consistent with the run frames, isolated on a transparent background, no scene, no ground,
-no shadow, no text. Match line weight, glow and palette exactly.
+EXACT SAME character as the current ghost-run reference sheet (match hood shape, line weight,
+cel-shading, and palette exactly): a dark purple/indigo HOODED figure with the hood UP, face
+hidden in shadow except TWO glowing yellow eyes, slim dark pants, running shoes, and a LARGE
+bright golden-yellow angel halo ring floating above the hood — but COLLAPSING forward and falling
+face-down. Short 3-frame sequence facing right:
+(1) stumbling — upper body pitched forward, arms flailing, halo still above the hood;
+(2) hands hitting the ground, body folding over onto knees, halo tilting;
+(3) lying face-down flat on the ground, hood still up, yellow eyes dimming, the golden halo
+slipped off beside the head and fading.
+Side view, feet/baseline consistent with the run frames, flat vector-like game sprite, isolated
+on a transparent background, no scene, no ground plate, no shadow, no text. Single character.
 ```
 
 ```
-NEGATIVE: motorcycle, vehicle, wheels, standing, running, getting up, gore, blood, different
-colors, different style, no halo, text, watermark, white or black background, realistic, 3D
+NEGATIVE: old athletic t-shirt ghost, shorts-only silhouette, bare head, visible full face,
+motorcycle, vehicle, wheels, standing, running, getting up, gore, blood, translucent neon-only
+body without hoodie, different colors, different style, no halo, no yellow eyes, text, watermark,
+white or black background, realistic, 3D, checkerboard
 ```
 
-> 파일명 예: `ghost-fall-0/1/2.png`. 렌더: 고스트 `finished` 전환 시 run 정지 → fall 3프레임
-> 1회 재생 후 바닥에 누운 채 페이드아웃. (코드 훅은 `GameScene` 고스트 루프에 이미 존재 — 텍스처만 교체.)
-
+> **일관성:** `ghost-run.png`(또는 run 시트 원본)를 참조 이미지로 반드시 올리고
+> `match this exact hooded ghost — same hoodie, yellow eyes, golden halo, proportions` 지시.
+> 파일명 예: `ghost-collapse-1/2/3.png`. 적용 후 prep → 인게임에서 run→collapse 전환 시
+> 같은 캐릭터로 읽히는지 확인.
 ---
 
 ### 5.3 obstacle-apoc — 아포칼립스 장애물 세트 (건물 외 다양화)
@@ -636,16 +645,18 @@ NEGATIVE: colored, text, shape detail, white or black background, star outline
 화면 **하단 중앙**의 가로 게이지. `hp-frame` 프레임 1장(우측 하트 아이콘 포함) + 코드 그라데이션 fill.
 
 > **구현 현황(2026-07):** `hp-frame`은 **9-slice가 아니라 종횡비 보존 이미지**로 표시한다.
-> 원본 바가 ≈6.84:1이라 `260×20`(=13:1)으로 강제 리사이즈하면 가로로 눌려 비율이 깨지고 저해상이
-> 됐던 버그가 있었다. → `prep-ui.py`가 **종횡비 보존 고해상(780×114 @3x)** 으로 굽고, `GameScene`은
-> `barH = round(barW·114/780) ≈ 38`로 왜곡 없이 표시. **하트 아이콘은 프레임에 포함**(별도 `hp-icon` 불요).
+> 원본 바가 ≈6.19:1이라 `260×20`(=13:1)으로 강제 리사이즈하면 가로로 눌려 비율이 깨지고 저해상이
+> 됐던 버그가 있었다. → `prep-ui.py`가 **종횡비 보존 고해상(780×126 @3x)** 으로 굽고, `GameScene`은
+> `barH = round(barW·126/780) ≈ 42`로 왜곡 없이 표시. **하트 아이콘은 프레임에 포함**(별도 `hp-icon` 불요).
 > fill은 이미지가 아니라 **Canvas 2D 세로 그라데이션 텍스처**(무채색) + `setTint`(색)로 코드 생성한다.
 > (`Graphics.fillGradientStyle → generateTexture`는 일부 환경에서 투명 텍스처가 돼 "점만" 보이는 버그.)
+> 시트 소스: `assets/images/ui/hp-bar-sheet-src.png`(프레임/fill/하트 3단) → 프레임만 슬라이스해
+> `hp-frame-src.png`로 저장 후 prep. fringe 컷은 완화해 네온 글로우를 보존.
 
 
 | 파트            | 용도            | 권장 크기(@3x)          | 비고                              |
 | ------------- | ------------- | ------------------- | ------------------------------- |
-| `hp-frame`    | 프레임(내부 투명)+하트 | **780×114**(종횡비 보존) | 트림 후 폭 780으로 비례 리사이즈. 하트 우측 포함  |
+| `hp-frame`    | 프레임(내부 투명)+하트 | **780×126**(종횡비 보존) | 트림 후 폭 780으로 비례 리사이즈. 하트 우측 포함  |
 | ~~`hp-fill`~~ | 채워지는 막대       | (에셋 불요)             | 코드 Canvas 그라데이션 + `setTint`로 대체 |
 | ~~`hp-icon`~~ | 좌측 아이콘        | (에셋 불요)             | 하트가 `hp-frame`에 포함됨             |
 
@@ -657,14 +668,18 @@ NEGATIVE: colored, text, shape detail, white or black background, star outline
 PROMPT (hp-frame — 빈 게이지 프레임):
 A horizontal HUD health-bar FRAME (empty gauge container) for a neon synthwave cyberpunk runner,
 long thin horizontal capsule with a glowing cyan (#36f9f6) thin outline and faint outer glow.
-CRITICAL: the inner gauge cavity MUST be a PERFECT HORIZONTAL RECTANGLE — flat straight top and
-bottom edges that are exactly parallel (no slope, no taper, no trapezoid), only tiny uniform corner
-rounding, so a plain rectangular fill sits inside it with no gaps or overflow. The gauge cavity is
-empty and fully transparent (no fill, no diagonal gloss streak, no glare line, no notch ticks
-across it). A small heart icon sits in its OWN separate compartment at the far right, divided from
-the rectangular gauge cavity by a thin vertical neon separator (the heart must NOT overlap the
-gauge rectangle). Minimal flat vector UI, strictly front-facing flat (no perspective), isolated on
-a transparent background, no text, no numbers.
+CRITICAL ALPHA: export as true RGBA PNG with a fully transparent canvas — NO white matte, NO black
+matte, NO purple/checker baked into pixels, NO solid backdrop plate behind the bar. Outside the
+neon outline must be alpha=0. CRITICAL CAVITY: the inner gauge cavity MUST be a PERFECT HORIZONTAL
+RECTANGLE — flat straight top and bottom edges exactly parallel (no slope, no taper, no trapezoid),
+only tiny uniform corner rounding, so a plain rectangular fill sits inside with no gaps. The gauge
+cavity MUST be empty and FULLY TRANSPARENT (alpha=0) end-to-end — no dark fill, no black plate, no
+green/colored fill, no diagonal gloss streak, no glare line, no notch ticks. CRITICAL HEART: a small
+cyan neon heart icon at the far right, divided by a thin vertical neon separator; around the heart
+the compartment interior is ALSO fully transparent (alpha=0) — the heart is outline+glow only, NO
+opaque dark rectangle / black box / solid plate behind or around the heart. Heart must NOT overlap
+the gauge rectangle. Minimal flat vector UI, strictly front-facing flat (no perspective), no text,
+no numbers.
 ```
 
 ```
@@ -672,20 +687,22 @@ PROMPT (hp-fill — 채워지는 막대, 무채색):
 A horizontal HUD bar FILL strip, bright neutral light-grey glossy gradient (white highlight along
 the top third, soft falloff to mid grey at the bottom) so it can be tinted any color in-engine,
 clean rounded ends, faint inner glow, seamless left-right so it tiles/stretches, minimal flat
-vector UI, front-facing flat, isolated on a transparent background, no text, no outline color,
-no icons.
+vector UI, front-facing flat, true RGBA transparent background (alpha=0 outside the strip; no white
+or black matte), no text, no outline color, no icons.
 ```
 
 ```
-PROMPT (hp-icon — 좌측 아이콘, 선택):
-A tiny glowing heart (or battery) HUD icon, dark fill (#10081f) with a glowing cyan (#36f9f6)
-neon outline and soft inner light, minimal flat vector, centered, isolated on a transparent
-background, no text, single small icon.
+PROMPT (hp-icon — 우측 하트, 선택·분리 생성 시):
+A tiny glowing cyan (#36f9f6) neon heart HUD icon only — outline and soft inner glow, NO opaque
+dark fill plate, NO black rectangle behind it. True RGBA transparent background (alpha=0 everywhere
+except the heart), minimal flat vector, centered, no text, single small icon.
 ```
 
 ```
 NEGATIVE: text, numbers, percentage, vertical bar, 3D, perspective, realistic, photo, gradient
-background, white or black background, drop shadow on ground, multiple bars, game character
+background, white background, black background, purple backdrop, checkerboard baked into image,
+opaque dark fill inside gauge, black box behind heart, solid plate under heart, green health fill
+baked into frame, matte fringe, drop shadow on ground, multiple bars, game character
 ```
 
 ---
@@ -705,8 +722,10 @@ background, white or black background, drop shadow on ground, multiple bars, gam
 A single horizontal HUD rank chip/badge frame for a neon synthwave runner leaderboard, small
 rounded-rectangle plate, dark semi-transparent body (#060010) with a thin glowing cyan (#00e5ff)
 neon outline and a brighter accent line along the top edge, subtle beveled ends for 9-slice,
-faint outer glow, minimal flat vector UI, front-facing flat, isolated on a transparent background,
-empty inside, no text, no numbers, no icons.
+faint outer glow, minimal flat vector UI, front-facing flat. CRITICAL ALPHA: true RGBA PNG —
+fully transparent canvas outside the chip (alpha=0); NO white matte, NO black matte, NO purple
+backdrop, NO checkerboard baked into pixels, NO bright fringe halo around the glow. Empty inside,
+no text, no numbers, no icons.
 ```
 
 **(2) tutorial-overlay — 시작/튜토리얼 안내 프레임 (중앙 카드)**
@@ -717,8 +736,9 @@ empty inside, no text, no numbers, no icons.
 A centered HUD instruction card panel for a neon synthwave apocalypse runner, rounded rectangle
 with a dark glassy semi-transparent body (#10081f, ~70% opacity) and a glowing cyan (#36f9f6)
 neon border with soft bloom, a slightly brighter top header strip area (for a title), clean inner
-padding area left empty for text, corner notch accents, minimal flat vector UI, front-facing flat,
-isolated on a transparent background, no text, no letters, no icons.
+padding area left empty for text, corner notch accents, minimal flat vector UI, front-facing flat.
+CRITICAL ALPHA: true RGBA PNG — fully transparent outside the panel (alpha=0); no white/black/
+purple matte, no baked checkerboard, no bright fringe. No text, no letters, no icons.
 ```
 
 **(3) gameover-panel — 결과 패널 프레임 (붉은 네온)**
@@ -729,13 +749,15 @@ isolated on a transparent background, no text, no letters, no icons.
 A centered HUD result/game-over panel frame for a neon synthwave apocalypse runner, rounded
 rectangle with a very dark body (#060010) and a glowing danger-red/magenta (#ff2d55) neon border,
 a bright thin accent line near the top and a faint one near the bottom, ominous soft red bloom,
-empty inner area for stats text, minimal flat vector UI, front-facing flat, isolated on a
-transparent background, no text, no letters, no numbers, no icons.
+empty inner area for stats text, minimal flat vector UI, front-facing flat. CRITICAL ALPHA: true
+RGBA PNG — fully transparent outside the panel (alpha=0); no white/black/purple matte, no baked
+checkerboard, no bright fringe. No text, no letters, no numbers, no icons.
 ```
 
 ```
 NEGATIVE: text, letters, numbers, 3D, perspective, realistic, photo, drop shadow on ground,
-white or black background, busy ornaments, characters, mascots
+white background, black background, purple backdrop, checkerboard baked into image, bright fringe,
+matte halo, busy ornaments, characters, mascots
 ```
 
 > **구현:** 셋 다 9-slice. `rank-panel`은 §updateRankPanel의 slot tween 위치에 그대로 깔고,
@@ -761,8 +783,11 @@ A single horizontal HUD rank chip for a neon synthwave endless-runner live leade
 wide rounded-rectangle plate with a dark semi-transparent body (#060010, ~90% opacity), a thin
 glowing cyan (#00e5ff) neon outline, a brighter 1px specular line along the top edge, a small
 notch/bevel at both left and right ends for clean 9-slice stretching, a faint outer cyan bloom,
-compact flat vector HUD style, front-facing flat elevation, isolated on a transparent background,
-empty inside, no text, no numbers, no icons, no portrait.
+compact flat vector HUD style, front-facing flat elevation. CRITICAL ALPHA: true RGBA PNG with a
+fully transparent canvas — alpha=0 everywhere outside the chip; NO white matte, NO black matte,
+NO purple/solid backdrop, NO checkerboard baked into pixels, NO bright/white fringe around the
+glow, NO opaque dark rectangle stuck to corners. Empty inside, no text, no numbers, no icons,
+no portrait.
 ```
 
 1등 강조 변형(선택):
@@ -770,7 +795,9 @@ empty inside, no text, no numbers, no icons, no portrait.
 ```
 Same wide rounded-rectangle HUD rank chip but for the #1 leader: a warm gold (#ffd35c) neon outline
 with a soft gold outer glow and a subtle laurel/crown-less gold accent along the top edge, dark
-semi-transparent body, flat vector, front-facing flat, transparent background, empty inside, no text.
+semi-transparent body, flat vector, front-facing flat. CRITICAL ALPHA: true RGBA transparent
+canvas (alpha=0 outside the chip; no white/black/purple matte, no bright fringe). Empty inside,
+no text.
 ```
 
 **(B) weekly-ranking-panel — 최종 주간 랭킹 결과 패널 (게임오버 중앙 카드)**
@@ -786,19 +813,102 @@ cyan (#36f9f6) neon border with soft bloom; inside, purely as empty decorative z
 a highlighted header ribbon strip across the top, a large emphasized number-badge area just below
 it, a middle list area subdivided by three or four faint horizontal divider lines for ranking rows,
 and a slim call-to-action button slot at the bottom edge; thin gold (#ffd35c) accent reserved near
-the top for the #1 row; front-facing flat elevation, minimal flat vector UI, subtle inner vignette,
-isolated on a transparent background, no text, no letters, no numbers, no icons, no characters.
+the top for the #1 row; front-facing flat elevation, minimal flat vector UI, subtle inner vignette.
+CRITICAL ALPHA: true RGBA PNG — fully transparent canvas outside the panel (alpha=0); NO white
+matte, NO black matte, NO purple backdrop, NO checkerboard baked into pixels, NO bright/white
+fringe or jagged halo around the cyan glow, NO opaque dark corner plates. No text, no letters,
+no numbers, no icons, no characters.
 ```
 
 ```
 NEGATIVE: text, letters, numbers, kanji, 3D, perspective, realistic, photo, drop shadow on ground,
-white or black background, busy ornaments, characters, mascots, portraits, tiny illegible details
+white background, black background, purple backdrop, checkerboard baked into image, bright fringe,
+matte halo, jagged glow edge, opaque corner fill plates, busy ornaments, characters, mascots,
+portraits, tiny illegible details
 ```
 
 > **구현:** 둘 다 9-slice. `rank-hud-instant`는 `updateRankPanel`의 slot tween 좌표에 배경으로
 > 깔고 슬롯별 `setTint`(플레이어 시안 / 고스트 회색 / 1등 골드). `weekly-ranking-panel`은 게임오버
 > 컨테이너의 배경 Rectangle을 Image(9-slice)로 교체하고, 리본·수치·순위행·CTA 문구는 기존 코드
 > 텍스트를 각 영역 위에 배치. 색·레이아웃 상수는 HUD와 공유 → 언어/버전 무관.
+
+---
+
+### 5.7F btn-replay — 게임오버 중앙 Replay CTA ★신규
+
+> 게임오버 3분할 UI(일간 | Replay | 주간)의 **가운데 버튼**. 글자는 코드로 `REPLAY` /
+> `다시하기`를 얹으므로 에셋은 **빈 프레임만**. 세로로 약간 긴 네온 CTA.
+> 상세 레이아웃·의존성: `docs/design/ux-polish-2026-07.md` §3.
+
+
+| 파트           | 용도            | 권장 크기(@3x)     | 비고                       |
+| ------------ | ------------- | -------------- | ------------------------ |
+| `btn-replay` | 중앙 재시작 버튼 프레임 | **360×420** 전후 | 9-slice 가능하면 더 좋음. 내부 비움 |
+
+
+```
+PROMPT (btn-replay):
+A vertical neon CTA button frame for a synthwave cyberpunk endless-runner game-over screen,
+tall rounded hexagon or capsule plate (slightly taller than wide), very dark glassy body
+(#0a0018, ~90% opacity), thick glowing cyan (#36f9f6) neon outline with soft outer bloom and a
+brighter 1px inner specular edge, empty center for code-rendered "REPLAY" text, minimal flat
+vector HUD, front-facing flat elevation. CRITICAL ALPHA: true RGBA PNG — fully transparent
+canvas outside the button (alpha=0); NO white matte, NO black matte, NO purple backdrop,
+NO checkerboard baked into pixels, NO bright fringe around the glow. No text, no letters,
+no icons, no arrows baked in (optional tiny chevron accent OK if empty of glyphs).
+```
+
+```
+NEGATIVE: text, letters, REPLAY word baked in, numbers, 3D, perspective, realistic, photo,
+white background, black background, purple backdrop, checkerboard, bright fringe, matte halo,
+busy ornaments, characters
+```
+
+> **구현(✅):** `GameScene` 게임오버 3열(`panel-daily` | `btn-replay` | `panel-weekly`).
+> 가운데 Image에 코드 텍스트 `REPLAY` 오버레이, 탭 히트영역만 `startRun(true)`.
+> 전체 화면 탭 재시작은 제거. prep: `scripts/prep-panels.py`.
+
+---
+
+### 5.7G warn-bubble — 암전 예고 WARNING 말풍선 ✅적용
+
+> 정전(blackout) warn 페이즈에 띄우는 **뾰족(스파이크) 뱃지**. **WARNING baked** 에셋 적용
+> (`blackoutWarnBubble` Image). 알파 사인 점멸은 코드 유지.
+> 상세: `docs/design/ux-polish-2026-07.md` §4.
+> prep: `warn-bubble-src.png` → `prep-ui.py` → `assets/game/warn-bubble.png` (**504×164**).
+
+
+| 파트            | 용도           | 권장 크기(@3x)     | 비고                                |
+| ------------- | ------------ | -------------- | --------------------------------- |
+| `warn-bubble` | 스파이크 WARNING 뱃지 | **504×164** | WARNING baked. 위험 마젠타 `#ff2d55`/`#ff5fa2` |
+
+
+```
+PROMPT (warn-bubble — 빈 프레임, 글자는 코드):
+A spiky warning speech-bubble HUD frame for a neon synthwave cyberpunk runner blackout alert,
+horizontal rounded rectangle body with 6–8 sharp triangular spikes jutting outward from the
+edges (hazard / danger vibe, not cute), dark fill (#1a0010, ~92% opacity), thick glowing
+magenta/danger-pink (#ff2d55) neon outline with soft outer bloom, empty center for code-rendered
+"WARNING" text, minimal flat vector UI, front-facing flat, no perspective. CRITICAL ALPHA: true
+RGBA PNG — fully transparent canvas outside the bubble (alpha=0); NO white matte, NO black matte,
+NO purple backdrop, NO checkerboard baked into pixels, NO bright fringe around the glow. No text,
+no letters, no icons, no exclamation mark baked in.
+```
+
+```
+PROMPT (warn-bubble-baked — 선택, WARNING 글자 포함):
+Same spiky magenta neon warning speech-bubble as above, but with the word WARNING centered in
+bold futuristic all-caps (Orbitron-like), color #ff5fa2 with dark stroke, still true RGBA
+transparent outside the bubble, no other text, no icons.
+```
+
+```
+NEGATIVE: cute soft bubble, cloud shape, 3D, perspective, realistic, photo, white background,
+black background, purple backdrop, checkerboard, bright fringe, cyan outline (use magenta/danger
+only), busy ornaments, characters, skulls, multiple bubbles
+```
+
+> **구현(완료):** warn 페이즈에 baked Image 표시, 알파 `0.25↔1.0` 사인 점멸. Graphics 스톱갭 제거.
 
 ---
 
@@ -946,32 +1056,111 @@ NEGATIVE: happy upbeat pop, acoustic guitar, orchestral strings, choir, loud sir
 > 구현: `preload()`에서 `load.audio` → `syncVisuals()`에서 이벤트 비트마스크 읽어 재생.
 > WebView 자동재생 정책: 첫 탭(TAP TO START) 후 오디오 컨텍스트 언락. 음소거 토글 제공.
 
-### 6.3 인트로 / 튜토리얼 영상 (#최후 폴리시)
+### 6.3 인트로 / 튜토리얼 비주얼 (#최후 폴리시)
 
-**카피(코드 오버레이, 영상엔 굽지 말 것):** "종말이 다가오는 지구. 마지막 인류가 된 당신 — 지구 끝까지 달려 살아남아라."
+**배경 스토리 (2026-07-06 확정):** 어느 날 지구에 떨어지기 시작한 운석들로 멸종위기에 처한 인간들.
+많은 영웅들이 비밀을 파헤치기 위해 동분서주했지만 모두 재해로 죽고 주인공만 남았다. 주인공은
+이전 영웅들이 달렸던 그 길을 홀로 파헤치고 있다. 이 서사가 게임 내 **고스트(헤일로=죽음 표식)**·
+**wreck-bike(부서진 라이더 잔해, §5.3(8))** 에셋의 존재 이유가 된다 — 인트로는 새 컨셉을 발명하지
+않고 이 기존 시각 어휘를 재사용한다.
 
-> **★2026-06-28 요구:** 영상은 **2초 이내**(빠른 임팩트 컷). **첫 진입 1회만** 노출하고
-> **재시도/리플레이(is_retry/is_replay)에는 스킵**. 노출 게이트는 기존 `ga:onboarded`(또는 전용
-> `ga:intro-seen`) 플래그 재사용 — `startRun(isRetry=true)` 경로면 무조건 skip. 영상 끝/탭 시 즉시
-> 게임 시작으로 이어지게(스킵 버튼 상시). 아래 8초 프롬프트는 풀버전 참고용 → **2초 컷으로 축약 요청**.
-
-```
-A cinematic 8-second intro for a synthwave apocalypse endless-runner. A dark crumbling city at
-dusk under a huge retro magenta-pink gradient sun with scanline gaps. Molten red meteors fall
-diagonally with fiery tails, distant indigo skyscraper silhouettes and flickering Japanese neon
-signs. A lone hooded rider glowing cyan (#5efce8), leaning low on a sleek motorcycle with a
-streaming scarf and a cyan light trail, races right along a neon grid toward the horizon. Camera
-tracks alongside, speed lines rushing. Minimal flat neon vector, dark high-contrast, restrained
-bloom, ominous end-of-the-world mood, ending on the rider speeding into the distance. No text, no logos.
-```
+**카피(코드 오버레이, 이미지엔 굽지 말 것):**
 
 ```
-NEGATIVE: realistic 3D, photoreal, gore, blood, readable text, watermark, logos, daytime,
-bright cheerful colors, cluttered detail, camera shake overload
+종말이 되돌아오자, 수많은 이들이 그 비밀을 쫓다 쓰러졌다.
+마지막 등불, 그 흔적을 밟으며 다시 달린다.
 ```
 
-> 첫 진입 1회만(`localStorage` 플래그) + **스킵 버튼** 필수. webm(VP9)+mp4(H.264) 폴백, 프리로드.
-> 실기기 디코드 스터터·용량 실측 후 채택. 배경엔 영상 금지(코드 패럴랙스). 부담되면 코드 연출 인트로로 폴백.
+> **★2026-07-06 확정 — 매체 변경(AI 영상 → 정지 이미지 + 코드 세로 슬라이드):**
+> 영상은 3초 내내 카메라·라이더 모션이 일관되게 뽑혀야 하는 도박이지만, 이미지는 한 장만 잘
+> 나오면 끝. webm/mp4 폴백·실기기 디코드 스터터 걱정도 통째로 사라짐.
+>
+> **노출 정책(2026-07-09 개정):** **매 판** 인트로 표시. 우측 하단 **Start** 로만 종료 →
+> **시작 안내 오버레이 없이 바로 플레이**. 화면 아무 곳 탭으로는 스킵하지 않음.
+>
+> **왜 이미지만으로도 "많은 영웅이 죽었다"까지 안 담나:** 이미지는 무드와 스테이크만 심고,
+> 조사/미스터리 층은 위 카피가 담당.
+
+**구성:** 세로로 긴 캔버스(권장 **1536×3072** 또는 **2048×4096**, 약 1:2). 천천히 **아래→위로
+슬라이드**. 서사 축: "개인의 비극(땅)" → "재앙의 규모(하늘)".
+
+- **하단(땅):** wreck-bike + 골드 헤일로(죽은 영웅) + 시안 후드 주인공·바이크. 위로 스카이라인.
+- **상단(하늘):** 동일 스카이라인 연속 + 거대 노을 태양 + 운석 폭풍.
+
+**화질 규칙 (필수 — 저해상 576px 금지):**
+
+- 출력 **최소 1536px 폭**, 권장 **2048×4096** PNG. JPEG/압축 아티팩트·블러·노이즈 금지.
+- sharp crisp vector-like edges, clean silhouettes, no muddy upscale look.
+- 가능하면 **한 장(full canvas)** 로 뽑고, 안 되면 타일 2장 + 세로 심리스.
+
+**타일 이어붙이기:** 하단 먼저 → 참조 업로드 후 "상단 건물 실루엣이 이 이미지 하단에서 그대로
+이어지게"로 상단 생성. 스타일 어긋나면 이음매가 보임.
+
+---
+
+**프롬프트 A — 전체 1장 (권장, 이음매 0):**
+
+```
+Ultra high-resolution tall vertical game-intro illustration, output 2048x4096 pixels PNG,
+synthwave apocalypse endless-runner, sharp crisp clean neon vector art, high detail, no blur,
+no compression artifacts, no muddy upscale. Bottom third: cracked dark highway with faint cyan
+(#36f9f6) neon grid, two or three wrecked motorcycles on the roadside each with a dim golden
+angel-halo ring (#ffd700) hovering above (fallen heroes), a lone hooded rider beside an intact
+cyan-neon motorcycle (#5efce8 / #cafff8) near the bottom, back to camera. Middle: crumbling
+city skyline silhouettes with sparse magenta/cyan Japanese neon signs. Top third: massive retro
+striped sun (#ffd36e → #ff5fa2 → #b3247e) and a storm of molten meteors (#ffe9a8 → #ff7a3c →
+#d62828) streaking across deep indigo-purple dusk sky (#170a2e / #3a0f44 / #6b1248). Continuous
+single scene from ground to sky, dark high-contrast, restrained bloom, front-facing elevation,
+no text, no logos, no letters, no watermark.
+```
+
+```
+NEGATIVE: low resolution, 512px, 576px, 768px, blurry, soft, muddy, jpeg artifacts, noise,
+grain, watermark, readable text, letters, logos, photoreal, 3D render, daytime, cheerful,
+crowd, multiple living riders, gore, blood, busy clutter, mismatched style
+```
+
+---
+
+**프롬프트 B1 — 하단 타일만 (고해상):**
+
+```
+Ultra high-resolution tall vertical illustration, output 2048x2048 pixels PNG (or taller),
+bottom half of a 2-part vertical composite for a synthwave apocalypse runner intro. Sharp crisp
+clean neon vector art, high detail, no blur, no compression artifacts. Ground-level dusk:
+cracked neon highway, faint cyan (#36f9f6) grid glow, two or three wrecked motorcycles with dim
+golden angel-halo rings (#ffd700) above each wreck, lone hooded cyan rider (#5efce8) beside
+intact motorcycle near bottom, crumbling apartment tower silhouettes rising toward the TOP edge
+so a sky tile can continue seamlessly above. Deep indigo-purple sky (#170a2e–#3a0f44) in upper
+portion. Dark high-contrast, restrained bloom, front-facing elevation, no text, no logos.
+```
+
+```
+NEGATIVE: low resolution, blurry, soft, muddy, jpeg artifacts, watermark, text, letters,
+photoreal, 3D, daytime, crowd, gore, mismatched neon colors
+```
+
+**프롬프트 B2 — 상단 타일 (하단을 참조 이미지로 업로드):**
+
+```
+Continue the SAME scene UPWARD from the reference image at matching ultra high resolution
+(2048px wide PNG), identical palette, line weight, glow and sharpness. The BOTTOM edge of this
+new image must seamlessly continue the crumbling tower silhouettes from the TOP edge of the
+reference. Above: massive retro gradient sun (#ffd36e → #ff5fa2 → #b3247e) with scanline gaps,
+storm of molten meteors (#ffe9a8 → #ff7a3c → #d62828) across indigo-purple dusk sky. Sharp crisp
+clean neon vector art, no blur, no compression artifacts, no text, no logos.
+```
+
+```
+NEGATIVE: low resolution, blurry, mismatched skyline, different palette from reference, jpeg
+artifacts, watermark, text, daytime, calm clear sky, single meteor only, photoreal, 3D
+```
+
+> **구현 노트:** `prep-intro.py`로 `assets/game/intro-slide.png` 구움. **매 판** 8.5초 Linear
+> 세로 슬라이드 → 우측 하단 **Start →** → **바로 플레이**(시작 안내 창 없음).
+>
+> **구현 현황(2026-07-09):** 현행 소스는 576폭(저해상) → 위 고화질 프롬프트로 **재생성 후**
+> `assets/images/intro/intro-full-src.png` 교체 → `python3 scripts/prep-intro.py` 재실행.
 
 ---
 
@@ -1024,3 +1213,4 @@ bright cheerful colors, cluttered detail, camera shake overload
 - 일본어 간판이 가공어인가(실상호·로고·영문 아님), 플레이 레인을 안 가리는가
 - 워터마크/영문/드롭섀도 등 불필요 요소가 없는가
 - 프레임마다 baseline이 일치하는가
+
