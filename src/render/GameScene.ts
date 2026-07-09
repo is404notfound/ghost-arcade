@@ -1015,7 +1015,7 @@ export class GameScene extends Phaser.Scene {
       .text(-9999, -9999, "", { fontSize: "15px", color: "#b39ddb" })
       .setVisible(false);
 
-    // ── 랭킹 패널: 상단 가로형 4칸 (슬롯 0=1등 ~ 3=4등), 초기 x=-9999(오프스크린) ──
+    // ── 랭킹 패널: 상단 가로형 4칸. 표시는 좌←나 … 1등→우 (슬롯 역순).
     // panel[0]=플레이어(골드), panel[1..3]=상위 3고스트(시안). 순위 변경 시 tween으로 좌우 이동.
     // ★ nineslice는 큰 프레임(952×183)을 218×42로 뭉개 톱니처럼 깨졌다. 칩 크기가 항상 고정이므로
     //   nineslice가 불필요 — 표시비율(218/42≈5.19)이 원본(952/183≈5.20)과 거의 같아 그냥 축소 Image면
@@ -4385,7 +4385,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ─── #11 가로형 랭킹 패널 ────────────────────────────────────────────────────
-  // panel[0]=플레이어, panel[1..3]=상위3고스트. 순위 변화 시 컨테이너 x를 tween으로 이동.
+  // panel[0]=플레이어, panel[1..3]=상위3고스트.
+  // 순위 슬롯 0=1등 … 끝=꼴찌. 화면 배치는 역순(좌=나/하위 … 우=1등).
   // 렌더 전용 — sim 읽기만, 결정론 무관.
   private updateRankPanel(): void {
     const s = this.sim.state;
@@ -4425,7 +4426,8 @@ export class GameScene extends Phaser.Scene {
     const startX = (DESIGN_W - totalW) / 2;
     // 라벨만 칩 열 왼쪽 여백에 맞춤 (콤보 띠지는 화면 왼쪽 끝 고정)
     this.rankHudLabel.setX(startX);
-    const slotX = (slot: number) => startX + slot * (PW + PG);
+    // 표시 위치: 순위 슬롯을 좌우 반전 → 좌측이 하위(나), 우측이 1등
+    const slotX = (displaySlot: number) => startX + displaySlot * (PW + PG);
 
     for (let i = 0; i < 4; i++) {
       const slot = slotOfPanel[i];
@@ -4434,7 +4436,8 @@ export class GameScene extends Phaser.Scene {
       panel.setVisible(active);
       if (!active) continue;
 
-      const targetX = slotX(slot!);
+      const displaySlot = panelCount - 1 - slot!;
+      const targetX = slotX(displaySlot);
       const dx = Math.abs(panel.x - targetX);
       if (dx > 2 && !this.tweens.isTweening(panel)) {
         this.tweens.add({
