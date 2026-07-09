@@ -1419,14 +1419,14 @@ export class GameScene extends Phaser.Scene {
         .text(
           0,
           0,
-          "종말이 다가오자,\n수많은 이들이 그 비밀을 쫓다 쓰러졌다.",
+          "종말이 다가오자, 수많은 이들이\n그 비밀을 쫓다 쓰러졌다.",
           { ...copyStyle, wordWrap: { width: DESIGN_W - 80 } },
         )
         .setOrigin(0.5, 0)
         .setStroke("#0a0018", 5);
       // 닉네임만 노란 강조 — Phaser Text는 한 오브젝트 다색 미지원이라 조각 합성
       const nickPrefix = this.add
-        .text(0, 0, "마지막 등불인 나[", copyStyle)
+        .text(0, 0, "마지막 등불 ", copyStyle)
         .setOrigin(0, 0.5)
         .setStroke("#0a0018", 5);
       const nickHl = this.add
@@ -1438,7 +1438,7 @@ export class GameScene extends Phaser.Scene {
         .setOrigin(0, 0.5)
         .setStroke("#0a0018", 5);
       const nickSuffix = this.add
-        .text(0, 0, "]는", copyStyle)
+        .text(0, 0, "(당신),", copyStyle)
         .setOrigin(0, 0.5)
         .setStroke("#0a0018", 5);
       const nickRowW =
@@ -1458,14 +1458,15 @@ export class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5, 0)
         .setStroke("#0a0018", 5);
+      const copyH = copyBot.y + copyBot.height;
       const copy = this.add.container(DESIGN_W / 2, copyY, [
         copyTop,
         nickRow,
         copyBot,
       ]);
-      // 카피 바로 아래 중앙 Start — 가시성↑(2배) + 부드러운 점멸(CTA)
+      // 카피와 Start 사이 여유(≈36px) — 붙어 보이지 않게
       this.introNextBtn = this.add
-        .text(DESIGN_W / 2, copyY + 92, "Start →", {
+        .text(DESIGN_W / 2, copyY + copyH + 36, "Start →", {
           fontSize: "36px",
           fontFamily: FONT_HUD,
           fontStyle: "bold",
