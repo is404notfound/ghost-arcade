@@ -637,8 +637,8 @@ export class GameScene extends Phaser.Scene {
       w: 280,
       h: 72,
     });
-    // 우측 여백 확보 — 화면 끝에 붙지 않게 안쪽으로
-    this.warnBadge.setPosition(DESIGN_W - 96, DESIGN_H - 64).setVisible(false);
+    // 우측 여백은 유지하되, 이전(-96)보다 오른쪽으로
+    this.warnBadge.setPosition(DESIGN_W - 52, DESIGN_H - 64).setVisible(false);
     this.feverBadge = this.makeSpikeBadge("FEVER!", {
       neon: 0xffd400,
       fill: 0x1a1400,
@@ -646,7 +646,7 @@ export class GameScene extends Phaser.Scene {
       w: 240,
       h: 72,
     });
-    this.feverBadge.setPosition(DESIGN_W - 96, DESIGN_H - 64).setVisible(false);
+    this.feverBadge.setPosition(DESIGN_W - 52, DESIGN_H - 64).setVisible(false);
 
     // 메테오 풀은 createBackground() 안에서 태양보다 먼저 생성됨 (Z-order 보장).
     this.meteorSpawnMs = 0; // 게임 시작 즉시 첫 스폰
@@ -959,6 +959,26 @@ export class GameScene extends Phaser.Scene {
       .image(DESIGN_W / 2, barY, "hp-frame")
       .setDisplaySize(barW, barH)
       .setDepth(21);
+    // 하트 스트로크 안을 회색으로 채움 — 프레임(21) 아래, 게이지 fill(20) 위.
+    // 하트는 프레임 우측 ~8% 구획 중앙. 에셋 아웃라인만 있고 속이 비어 배경이 비침.
+    {
+      const heartCx = DESIGN_W / 2 + barW * 0.42;
+      const heartCy = barY - 1;
+      const hs = barH * 0.22; // 하트 반경 스케일
+      const heart = this.add.graphics().setDepth(20.5);
+      heart.fillStyle(0x6a7580, 0.92);
+      // 두 원(상단 lobe) + 하단 다이아몬드
+      heart.fillCircle(heartCx - hs * 0.55, heartCy - hs * 0.15, hs * 0.72);
+      heart.fillCircle(heartCx + hs * 0.55, heartCy - hs * 0.15, hs * 0.72);
+      heart.fillTriangle(
+        heartCx - hs * 1.2,
+        heartCy - hs * 0.05,
+        heartCx + hs * 1.2,
+        heartCy - hs * 0.05,
+        heartCx,
+        heartCy + hs * 1.35,
+      );
+    }
     // 포션 "HP+" 토스트 앵커 — 체력바 좌상단
     this.hpBarLeftX = DESIGN_W / 2 - barW / 2;
     this.hpBarTopY = barY - barH / 2;
@@ -1019,9 +1039,9 @@ export class GameScene extends Phaser.Scene {
       rim.strokeRoundedRect(0.5, 0.5, RP_W - 1, RP_H - 1, 11);
       rim.lineStyle(1.2, rimHi, isMe ? 0.55 : 0.42);
       rim.strokeRoundedRect(2, 2, RP_W - 4, RP_H - 4, 9);
-      // y: 칩 세로 중앙보다 2px 아래 — 네온 림·상단 글로우 때문에 시각 중심이 위로 보임
+      // y: 칩 세로 중앙 — 이전 +2는 너무 아래라 0으로 복귀(아주 살짝만 위)
       const txt = this.add
-        .text(RP_W / 2, RP_H / 2 + 2, rpLabels[i]!, {
+        .text(RP_W / 2, RP_H / 2, rpLabels[i]!, {
           fontSize: isMe ? "15px" : "13px",
           color: isMe ? "#ffd700" : "#00e5ff",
           fontFamily: FONT_HUD,
@@ -1585,23 +1605,35 @@ export class GameScene extends Phaser.Scene {
   private applyGhostField(records: GhostRecord[]): void {
     this.ghosts = records.map((r) => new GhostDriver(r.log));
     this.ghostDistances = records.map((r) => r.distance);
-    // 상위 3 고스트의 거리+닉네임을 함께 캐시 — 순위 칩에 이름 표시.
-    // records는 이미 거리 내림차순 → 인덱스 i = 표시 순위.
-    // 닉네임 없는 기록(봇)은 "표시 순위(i) 기반" 티어 이름을 쓴다. 이는 주간 뷰의
-    // bot:tier:i 제출 이름(deterministicNickname(imul(i+1)))과 동일 공식이라,
-    // 일간 상위 봇과 주간 누적 봇의 이름이 자연히 일치한다(오래된 봇도 즉시 정합).
-    const top3 = records
-      .map((r, i) => ({
-        d: r.distance,
-        nick:
-          r.log.meta?.nickname ||
-          deterministicNickname(Math.imul(i + 1, 0x9e3779b9)),
-      }))
-      .sort((a, b) => b.d - a.d)
-      .slice(0, 3);
+    this.cacheTop3FromRecords(records);
+    this.prevRank = this.ghosts.length + 1;
+  }
+
+  /**
+   * 상단 실시간 칩용 top3 거리·닉 캐시.
+   * records는 거리 내림차순이어야 한다(mergeGhostRecords 산출물).
+   * 본인 과거 기록(같은 닉)은 칩에서 제외 — 안 그러면 "시안매-12"로 도배되고
+   * 게임오버 패널(원격/봇 이름)과 어긋난다. 타인/봇이 없으면 폴백으로 전체 사용.
+   */
+  private cacheTop3FromRecords(records: GhostRecord[]): void {
+    let myNick = "";
+    try {
+      myNick = getNickname(window.localStorage);
+    } catch {
+      /* ignore */
+    }
+    const others = myNick
+      ? records.filter((r) => (r.log.meta?.nickname || "") !== myNick)
+      : records;
+    const pool = others.length > 0 ? others : records;
+    const top3 = pool.slice(0, 3).map((r, i) => ({
+      d: r.distance,
+      nick:
+        r.log.meta?.nickname ||
+        deterministicNickname(Math.imul(i + 1, 0x9e3779b9)),
+    }));
     this.top3GhostDists = top3.map((x) => x.d);
     this.top3GhostNames = top3.map((x) => x.nick);
-    this.prevRank = this.ghosts.length + 1;
   }
 
   /** 새 판 시작 — 데일리 시드(오늘의 코스) + 저장된 최고 기록 유령 로드.
@@ -1650,19 +1682,25 @@ export class GameScene extends Phaser.Scene {
     const currentSeed = this.seed;
     void loadTopRunsRemote(currentSeed).then((remote) => {
       this.remoteRuns = remote;
-      // 원격 도착 시 원격+로컬을 다시 병합 — 봇/유저가 거리순으로 같은 필드에서 경쟁.
-      const freshMerged = this.mergeGhostRecords(remote, localRecords);
-      // 새 기기 첫 판 UX: 고스트 없이 시작했고 게임 시작 3초 이내면 현재 판에도 즉시 적용.
-      // (Supabase 왕복 보통 <1s → 대부분의 첫 판에서 고스트 출현)
+      // 로컬을 다시 읽어 봇 콜드스타트 직후 저장분도 포함
+      const localNow = loadTopRuns(window.localStorage, currentSeed);
+      const freshMerged = this.mergeGhostRecords(remote, localNow);
+      if (this.seed !== currentSeed || this.sim.state.gameOver) return;
+
+      // ★ 실시간 칩 닉/거리는 항상 원격+로컬 병합 결과로 갱신.
+      //   예전엔 ghosts.length===0 일 때만 applyGhostField 해서, 로컬 셀프 고스트만
+      //   있으면(전부 같은 내 닉) 칩이 "시안매-12"로 도배되고 게임오버 패널(원격/봇
+      //   이름)과 어긋났다.
+      this.cacheTop3FromRecords(freshMerged);
+
+      // 고스트가 아직 없거나 초반이면 필드 자체도 원격 병합본으로 교체
       if (
         freshMerged.length > 0 &&
-        this.ghosts.length === 0 &&
-        this.sim.state.frame < C.SIM_FPS * 3
+        (this.ghosts.length === 0 || this.sim.state.frame < C.SIM_FPS * 3)
       ) {
         this.applyGhostField(freshMerged);
       }
-      // 병합 필드가 N보다 적으면 봇으로 보충 — 유저가 적어도 경쟁 필드를 가득 채우고,
-      // 봇이 유저보다 빠르면 상단 랭킹에 노출된다. (원격 비었을 때만 원격에도 시딩)
+      // 병합 필드가 N보다 적으면 봇으로 보충
       if (freshMerged.length < GHOST_TOP_N) {
         void this.uploadBotColdStart(currentSeed, remote.length === 0);
       }
@@ -2557,46 +2595,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 거리 마일스톤 팡파레 — 1000m마다 새 구역 진입을 알린다 (렌더 전용).
-   * 중앙 미터 플래시 + 우측 하단 캐릭터/말풍선 슬라이드 업.
-   */
-  private showMilestonePopup(meters: number): void {
-    const colorHex = `#${BIOMES[this.biomeTo]!.grid.toString(16).padStart(6, "0")}`;
-    const txt = this.add
-      .text(DESIGN_W / 2, DESIGN_H * 0.24, `⚡ ${meters.toLocaleString()}M`, {
-        fontSize: "34px",
-        fontFamily: FONT_HUD,
-        fontStyle: "bold",
-        color: colorHex,
-        resolution: TXT_RES,
-      })
-      .setOrigin(0.5)
-      .setStroke("#0a0a1e", 6)
-      .setAlpha(0)
-      .setDepth(11);
-    this.tweens.add({
-      targets: txt,
-      alpha: 0.95,
-      scale: { from: 0.7, to: 1 },
-      duration: 260,
-      ease: "Back.out",
-    });
-    this.tweens.add({
-      targets: txt,
-      y: DESIGN_H * 0.24 - 46,
-      alpha: 0,
-      delay: 1000,
-      duration: 620,
-      ease: "Cubic.in",
-      onComplete: () => txt.destroy(),
-    });
-    this.showMilestoneCheer(meters);
-  }
-
-  /**
    * 1000m 단위 응원 토스트 — 우측 하단에서 슬라이드 업 → 잠시 유지 → 슬라이드 다운.
+   * (중앙 ⚡ NM 팡파레는 제거됨 — 시야 방해)
    * 전용 상반신+굿제스처 에셋이 오면 `milestone-cheer` 키로 교체(docs/design/milestone-cheer-asset.md).
-   * 지금은 player-ride 1프레임으로 자리만 잡는다.
    */
   private showMilestoneCheer(meters: number): void {
     if (this.milestoneToast) {
@@ -3342,7 +3343,8 @@ export class GameScene extends Phaser.Scene {
     }
     if (!s.gameOver && km > this.lastKmMilestone) {
       this.lastKmMilestone = km;
-      this.showMilestonePopup(km * BIOME_METERS);
+      // 중앙 ⚡ NM 팡파레는 제거 — 우측 하단 응원 토스트만 유지
+      this.showMilestoneCheer(km * BIOME_METERS);
     }
     let pal = BIOMES[this.biomeTo]!;
     if (this.biomeMix < 1) {
@@ -4293,8 +4295,8 @@ export class GameScene extends Phaser.Scene {
     this.rankPanelTexts[0]!.setText(`YOU  ${Math.floor(s.distance)}m`);
 
     // 텍스트 갱신: 고스트 닉네임 + 최종거리 + 현재 슬롯(순위) 표시.
-    // 고스트는 전부 '경쟁자'(봇 or 타 유저) — 닉네임은 applyGhostField에서 캐시
-    // (meta.nickname 우선, 없으면 거리 기반 결정론 이름). 슬롯0(실시간 플레이어)만 YOU.
+    // 고스트는 전부 '경쟁자'(봇 or 타 유저) — 닉네임은 cacheTop3FromRecords에서 캐시
+    // (meta.nickname 우선). 슬롯0(실시간 플레이어)만 YOU.
     // 칩 폭이 좁아 긴 닉은 잘라 "-55 4673"이 붙어 보이지 않게.
     for (let g = 0; g < n; g++) {
       const dist = Math.floor(this.top3GhostDists[g] ?? 0);
