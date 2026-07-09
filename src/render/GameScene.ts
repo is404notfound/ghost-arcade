@@ -542,6 +542,8 @@ export class GameScene extends Phaser.Scene {
   private lastResultMyDist = 0; // showResultPanel 시점 거리 — 일간 패널 갱신용
   /** Replay 탭 → startRun 직후 같은 pointerdown이 window onTap으로 점프 먹는 것 방지 */
   private ignoreNextWindowTap = false;
+  /** 결과 패널 닉 표시 최대 폭(px) — 거리 열과 겹치지 않게 create에서 설정 */
+  private rankNameMaxPx = 64;
 
   constructor() {
     super({ key: "GameScene" });
@@ -834,9 +836,9 @@ export class GameScene extends Phaser.Scene {
     // fill 우측을 하트 구획까지(0.95) — hp=100 시 fill이 하트 밑까지 닿아 "만땅"으로 읽힘.
     // fill(depth 20) 위에 하트 포함 프레임(depth 21)이 겹쳐 자연스럽게 가려진다.
     // fill 시작을 마스크 좌측과 일치 → 좌측에 track(검정)이 새는 빈틈 없음.
-    // fill을 왼쪽 라운드 안쪽까지 밀어 넣음(0.04면 좌측 곡면에 검정 틈).
-    // 프레임(depth 21)이 림을 덮으므로 살짝 안쪽 침범해도 안전.
-    const HP_L_FRAC = 0.028;
+    // 좌측 라운드 곡면까지 fill이 차게 — 0.04면 마스크가 직선으로 잘려 검정 틈이 남음.
+    // 프레임(depth 21)이 시안 림을 덮으므로 fill이 림 밑으로 살짝 들어가도 안전.
+    const HP_L_FRAC = 0.012;
     // 마스크 우측과 일치 → 만땅 시 초록이 마스크 끝까지 차고 글로우도 그 지점에.
     const HP_R_FRAC = 0.95;
     const HP_FILL_W = Math.round((HP_R_FRAC - HP_L_FRAC) * barW);
@@ -853,9 +855,9 @@ export class GameScene extends Phaser.Scene {
     // 원리: 흰(상단)→밝은 회(하단) 무채색을 setTint로 물들이면 어느 색이든 솔리드한 광택 유지.
     //   (Graphics.fillGradientStyle→generateTexture 는 일부 환경에서 투명 텍스처가 되는
     //   버그가 있어 Canvas 2D 그라데이션으로 대체.)
-    // 키 버전업: 마스크/높이 변경 시 HMR 캐시 무효화.
-    if (!this.textures.exists("hp-fill-grad5")) {
-      const ct = this.textures.createCanvas("hp-fill-grad5", HP_TEX_W, fillTexH);
+    // 키 버전업: 마스크/높이/좌측 인셋 변경 시 HMR 캐시 무효화.
+    if (!this.textures.exists("hp-fill-grad6")) {
+      const ct = this.textures.createCanvas("hp-fill-grad6", HP_TEX_W, fillTexH);
       if (ct) {
         const ctx = ct.getContext();
         const grad = ctx.createLinearGradient(0, 0, 0, fillTexH);
@@ -891,7 +893,7 @@ export class GameScene extends Phaser.Scene {
     // 빈(소진) 구간용 어두운 트랙 — 항상 풀 폭. 없으면 소진 구간에 게임 배경이 투명하게
     // 비쳐 "뚫린 구멍"처럼 보였다. fill(depth20) 밑(depth19)에 깔아 빈 게이지처럼 읽히게 한다.
     this.hpTrack = this.add
-      .image(fillX, barY, "hp-fill-grad5")
+      .image(fillX, barY, "hp-fill-grad6")
       .setOrigin(0, 0.5)
       .setDepth(19)
       .setTint(0x0b1f1a)
@@ -900,7 +902,7 @@ export class GameScene extends Phaser.Scene {
     this.hpTrack.scaleY = this.hpFillFullScale;
 
     this.hpFill = this.add
-      .image(fillX, barY, "hp-fill-grad5")
+      .image(fillX, barY, "hp-fill-grad6")
       .setOrigin(0, 0.5)
       .setDepth(20)
       .setTint(0x2ecc71); // 초기 틴트 — syncVisuals 전(타이틀)에 흰색으로 보이지 않게
@@ -1089,6 +1091,8 @@ export class GameScene extends Phaser.Scene {
       // 네온 림·노치 안쪽까지 글자가 붙지 않게 좌우 인셋 (기존 0.12/0.10 → 살짝 여유)
       const xL = -PW / 2 + Math.round(PW * 0.17);
       const xR = PW / 2 - Math.round(PW * 0.15);
+      // 거리 열(~"47,314m" ≈ 58px) + 간격 — 닉이 거리 위로 겹치지 않게
+      this.rankNameMaxPx = Math.max(48, xR - xL - 62);
 
       const buildRankPanel = (
         texKey: string,
@@ -2216,12 +2220,9 @@ export class GameScene extends Phaser.Scene {
     const myIdx = rows.findIndex((r) => r.isMe);
 
     // "(나)" 생략 — 내 행은 골드로만 구분.
-    // 닉이 길면 우측 거리와 겹치므로 폭에 맞게 자른다(중점 구분자는 어색·오독 유발).
-    const nameBudget = Math.max(40, xR - xL - 78); // 거리(~"47,314m") 자리 확보
-    const nameLabel = (r: Row, rank: number) => {
-      const prefix = `${rank}.  `;
-      return prefix + this.clipNickForWidth(r.nickname, nameBudget, 11);
-    };
+    // 긴 닉이 우측 거리와 겹치면 "-551471"처럼 읽히므로 폭에 맞게 자른다.
+    const nameLabel = (r: Row, rank: number) =>
+      `${rank}.  ${this.clipNickForPanel(r.nickname)}`;
     const distLabel = (r: Row) =>
       `${Math.floor(r.distance).toLocaleString()}m`;
 
@@ -2332,12 +2333,11 @@ export class GameScene extends Phaser.Scene {
       return r.nickname || "이름없는 고스트";
     };
 
-    // (나) 접미사는 붙이지 않음 — 닉이 길면 점수와 겹침. 내 행은 골드/볼드로만 구분.
-    // 닉·거리 사이 중점(·)으로 "-55 1471" → "551471" 오독을 막음.
+    // (나) 생략 — 내 행은 골드/볼드. 긴 닉은 잘라 거리와 안 겹치게.
     const nameLabel = (r: WeeklyRank, rank: number) =>
-      `${rank}.  ${displayNick(r)}`;
+      `${rank}.  ${this.clipNickForPanel(displayNick(r))}`;
     const distLabel = (r: WeeklyRank) =>
-      `·  ${Math.floor(r.total_distance).toLocaleString()}m`;
+      `${Math.floor(r.total_distance).toLocaleString()}m`;
 
     for (let i = 0; i < this.weeklyRowTexts.length; i++) {
       const name = this.weeklyRowTexts[i]!;
@@ -4028,18 +4028,49 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 텍스트 갱신: 플레이어 실시간 거리
-    this.rankPanelTexts[0]!.setText(`YOU  ·  ${Math.floor(s.distance)}m`);
+    this.rankPanelTexts[0]!.setText(`YOU  ${Math.floor(s.distance)}m`);
 
     // 텍스트 갱신: 고스트 닉네임 + 최종거리 + 현재 슬롯(순위) 표시.
     // 고스트는 전부 '경쟁자'(봇 or 타 유저) — 닉네임은 applyGhostField에서 캐시
     // (meta.nickname 우선, 없으면 거리 기반 결정론 이름). 슬롯0(실시간 플레이어)만 YOU.
+    // 칩 폭이 좁아 긴 닉은 잘라 "-55 4673"이 붙어 보이지 않게.
     for (let g = 0; g < n; g++) {
       const dist = Math.floor(this.top3GhostDists[g] ?? 0);
       const gSlot = slotOfPanel[g + 1] ?? g; // 현재 표시 슬롯
       const rankLabel = ["1st", "2nd", "3rd", "4th", "5th"][gSlot] ?? `${gSlot + 1}th`;
-      const name = this.top3GhostNames[g] ?? `G${g + 1}`;
-      this.rankPanelTexts[g + 1]!.setText(`${rankLabel} ${name}  ·  ${dist}m`);
+      const raw = this.top3GhostNames[g] ?? `G${g + 1}`;
+      const name = this.clipNickChars(raw, 8);
+      this.rankPanelTexts[g + 1]!.setText(`${rankLabel} ${name}  ${dist}m`);
     }
+  }
+
+  /**
+   * 결과 패널용 닉 자르기 — 거리 열과 겹치지 않을 길이로.
+   * 한글≈11px, 영숫자≈7px(11px 폰트) 근사. 말줄임표 포함.
+   */
+  private clipNickForPanel(nick: string): string {
+    return this.clipNickToPx(nick, this.rankNameMaxPx, 11);
+  }
+
+  /** 상단 칩용 — 글자 수 기준 단순 컷. */
+  private clipNickChars(nick: string, maxChars: number): string {
+    if (nick.length <= maxChars) return nick;
+    return nick.slice(0, Math.max(1, maxChars - 1)) + "…";
+  }
+
+  private clipNickToPx(nick: string, maxPx: number, fontSize: number): string {
+    const wOf = (ch: string) =>
+      /[A-Za-z0-9.,\-_]/.test(ch) ? fontSize * 0.62 : fontSize * 0.98;
+    let w = 0;
+    let i = 0;
+    const ell = fontSize * 0.7;
+    for (; i < nick.length; i++) {
+      const nw = wOf(nick[i]!);
+      if (w + nw + ell > maxPx) break;
+      w += nw;
+    }
+    if (i >= nick.length) return nick;
+    return nick.slice(0, Math.max(1, i)) + "…";
   }
 
   // ─── 코드로 그리는 레트로웨이브 태양 ───────────────────────────────────────
