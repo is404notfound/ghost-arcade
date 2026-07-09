@@ -512,7 +512,7 @@ export class GameScene extends Phaser.Scene {
   /** 피버 — 코드 드로우 스파이크 FEVER! 뱃지 (우측 하단, 띠지 대체) */
   private feverBadge!: Phaser.GameObjects.Container;
   private feverBadgeVisible = false;
-  private rankHudLabel!: Phaser.GameObjects.Text; // 「👑 TODAY」 안내
+  private rankHudLabel!: Phaser.GameObjects.Text; // 「👑 Today's Rank」 안내
   private blackoutPhase: BlackoutPhase = "idle";
   private blackoutPhaseStartMs = 0; // 현재 phase 진입 시점(renderTimeMs)
   private blackoutNextAtM = Infinity; // 다음 발동 거리(m) — 시드 LCG로 갱신
