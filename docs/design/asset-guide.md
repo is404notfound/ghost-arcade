@@ -878,8 +878,8 @@ busy ornaments, characters
 > 정전(blackout) warn 페이즈에 띄우는 **뾰족(스파이크) 뱃지**. **WARNING baked** 에셋 적용
 > (`blackoutWarnBubble` Image). 알파 사인 점멸은 코드 유지.
 > 상세: `docs/design/ux-polish-2026-07.md` §4.
-> prep: `warn-bubble-src.png` → `prep-ui.py` → `assets/game/warn-bubble.png` (**504×164**).
-> 인게임 표시 폭 **≈210px**(이전 168 → 확대).
+> prep: `warn-bubble-src.png` → `prep-ui.py` → `assets/game/warn-bubble.png` (**≈1024×334 + 흰 스트로크 pad**).
+> 인게임: **우측 하단**, 표시 폭 **≈360px**. 흰 외곽 스트로크는 prep에서 합성.
 
 
 | 파트            | 용도           | 권장 크기(@3x)     | 비고                                |

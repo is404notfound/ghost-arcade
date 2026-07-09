@@ -626,14 +626,21 @@ export class GameScene extends Phaser.Scene {
 
     // 정전 트랩 오버레이 — 월드(depth 0) 위, HUD 텍스트(10+)·순위 칩(22) 아래.
     this.blackoutGfx = this.add.graphics().setDepth(6);
-    // 암전 예고: warn-bubble 에셋(WARNING baked) + 알파 사인 점멸.
-    // 표시 폭 210 — 이전 168보다 크게(시야 방해는 우측 중상단 유지).
-    this.blackoutWarnBubble = this.add
-      .image(DESIGN_W * 0.78, 128, "warn-bubble")
-      .setOrigin(0.5)
-      .setDisplaySize(210, Math.round(210 * (164 / 504)))
-      .setDepth(7)
-      .setVisible(false);
+    // 암전 예고: warn-bubble 에셋(WARNING baked + 흰 스트로크) + 알파 사인 점멸.
+    // 우측 하단·대형(≈360) — HP바/마일스톤 토스트와 겹치지 않게 약간 위·안쪽.
+    // 텍스처는 prep @~1024(+stroke pad) — 표시 시 다운스케일만 해 화질 유지.
+    {
+      const warnTex = this.textures.get("warn-bubble").getSourceImage();
+      const warnAspect = warnTex.height / Math.max(1, warnTex.width);
+      const warnW = 360;
+      const warnH = Math.round(warnW * warnAspect);
+      this.blackoutWarnBubble = this.add
+        .image(DESIGN_W - warnW / 2 - 16, DESIGN_H - warnH / 2 - 56, "warn-bubble")
+        .setOrigin(0.5)
+        .setDisplaySize(warnW, warnH)
+        .setDepth(7)
+        .setVisible(false);
+    }
 
     // 메테오 풀은 createBackground() 안에서 태양보다 먼저 생성됨 (Z-order 보장).
     this.meteorSpawnMs = 0; // 게임 시작 즉시 첫 스폰
@@ -1043,7 +1050,8 @@ export class GameScene extends Phaser.Scene {
       const ribbonW = 118;
       const ribbonH = 26;
       const restX = 0; // 화면 왼쪽 끝 밀착 (여백 없음)
-      const restY = 28 + 42 + 6 + ribbonH / 2; // 칩(y=28,h=42) 아래 여백
+      // 칩(y=28,h=42) 아래 여백을 더 줘서 랭킹과 간격 확보
+      const restY = 28 + 42 + 18 + ribbonH / 2;
       this.comboRibbonBg = this.add
         .rectangle(0, 0, ribbonW, ribbonH, 0x060010, 0.88)
         .setOrigin(0, 0.5);
@@ -1470,7 +1478,8 @@ export class GameScene extends Phaser.Scene {
         .setDepth(110)
         .setVisible(false);
       this.introOverlay.setData("dispH", dispH);
-      this.introOverlay.setData("startY", DESIGN_H);
+      // 시작: 바닥보다 살짝 위(≈36px)에서 슬라이드 시작 — 맨 아래 붙음 완화
+      this.introOverlay.setData("startY", DESIGN_H - 36);
       // 끝: 이미지 상단이 뷰포트 상단에 오도록 (origin bottom → y = dispH)
       this.introOverlay.setData("endY", dispH);
       this.beginIntro();
@@ -3413,7 +3422,8 @@ export class GameScene extends Phaser.Scene {
     }
     // 말풍선: 플레이어 머리 위를 매 프레임 추적 (x는 플레이어와 동일 고정)
     if (this.bubble) {
-      this.bubble.setY(toScreenY(s.player.y) - PLAYER_ART_H - 42);
+      // 머리 위 여유를 더 둬 캐릭터와 겹침·가독성 저하 완화 (이전 -42 → -58)
+      this.bubble.setY(toScreenY(s.player.y) - PLAYER_ART_H - 58);
     }
     // 네온 트레일: 바이크 뒤로 수평으로 뻗는 속도선 (렌더 전용, Tier 1-3)
     // 플레이어 화면 Y를 넘겨 점프 시 트레일도 함께 따라 올라가게 한다.
@@ -4304,19 +4314,22 @@ export class GameScene extends Phaser.Scene {
 
   private sunGradientColor(fy: number): number {
     // 상단: 진한 오렌지 → 중간: 크림 → 하단: 분홍.
-    // 시간축으로 스톱을 살짝 흔들어 그라데이션이 일렁이게(렌더 전용 Math.sin).
+    // 그라데이션 밴드가 세로로 천천히 흘러가며(scroll) + 미세 일렁임 → "움직이는 그라데이션".
     const t = this.renderTimeMs * 0.001;
-    const wobble = 0.04 * Math.sin(t * 0.7 + fy * 4.2);
-    const u = Math.max(0, Math.min(1, fy + wobble));
-    // 팔레트 자체도 느리게 색온도 시프트 → "숨 쉬는" 태양
-    const warmShift = 0.5 + 0.5 * Math.sin(t * 0.45);
-    const cTop = this.lerpColor(0xff7030, 0xff8a40, warmShift);
-    const cMid = this.lerpColor(0xffb870, 0xffd090, warmShift);
-    const cCream = this.lerpColor(0xffe8c0, 0xfff0d8, warmShift);
-    const cBot = this.lerpColor(0xff90b0, 0xffa0c0, 1 - warmShift);
-    if (u < 0.35) return this.lerpColor(cTop, cMid, u / 0.35);
-    if (u < 0.65) return this.lerpColor(cMid, cCream, (u - 0.35) / 0.3);
-    return this.lerpColor(cCream, cBot, (u - 0.65) / 0.35);
+    const scroll = ((t * 0.12) % 1 + 1) % 1; // 느린 세로 스크롤 (한 바퀴 ≈8.3초)
+    const wobble = 0.035 * Math.sin(t * 0.85 + fy * 5.0);
+    const u = Math.max(0, Math.min(1, (fy + scroll + wobble) % 1));
+    // 팔레트 색온도도 느리게 시프트
+    const warmShift = 0.5 + 0.5 * Math.sin(t * 0.4);
+    const cTop = this.lerpColor(0xff6020, 0xff8a40, warmShift);
+    const cMid = this.lerpColor(0xffb060, 0xffd090, warmShift);
+    const cCream = this.lerpColor(0xffe8c0, 0xfff4dc, warmShift);
+    const cBot = this.lerpColor(0xff80a8, 0xffa0c0, 1 - warmShift);
+    // 4스톱을 원형으로 보간해 스크롤이 끊기지 않게
+    if (u < 0.25) return this.lerpColor(cTop, cMid, u / 0.25);
+    if (u < 0.5) return this.lerpColor(cMid, cCream, (u - 0.25) / 0.25);
+    if (u < 0.75) return this.lerpColor(cCream, cBot, (u - 0.5) / 0.25);
+    return this.lerpColor(cBot, cTop, (u - 0.75) / 0.25);
   }
 
   private lerpColor(c1: number, c2: number, t: number): number {
