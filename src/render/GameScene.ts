@@ -195,7 +195,7 @@ const GHOST_RUN_FPS = 12; // 고스트 달리기 6프레임 사이클 속도(렌
 // 한 덩어리로 겹치지 않게 주인공 주변으로 흩어뜨림(주로 뒤쪽에).
 const GHOST_X_OFFSETS = [-72, -42, -20, 18, 40, 64, -54, 32, -10, 50] as const; // 너무 퍼지지 않도록 줄임
 
-const MAX_METEORS = 6; // 동시 메테오 상한(스폰당 1~3개가 누적)
+const MAX_METEORS = 4; // 동시 메테오 상한 — 드로우 비용 완화
 
 // 장애물 아트 텍스처 키(렌더 전용·결정론 무관). 건물은 더 이상 쓰지 않는다.
 // code-sludge(초록 오염수 분수)는 "장애물처럼 안 보인다"는 피드백으로 스폰 풀에서 제거.
@@ -493,8 +493,9 @@ export class GameScene extends Phaser.Scene {
   private biomeLastMs = 0; // mix 적분용 직전 renderTimeMs
   private lastKmMilestone = 0; // 마일스톤 팡파레 중복 방지
   private zoomPunch = { t: 0 }; // 펀치 줌 트윈 상태 (0 = 기본 줌)
-  private sunRedrawAccMs = 0; // 태양 재드로우 누적 ms (≈12fps 스로틀)
-  private starRedrawAccMs = 0; // 별 반짝임 재드로우 누적 ms (≈20fps)
+  private sunRedrawAccMs = 0; // 태양 재드로우 누적 ms (≈10fps 스로틀)
+  private starRedrawAccMs = 0; // 별 반짝임 재드로우 누적 ms (≈10fps)
+  private fxRedrawAccMs = 0; // 화염·연기·메테오·트레일 등 고비용 이펙트 (≈20fps)
   // ── 정전 트랩 상태 (렌더 전용) ──
   private blackoutGfx!: Phaser.GameObjects.Graphics;
   /** 암전 예고 — 코드 드로우 스파이크 WARNING 뱃지 (에셋 미사용) */
@@ -792,15 +793,16 @@ export class GameScene extends Phaser.Scene {
     // 바이크 시안 네온 글로우 — WebGL postFX, 비지원 기기는 무시 (렌더 전용, 결정론 무관)
     try {
       if (this.playerRect.postFX) {
+        // 글로우 강도·반경을 낮춤 — postFX는 저사양에서 프레임 드롭의 주원인
         this.playerGlow = this.playerRect.postFX.addGlow(
           0x5efce8,
-          3,
+          1.5,
           0,
           false,
           0.1,
           // 글로우 반경은 백킹 픽셀 단위 — 레티나 백킹(×RENDER_DPR)에서 같은
           // 시각 크기를 유지하려면 배율 보정 필요
-          12 * RENDER_DPR,
+          6 * RENDER_DPR,
         );
       }
     } catch {
@@ -1402,8 +1404,8 @@ export class GameScene extends Phaser.Scene {
         .setDisplaySize(dispW, dispH);
       const veil = this.add
         .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.22);
-      // 카피·Start를 화면 중하단으로 — 슬라이드 이미지 상단 하늘과 겹침 완화
-      const copyY = DESIGN_H * 0.55;
+      // 카피 위치는 기존(≈38%) 유지 — Start는 카피 바로 아래
+      const copyY = DESIGN_H * 0.38;
       const introNick = getNickname(window.localStorage);
       const copyStyle = {
         fontSize: "17px",
@@ -1424,7 +1426,7 @@ export class GameScene extends Phaser.Scene {
         .setStroke("#0a0018", 5);
       // 닉네임만 노란 강조 — Phaser Text는 한 오브젝트 다색 미지원이라 조각 합성
       const nickPrefix = this.add
-        .text(0, 0, "마지막 등불 ", copyStyle)
+        .text(0, 0, "마지막 등불인 나[", copyStyle)
         .setOrigin(0, 0.5)
         .setStroke("#0a0018", 5);
       const nickHl = this.add
@@ -1436,7 +1438,7 @@ export class GameScene extends Phaser.Scene {
         .setOrigin(0, 0.5)
         .setStroke("#0a0018", 5);
       const nickSuffix = this.add
-        .text(0, 0, "(당신),", copyStyle)
+        .text(0, 0, "]는", copyStyle)
         .setOrigin(0, 0.5)
         .setStroke("#0a0018", 5);
       const nickRowW =
@@ -1456,7 +1458,6 @@ export class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5, 0)
         .setStroke("#0a0018", 5);
-      const copyH = copyBot.y + copyBot.height;
       const copy = this.add.container(DESIGN_W / 2, copyY, [
         copyTop,
         nickRow,
@@ -1464,7 +1465,7 @@ export class GameScene extends Phaser.Scene {
       ]);
       // 카피 바로 아래 중앙 Start — 가시성↑(2배) + 부드러운 점멸(CTA)
       this.introNextBtn = this.add
-        .text(DESIGN_W / 2, copyY + copyH + 28, "Start →", {
+        .text(DESIGN_W / 2, copyY + 92, "Start →", {
           fontSize: "36px",
           fontFamily: FONT_HUD,
           fontStyle: "bold",
@@ -2016,6 +2017,7 @@ export class GameScene extends Phaser.Scene {
       this.renderTimeMs += delta;
       this.sunRedrawAccMs += delta;
       this.starRedrawAccMs += delta;
+      this.fxRedrawAccMs += delta;
       // 코드 메테오 진행 (렌더 타이머 기반, sim 무관) — 수명 끝난 것 제거
       if (this.codeMeteors.length > 0) {
         for (const m of this.codeMeteors) m.elapsed += delta;
@@ -2899,7 +2901,7 @@ export class GameScene extends Phaser.Scene {
     const SUN_CX = DESIGN_W * 0.5;
     const SUN_CY = 214;
     const SUN_R = 130; // 태양 블룸 바깥까지 비움
-    const N = 48;
+    const N = 32;
     let tries = 0;
     while (stars.length < N && tries < N * 8) {
       tries++;
@@ -2967,14 +2969,14 @@ export class GameScene extends Phaser.Scene {
     g.fillRect(0, horizon, DESIGN_W, depth);
 
     // 지평선 글로우 밴드 — 지평선 위아래로 번지는 네온 발광(블룸 느낌).
-    for (let i = 0; i < 5; i++) {
-      g.fillStyle(neon, 0.14 * (1 - i / 5));
+    for (let i = 0; i < 3; i++) {
+      g.fillStyle(neon, 0.16 * (1 - i / 3));
       g.fillRect(0, horizon - 2 + i * 2, DESIGN_W, 2);
     }
 
     // 스크롤되는 원근 수평선 — 지평선에서 생겨나 바닥으로 가속(달리는 속도감).
     // p*p 원근으로 바닥쪽일수록 간격이 빠르게 벌어진다.
-    const rows = 16;
+    const rows = 10;
     const scroll = (((worldPx / GRID_SPACING) % 1) + 1) % 1; // 0..1 진행 위상
     for (let i = 0; i < rows; i++) {
       const p = (i + scroll) / rows; // 0(지평선)→1(바닥)
@@ -3064,14 +3066,12 @@ export class GameScene extends Phaser.Scene {
     g.fillStyle(0xff9a3c, 0.22 * pulse);
     g.fillCircle(sx, baseY - 2, baseHalf * 0.9);
 
-    // 불혀 다발 — 색 레이어별로 바깥(짙은 빨강·큼)→안(흰노랑 코어·작음) 순서로 겹쳐 그림.
-    // 가닥 수를 늘려(11→3) 더 빽빽하게, 흔들림 위상을 가닥마다 달리해 일렁임을 살린다.
+    // 불혀 다발 — 바깥(짙은 빨강)·안(흰노랑 코어). 가닥 수를 줄여 60fps 예산 확보.
     const layers = [
-      { color: 0xb91d1d, hMul: 1.0, wMul: 1.0, tongues: 11, alpha: 0.4 }, // 바깥 짙은 빨강
-      { color: 0xe23a18, hMul: 0.9, wMul: 0.82, tongues: 9, alpha: 0.5 }, // 빨강
-      { color: 0xff7a1c, hMul: 0.78, wMul: 0.62, tongues: 7, alpha: 0.6 }, // 주황
-      { color: 0xffb43c, hMul: 0.6, wMul: 0.42, tongues: 5, alpha: 0.74 }, // 노랑주황
-      { color: 0xfff3c0, hMul: 0.42, wMul: 0.24, tongues: 3, alpha: 0.9 }, // 흰노랑 코어
+      { color: 0xb91d1d, hMul: 1.0, wMul: 1.0, tongues: 5, alpha: 0.42 },
+      { color: 0xff7a1c, hMul: 0.82, wMul: 0.7, tongues: 4, alpha: 0.58 },
+      { color: 0xffb43c, hMul: 0.62, wMul: 0.45, tongues: 3, alpha: 0.72 },
+      { color: 0xfff3c0, hMul: 0.42, wMul: 0.26, tongues: 2, alpha: 0.9 },
     ];
 
     for (let li = 0; li < layers.length; li++) {
@@ -3104,7 +3104,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 솟구치는 불씨 — 위로 떠오르며 반짝이는 점들(색·반짝임 다양화).
-    for (let e = 0; e < 8; e++) {
+    for (let e = 0; e < 4; e++) {
       const rise = (t * (0.8 + e * 0.1) + e * 0.21) % 1; // 0→1
       const ex = sx + Math.sin(t * 4 + e * 2) * baseHalf * 0.7;
       const ey = baseY - rise * artH * 1.15;
@@ -3116,8 +3116,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 사방으로 튀는 스파크 — 밑동에서 좌우로 부채꼴로 퍼지며 솟구쳤다 살짝 떨어짐(중력).
-    // 메테오/불꽃 주변에 불티가 더 튀길 바라는 요청 반영. 반짝임으로 평면감 완화.
-    for (let k = 0; k < 12; k++) {
+    for (let k = 0; k < 6; k++) {
       const life = (t * (1.1 + k * 0.11) + k * 0.31) % 1; // 0→1 수명
       const side = ((k % 6) / 5 - 0.5) * 2; // -1..1 좌우 분산
       const px = sx + side * baseHalf * 1.7 * life;
@@ -3149,7 +3148,7 @@ export class GameScene extends Phaser.Scene {
     color: number,
     alpha: number,
   ): void {
-    const SEG = 7;
+    const SEG = 5;
     const cx: number[] = [];
     const cy: number[] = [];
     const hw: number[] = [];
@@ -3432,17 +3431,20 @@ export class GameScene extends Phaser.Scene {
     const jumpY = s.player.y * 0.07; // 최대 ≈26px. 과하면 멀미 — 작게 시작.
     this.bgSkylineFar.y = jumpY * 0.5; // 원경: 절반
     this.sunGraphics.y = 214 + jumpY * 0.3; // 태양: 약하게 점프 연동
-    // 태양 재드로우(블룸+스캔라인)는 CPU 비용이 커 ≈12fps로 스로틀 —
+    // 태양 재드로우(블룸+스캔라인)는 CPU 비용이 커 ≈10fps로 스로틀 —
     // 일렁임 주파수가 낮아 체감 차이 없음. 위치(y) 추적은 매 프레임 유지.
-    if (this.sunRedrawAccMs >= 80) {
+    if (this.sunRedrawAccMs >= 100) {
       this.sunRedrawAccMs = 0;
       this.updateCodeSun();
     }
-    // 별 twinkle — ≈20fps면 충분히 부드러움
-    if (this.starRedrawAccMs >= 50) {
+    // 별 twinkle — ≈10fps면 충분히 부드러움
+    if (this.starRedrawAccMs >= 100) {
       this.starRedrawAccMs = 0;
       this.drawStars();
     }
+    // 화염·연기·메테오·트레일: 매 프레임 clear/redraw는 저사양 버벅임의 주원인 → ≈20fps
+    const redrawFx = this.fxRedrawAccMs >= 50;
+    if (redrawFx) this.fxRedrawAccMs = 0;
 
     // ── 바이옴 전환 (1000m마다 팔레트 순환, 렌더 전용) + 마일스톤 팡파레 ──
     const km = Math.floor(world.distance / BIOME_METERS);
@@ -3523,7 +3525,9 @@ export class GameScene extends Phaser.Scene {
     }
     // 네온 트레일: 바이크 뒤로 수평으로 뻗는 속도선 (렌더 전용, Tier 1-3)
     // 플레이어 화면 Y를 넘겨 점프 시 트레일도 함께 따라 올라가게 한다.
-    this.drawNeonTrail(s.speed, s.gameOver, toScreenY(s.player.y));
+    if (redrawFx) {
+      this.drawNeonTrail(s.speed, s.gameOver, toScreenY(s.player.y));
+    }
     // 상태별 컷 전환: 사망 > 피격(무적) > 점프(공중) > 기본 주행
     // 점프 컷(jump1/jump2)은 각도가 아트에 구워져 있으므로 회전 없이 사용.
     const isAirborne =
@@ -3736,8 +3740,10 @@ export class GameScene extends Phaser.Scene {
         r.setPosition(toScreenX(o.x), GROUND_Y_PX);
       }
     }
-    this.drawCodeObstacles(world);
-    this.drawObstacleSmoke(world);
+    if (redrawFx) {
+      this.drawCodeObstacles(world);
+      this.drawObstacleSmoke(world);
+    }
     for (let i = 0; i < C.MAX_POTIONS; i++) {
       const p = world.potions[i]!;
       const c = this.fuelSprites[i]!;
@@ -3846,7 +3852,7 @@ export class GameScene extends Phaser.Scene {
     // 레이저 경고 이펙트 드로우 (렌더 전용 — Math.sin 허용 구역)
     this.drawLasers();
     // 코드 드로우 메테오 (태양 뒤 Graphics 레이어 — displayList 순서로 Z 보장)
-    this.drawCodeMeteor();
+    if (redrawFx) this.drawCodeMeteor();
 
     // infiniteJumpText는 제거됨, 아무것도 안 함
 
@@ -4242,8 +4248,8 @@ export class GameScene extends Phaser.Scene {
     const pxx = -diry,
       pyy = dirx; // 좌우(흔들림 축)
 
-    // ─── 1) 화염 꼬리 플룸 — 불혀 다발이 난류처럼 일렁임 (코어보다 먼저=아래) ───
-    const tongues = 11;
+    // ─── 1) 화염 꼬리 플룸 — 불혀 다발(가닥 수↓로 60fps 예산 확보) ───
+    const tongues = 6;
     for (let i = 0; i < tongues; i++) {
       const n = i / (tongues - 1);
       const side = (n - 0.5) * 2; // -1..1
@@ -4293,9 +4299,9 @@ export class GameScene extends Phaser.Scene {
     // ─── 2) 불덩이 코어 — 불규칙하게 겹친 블롭(이글거림) ───
     g.fillStyle(0xff4d1a, alpha * 0.3); // 바깥 붉은 글로우
     g.fillCircle(x, y, r * 1.5 + Math.sin(t * 9) * r * 0.12);
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 3; i++) {
       // 흔들리는 외곽 블롭
-      const a2 = (i / 6) * Math.PI * 2 + t * 2;
+      const a2 = (i / 3) * Math.PI * 2 + t * 2;
       const rr = r * (0.78 + 0.18 * Math.sin(t * 8 + i));
       g.fillStyle(0xe63312, alpha * 0.7);
       g.fillCircle(
