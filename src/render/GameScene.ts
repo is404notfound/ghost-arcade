@@ -1067,12 +1067,12 @@ export class GameScene extends Phaser.Scene {
       this.rankPanelBgs.push(bg);
       this.rankPanelTexts.push(txt);
     }
-    // 「👑 TODAY」 — 칩 열 왼쪽 위. x는 updateRankPanel에서 칩 startX에 맞춤.
+    // 「👑 Today's Rank」 — 칩 열 왼쪽 위. x는 updateRankPanel에서 칩 startX에 맞춤.
     this.rankHudLabel = this.add
-      .text(0, 10, "👑 TODAY", {
+      .text(0, 10, "👑 Today's Rank", {
         fontSize: "11px",
         fontFamily: FONT_KR,
-        color: "#36f9f6",
+        color: "#ffd700",
         resolution: TXT_RES,
       })
       .setOrigin(0, 0)
