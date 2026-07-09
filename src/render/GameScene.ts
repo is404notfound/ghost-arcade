@@ -284,14 +284,14 @@ function smokeProfile(key: string): SmokeProfile {
         glow: 0xff5a7a,
         fire: false,
       };
-    case "obs-barrel": // 드럼통: 검고 높은 매연 + 불씨 밑동
+    case "obs-barrel": // 드럼통: 검고 높은 매연 + 불씨 밑동 (가닥 1로 비용↓)
       return {
         color: 0x655e6c,
-        strands: 2,
-        height: 56,
+        strands: 1,
+        height: 48,
         baseW: 5,
-        alpha: 0.42,
-        spread: 6,
+        alpha: 0.4,
+        spread: 0,
         sway: 12,
         freq: 2.2,
         ember: true,
@@ -300,19 +300,19 @@ function smokeProfile(key: string): SmokeProfile {
       };
     case "code-flame-s":
     case "code-flame-m":
-    case "code-flame-l": // 코드 드로우 화염분수 — 연기는 거의 없고 빛이 강함
+    case "code-flame-l": // 코드 화염 — 본체(drawFlameFountain)만. 연기 레이어 중복은 버벅임만 키움
       return {
         color: 0x7a6a72,
-        strands: 1,
-        height: 30,
-        baseW: 3,
-        alpha: 0.18,
+        strands: 0,
+        height: 0,
+        baseW: 0,
+        alpha: 0,
         spread: 0,
-        sway: 9,
-        freq: 2.8,
-        ember: true,
+        sway: 0,
+        freq: 1,
+        ember: false,
         glow: 0xff9a3c,
-        fire: true,
+        fire: false,
       };
     case "code-sludge": // 오염수 분수 — 회색/녹색 연기
       return {
@@ -495,7 +495,7 @@ export class GameScene extends Phaser.Scene {
   private zoomPunch = { t: 0 }; // 펀치 줌 트윈 상태 (0 = 기본 줌)
   private sunRedrawAccMs = 0; // 태양 재드로우 누적 ms (≈10fps 스로틀)
   private starRedrawAccMs = 0; // 별 반짝임 재드로우 누적 ms (≈10fps)
-  private fxRedrawAccMs = 0; // 화염·연기·메테오·트레일 등 고비용 이펙트 (≈20fps)
+  private fxRedrawAccMs = 0; // 화염·연기·메테오·트레일 등 고비용 이펙트 (≈12fps)
   // ── 정전 트랩 상태 (렌더 전용) ──
   private blackoutGfx!: Phaser.GameObjects.Graphics;
   /** 암전 예고 — 코드 드로우 스파이크 WARNING 뱃지 (에셋 미사용) */
@@ -3045,9 +3045,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 네온 화염분수 — 바닥에서 솟구치는 활활 타오르는 불꽃.
-   * 각 불혀를 '다분절 곡선 리본'(drawWavyTongue)으로 그려 일렁이며 휘날리는 디테일을 살린다.
-   * 아래는 두껍고 위로 갈수록 뾰족·휘어지며, 가닥마다 위상이 달라 자연스럽게 흔들린다.
+   * 네온 화염분수 — 바닥에서 솟구치는 불꽃.
+   * fillTriangle 레이어로만 그림(fillPoints 리본은 할당·드로우 비용이 커 불길 등장 시 버벅임의 주원인).
    */
   private drawFlameFountain(
     g: Phaser.GameObjects.Graphics,
@@ -3058,21 +3057,18 @@ export class GameScene extends Phaser.Scene {
     idx: number,
   ): void {
     const phase = idx * 2.3;
-    const baseHalf = Math.max(14, artH * 0.42); // 밑동 반폭 — 두껍게
+    const baseHalf = Math.max(14, artH * 0.42);
 
-    // 베이스 글로우 (넓게 깔린 불빛, 맥동)
+    // 베이스 글로우 (1겹만 — 맥동)
     const pulse = 0.7 + 0.3 * Math.sin(t * 8 + phase);
-    g.fillStyle(0xff5a1c, 0.16 * pulse);
-    g.fillCircle(sx, baseY - 2, baseHalf * 1.5 * pulse);
-    g.fillStyle(0xff9a3c, 0.22 * pulse);
-    g.fillCircle(sx, baseY - 2, baseHalf * 0.9);
+    g.fillStyle(0xff7a1c, 0.2 * pulse);
+    g.fillCircle(sx, baseY - 2, baseHalf * 1.15 * pulse);
 
-    // 불혀 다발 — 바깥(짙은 빨강)·안(흰노랑 코어). 가닥 수를 줄여 60fps 예산 확보.
+    // 불혀 — 바깥→코어 3레이어, 가닥 소수. 삼각형만 사용.
     const layers = [
-      { color: 0xb91d1d, hMul: 1.0, wMul: 1.0, tongues: 5, alpha: 0.42 },
-      { color: 0xff7a1c, hMul: 0.82, wMul: 0.7, tongues: 4, alpha: 0.58 },
-      { color: 0xffb43c, hMul: 0.62, wMul: 0.45, tongues: 3, alpha: 0.72 },
-      { color: 0xfff3c0, hMul: 0.42, wMul: 0.26, tongues: 2, alpha: 0.9 },
+      { color: 0xc41e1e, hMul: 1.0, wMul: 1.0, tongues: 4, alpha: 0.48 },
+      { color: 0xff8a1c, hMul: 0.78, wMul: 0.68, tongues: 3, alpha: 0.62 },
+      { color: 0xfff0a8, hMul: 0.48, wMul: 0.32, tongues: 2, alpha: 0.88 },
     ];
 
     for (let li = 0; li < layers.length; li++) {
@@ -3080,110 +3076,50 @@ export class GameScene extends Phaser.Scene {
       const layerH = artH * layer.hMul;
       const layerHalf = baseHalf * layer.wMul;
       for (let s = 0; s < layer.tongues; s++) {
-        // 불혀를 밑동 폭에 고르게 분포(-1..1)
         const u = layer.tongues === 1 ? 0 : (s / (layer.tongues - 1)) * 2 - 1;
         const rootX = sx + u * layerHalf;
-        const rootW = Math.max(2, (layerHalf / layer.tongues) * 2.2); // 밑동 두께(겹치게)
-        // 가닥별 높이 깜빡임 — 가운데가 가장 높음(분수형), 빠른 깜빡임으로 활활.
+        const rootW = Math.max(2.5, (layerHalf / layer.tongues) * 2.0);
         const heightFall = 1 - Math.abs(u) * 0.4;
-        const flick = 0.7 + 0.3 * Math.sin(t * (6 + s * 0.7) + phase + s * 1.7);
+        const flick =
+          0.72 + 0.28 * Math.sin(t * (5.5 + s * 0.6) + phase + s * 1.5);
         const tipH = layerH * heightFall * flick;
-        const seed = phase + s * 1.3 + li * 0.6; // 가닥 고유 흔들림 위상
-        this.drawWavyTongue(
-          g,
-          rootX,
+        const sway =
+          Math.sin(t * 3.8 + s * 0.9 + phase + li) *
+          artH *
+          0.08 *
+          (0.35 + Math.abs(u));
+        const tipX = rootX + sway;
+
+        g.fillStyle(layer.color, layer.alpha * 0.22);
+        g.fillTriangle(
+          rootX - rootW * 1.35,
           baseY,
-          rootW,
-          tipH,
-          t,
-          seed,
-          u,
-          layer.color,
-          layer.alpha,
+          rootX + rootW * 1.35,
+          baseY,
+          tipX,
+          baseY - tipH * 1.04,
+        );
+        g.fillStyle(layer.color, layer.alpha);
+        g.fillTriangle(
+          rootX - rootW,
+          baseY,
+          rootX + rootW,
+          baseY,
+          tipX,
+          baseY - tipH,
         );
       }
     }
 
-    // 솟구치는 불씨 — 위로 떠오르며 반짝이는 점들(색·반짝임 다양화).
-    for (let e = 0; e < 4; e++) {
-      const rise = (t * (0.8 + e * 0.1) + e * 0.21) % 1; // 0→1
-      const ex = sx + Math.sin(t * 4 + e * 2) * baseHalf * 0.7;
-      const ey = baseY - rise * artH * 1.15;
-      const tw = 0.5 + 0.5 * Math.sin(t * 18 + e * 3); // 빠른 반짝임
-      const ea = (1 - rise) * 0.85 * tw;
-      const col = e % 3 === 0 ? 0xfff3c0 : e % 3 === 1 ? 0xffd27a : 0xff7a1c;
-      g.fillStyle(col, ea);
-      g.fillCircle(ex, ey, (1 - rise) * 2.0 + 0.5);
+    // 불씨 2개만 — 반짝임 유지, 드로우 최소
+    for (let e = 0; e < 2; e++) {
+      const rise = (t * (0.9 + e * 0.15) + e * 0.37) % 1;
+      const ex = sx + Math.sin(t * 4 + e * 2.2) * baseHalf * 0.55;
+      const ey = baseY - rise * artH * 1.1;
+      const tw = 0.5 + 0.5 * Math.sin(t * 16 + e * 3);
+      g.fillStyle(e % 2 === 0 ? 0xfff3c0 : 0xff9a3c, (1 - rise) * 0.8 * tw);
+      g.fillCircle(ex, ey, (1 - rise) * 1.8 + 0.4);
     }
-
-    // 사방으로 튀는 스파크 — 밑동에서 좌우로 부채꼴로 퍼지며 솟구쳤다 살짝 떨어짐(중력).
-    for (let k = 0; k < 6; k++) {
-      const life = (t * (1.1 + k * 0.11) + k * 0.31) % 1; // 0→1 수명
-      const side = ((k % 6) / 5 - 0.5) * 2; // -1..1 좌우 분산
-      const px = sx + side * baseHalf * 1.7 * life;
-      const py =
-        baseY -
-        life * artH * (1.0 + (k % 3) * 0.28) +
-        life * life * artH * 0.28; // 솟다 떨어짐
-      const tw = 0.5 + 0.5 * Math.sin(t * 26 + k * 5);
-      const a = (1 - life) * 0.9 * tw;
-      g.fillStyle(k % 2 === 0 ? 0xffe7a0 : 0xff9a3c, a);
-      g.fillCircle(px, py, (1 - life) * 1.7 + 0.4);
-    }
-  }
-
-  /**
-   * 불혀 1가닥을 '다분절 곡선 리본'으로 채워 그린다(렌더 전용).
-   * 중심선이 위로 갈수록 진폭↑인 다중 사인으로 일렁이고, 폭은 밑동→끝점으로 테이퍼되어 뾰족해진다.
-   * 바깥쪽 가닥은 u 방향으로 살짝 휘어(분수 splay) 더 역동적으로 보인다.
-   */
-  private drawWavyTongue(
-    g: Phaser.GameObjects.Graphics,
-    rootX: number,
-    baseY: number,
-    rootW: number,
-    tipH: number,
-    t: number,
-    seed: number,
-    u: number,
-    color: number,
-    alpha: number,
-  ): void {
-    const SEG = 5;
-    const cx: number[] = [];
-    const cy: number[] = [];
-    const hw: number[] = [];
-    for (let k = 0; k <= SEG; k++) {
-      const f = k / SEG; // 0(밑동)→1(끝)
-      // 흔들림: 위로 갈수록 진폭↑, 두 주파수 합성으로 불규칙하게.
-      const amp = rootW * 0.5 + f * tipH * 0.18;
-      const wob =
-        Math.sin(t * 4 + f * 4.5 + seed) * amp +
-        Math.sin(t * 7.3 + f * 2.1 + seed * 1.7) * amp * 0.4;
-      const lean = u * f * tipH * 0.12; // 바깥 가닥일수록 더 휨
-      cx.push(rootX + wob + lean);
-      cy.push(baseY - f * tipH);
-      hw.push(Math.max(0, rootW * Math.pow(1 - f, 0.7))); // 끝으로 갈수록 뾰족
-    }
-
-    // 폴리곤: 왼쪽 에지(밑→끝) → 오른쪽 에지(끝→밑) 순으로 닫힌 리본.
-    const core: Phaser.Types.Math.Vector2Like[] = [];
-    for (let k = 0; k <= SEG; k++) core.push({ x: cx[k]! - hw[k]!, y: cy[k]! });
-    for (let k = SEG; k >= 0; k--) core.push({ x: cx[k]! + hw[k]!, y: cy[k]! });
-
-    // 소프트 에지 halo — 같은 형태를 살짝 넓혀 반투명으로 한 번 더(경계 페이드).
-    const halo: Phaser.Types.Math.Vector2Like[] = [];
-    const m = rootW * 0.6; // halo 두께
-    for (let k = 0; k <= SEG; k++)
-      halo.push({ x: cx[k]! - hw[k]! - m * (1 - k / SEG), y: cy[k]! });
-    for (let k = SEG; k >= 0; k--)
-      halo.push({ x: cx[k]! + hw[k]! + m * (1 - k / SEG), y: cy[k]! });
-    g.fillStyle(color, alpha * 0.2);
-    g.fillPoints(halo, true);
-
-    // 선명한 코어
-    g.fillStyle(color, alpha);
-    g.fillPoints(core, true);
   }
 
   /**
@@ -3208,12 +3144,11 @@ export class GameScene extends Phaser.Scene {
     g.fillStyle(0x2f9940, 0.2 * pulse);
     g.fillCircle(sx, baseY - 2, baseHalf * 0.8);
 
-    // 덩어리 레이어 — 화염과 같은 방식이지만 더 뭉툭하고 느린 진폭
+    // 덩어리 레이어 — 삼각형만, 가닥 소수(화염과 동일 예산)
     const layers = [
-      { color: 0x1a4d1a, hMul: 1.0, wMul: 1.0, tongues: 7, alpha: 0.55 }, // 짙은 회록
-      { color: 0x2e7d32, hMul: 0.82, wMul: 0.72, tongues: 5, alpha: 0.65 }, // 어두운 녹
-      { color: 0x4caf50, hMul: 0.6, wMul: 0.48, tongues: 4, alpha: 0.72 }, // 독성 녹
-      { color: 0xb9f6ca, hMul: 0.38, wMul: 0.26, tongues: 2, alpha: 0.8 }, // 밝은 코어
+      { color: 0x1a4d1a, hMul: 1.0, wMul: 1.0, tongues: 4, alpha: 0.55 },
+      { color: 0x2e7d32, hMul: 0.78, wMul: 0.68, tongues: 3, alpha: 0.65 },
+      { color: 0xb9f6ca, hMul: 0.42, wMul: 0.3, tongues: 2, alpha: 0.8 },
     ];
 
     for (const layer of layers) {
@@ -3233,30 +3168,16 @@ export class GameScene extends Phaser.Scene {
           0.07 *
           (0.3 + Math.abs(u));
         const tipX = rootX + sway;
-        const midX = (rootX + tipX) / 2;
-        const midY = baseY - tipH * 0.45;
 
-        // ── 소프트 에지 halo 2단 ──
-        g.fillStyle(layer.color, layer.alpha * 0.1);
+        g.fillStyle(layer.color, layer.alpha * 0.2);
         g.fillTriangle(
-          rootX - rootW * 1.55,
+          rootX - rootW * 1.3,
           baseY,
-          rootX + rootW * 1.55,
-          baseY,
-          tipX,
-          baseY - tipH * 1.06,
-        );
-        g.fillStyle(layer.color, layer.alpha * 0.22);
-        g.fillTriangle(
-          rootX - rootW * 1.25,
-          baseY,
-          rootX + rootW * 1.25,
+          rootX + rootW * 1.3,
           baseY,
           tipX,
           baseY - tipH * 1.03,
         );
-
-        // ── 실제 덩어리 ──
         g.fillStyle(layer.color, layer.alpha);
         g.fillTriangle(
           rootX - rootW,
@@ -3266,18 +3187,16 @@ export class GameScene extends Phaser.Scene {
           tipX,
           baseY - tipH,
         );
-        g.fillTriangle(rootX - rootW, baseY, midX, midY, tipX, baseY - tipH);
       }
     }
 
-    // 솟구치는 독성 방울 — 느리게 올라가며 떨어짐
-    for (let e = 0; e < 4; e++) {
+    // 독성 방울 2개
+    for (let e = 0; e < 2; e++) {
       const rise = (t * (0.55 + e * 0.08) + e * 0.31) % 1;
       const ex = sx + Math.sin(t * 2.5 + e * 1.8) * baseHalf * 0.55;
       const ey = baseY - rise * artH * 0.95;
-      const ea = (1 - rise) * 0.75;
-      g.fillStyle(e % 2 === 0 ? 0x69f07a : 0x2e7d32, ea);
-      g.fillCircle(ex, ey, (1 - rise * 0.6) * 3.2 + 0.8);
+      g.fillStyle(e % 2 === 0 ? 0x69f07a : 0x2e7d32, (1 - rise) * 0.75);
+      g.fillCircle(ex, ey, (1 - rise * 0.6) * 3.0 + 0.8);
     }
   }
 
@@ -3382,7 +3301,7 @@ export class GameScene extends Phaser.Scene {
       for (let s = 0; s < p.strands; s++) {
         const phase = i * 1.3 + s * 2.4;
         const baseX = sx + (s - (p.strands - 1) / 2) * p.spread;
-        const segs = 8;
+        const segs = 4;
         let px0 = baseX;
         let py0 = topY;
         for (let k = 1; k <= segs; k++) {
@@ -3443,8 +3362,8 @@ export class GameScene extends Phaser.Scene {
       this.starRedrawAccMs = 0;
       this.drawStars();
     }
-    // 화염·연기·메테오·트레일: 매 프레임 clear/redraw는 저사양 버벅임의 주원인 → ≈20fps
-    const redrawFx = this.fxRedrawAccMs >= 50;
+    // 화염·연기·메테오·트레일: 매 프레임 clear/redraw는 저사양 버벅임의 주원인 → ≈12fps
+    const redrawFx = this.fxRedrawAccMs >= 80;
     if (redrawFx) this.fxRedrawAccMs = 0;
 
     // ── 바이옴 전환 (1000m마다 팔레트 순환, 렌더 전용) + 마일스톤 팡파레 ──
