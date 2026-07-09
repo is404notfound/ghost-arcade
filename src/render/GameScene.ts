@@ -628,12 +628,24 @@ export class GameScene extends Phaser.Scene {
 
     // 정전 트랩 오버레이 — 월드(depth 0) 위, HUD 텍스트(10+)·순위 칩(22) 아래.
     this.blackoutGfx = this.add.graphics().setDepth(6);
-    // WARNING / FEVER — 코드 드로우 스파이크 뱃지 (에셋 미사용 → 축소 자글거림 없음).
-    // 우측 하단 대형. FEVER는 WARNING과 같은 슬롯(피버 중엔 연막 스킵이라 충돌 없음).
-    this.warnBadge = this.makeSpikeBadge("WARNING", 0xff2d55, 0xffffff, 420, 118);
-    this.warnBadge.setPosition(DESIGN_W - 28, DESIGN_H - 72).setVisible(false);
-    this.feverBadge = this.makeSpikeBadge("FEVER!", 0xffd400, 0x1a1000, 440, 124);
-    this.feverBadge.setPosition(DESIGN_W - 28, DESIGN_H - 72).setVisible(false);
+    // WARNING / FEVER — 코드 드로우 스파이크 뱃지 (에셋과 동일: 캡슐+6스파이크).
+    // 우측 하단. FEVER는 WARNING과 같은 슬롯(피버 중엔 연막 스킵이라 충돌 없음).
+    this.warnBadge = this.makeSpikeBadge("WARNING", {
+      neon: 0xff5fa2,
+      fill: 0x140018,
+      text: 0xff7ab8,
+      w: 280,
+      h: 72,
+    });
+    this.warnBadge.setPosition(DESIGN_W - 20, DESIGN_H - 64).setVisible(false);
+    this.feverBadge = this.makeSpikeBadge("FEVER!", {
+      neon: 0xffd400,
+      fill: 0x1a1400,
+      text: 0xffe566,
+      w: 240,
+      h: 72,
+    });
+    this.feverBadge.setPosition(DESIGN_W - 20, DESIGN_H - 64).setVisible(false);
 
     // 메테오 풀은 createBackground() 안에서 태양보다 먼저 생성됨 (Z-order 보장).
     this.meteorSpawnMs = 0; // 게임 시작 즉시 첫 스폰
@@ -930,7 +942,7 @@ export class GameScene extends Phaser.Scene {
       .image(fillX, barY, "hp-fill-grad6")
       .setOrigin(0, 0.5)
       .setDepth(20)
-      .setTint(0x2ecc71); // 초기 틴트 — syncVisuals 전(타이틀)에 흰색으로 보이지 않게
+      .setTint(0x3ef0c0); // 네온 민트 — syncVisuals 전(타이틀)에 흰색으로 보이지 않게
     this.hpFill.scaleX = this.hpFillFullScale; // 초기: 풀 HP
     // 텍스처를 DPR배 고해상으로 만들었으므로 Y도 1/DPR로 되돌려 표시 높이를 맞춘다.
     this.hpFill.scaleY = this.hpFillFullScale;
@@ -1084,9 +1096,9 @@ export class GameScene extends Phaser.Scene {
       const colR = PW / 2 + gap / 2 + BW / 2;
       // 아트 구획 y (텍스처 세로 fraction, 실측) → 컨테이너 로컬 좌표
       const fy = (f: number, h: number) => (f - 0.5) * h;
-      // 오렌지 헤더 아래 5행 슬롯 — 실측 fraction + 아래로 8px(세로 정렬·헤더 여유)
+      // 오렌지 헤더 아래 5행 슬롯 — 실측 fraction + 아래로 내려 슬롯 세로 중앙에 맞춤
       const rowFy = [0.302, 0.42, 0.547, 0.668, 0.813] as const;
-      const rowYPad = 14;
+      const rowYPad = 24;
       // 네온 림·노치 안쪽까지 글자가 붙지 않게 좌우 인셋 (기존 0.12/0.10 → 살짝 여유)
       const xL = -PW / 2 + Math.round(PW * 0.17);
       const xR = PW / 2 - Math.round(PW * 0.15);
@@ -3631,7 +3643,7 @@ export class GameScene extends Phaser.Scene {
     this.hpTrack.setVisible(hpVisible);
     this.hpFrame.setVisible(hpVisible);
     const ratio = s.hp / C.HP_MAX;
-    const hpColor = ratio > 0.5 ? 0x2ecc71 : ratio > 0.25 ? 0xf1c40f : 0xff4757;
+    const hpColor = ratio > 0.5 ? 0x3ef0c0 : ratio > 0.25 ? 0xf1c40f : 0xff4757;
     this.hpFill.scaleX = ratio * this.hpFillFullScale;
     this.hpFill.setTint(hpColor);
     // 우측 끝 소프트 글로우: fill 오른쪽 가장자리에 색 맞춰 이동
@@ -3783,97 +3795,135 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 스파이크(톱니) 테두리 뱃지 — WARNING/FEVER 공용.
-   * 에셋 축소 AA 자글거림을 피하려고 Graphics로 그린다. origin = 우하단.
+   * 스파이크 뱃지 — warn-bubble 에셋과 동일 실루엣.
+   * 둥근 캡슐 본체 + 상하 각 2개·좌우 각 1개(총 6) 삼각 스파이크 + 네온 글로우.
+   * Graphics 벡터라 축소 AA 자글거림 없음. origin = 우하단.
    */
   private makeSpikeBadge(
     label: string,
-    fill: number,
-    textColor: number,
-    w: number,
-    h: number,
+    opt: { neon: number; fill: number; text: number; w: number; h: number },
   ): Phaser.GameObjects.Container {
+    const { neon, fill, text, w, h } = opt;
     const gfx = this.add.graphics();
-    const spikes = 14;
-    const tip = 14;
-    const pts: { x: number; y: number }[] = [];
-    // 상단 스파이크 (좌→우)
-    for (let i = 0; i <= spikes; i++) {
-      const t = i / spikes;
-      const x = -w + t * w;
-      const y = -h + (i % 2 === 0 ? 0 : tip);
-      pts.push({ x, y });
-    }
-    // 우측 스파이크 (상→하)
-    for (let i = 1; i <= Math.round(spikes * 0.45); i++) {
-      const t = i / Math.round(spikes * 0.45);
-      const y = -h + t * h;
-      const x = (i % 2 === 0 ? 0 : tip);
-      pts.push({ x, y });
-    }
-    // 하단 스파이크 (우→좌)
-    for (let i = 1; i <= spikes; i++) {
-      const t = i / spikes;
-      const x = -t * w;
-      const y = (i % 2 === 0 ? 0 : -tip);
-      pts.push({ x, y });
-    }
-    // 좌측 스파이크 (하→상)
-    for (let i = 1; i < Math.round(spikes * 0.45); i++) {
-      const t = i / Math.round(spikes * 0.45);
-      const y = -t * h;
-      const x = -w + (i % 2 === 0 ? 0 : tip);
-      pts.push({ x, y });
-    }
-    // 흰 외곽 → 본체 채움 (벡터라 축소해도 선명)
-    gfx.fillStyle(0xffffff, 1);
-    gfx.beginPath();
-    gfx.moveTo(pts[0]!.x, pts[0]!.y);
-    for (let i = 1; i < pts.length; i++) gfx.lineTo(pts[i]!.x, pts[i]!.y);
-    gfx.closePath();
-    gfx.fillPath();
-    // 안쪽 본체를 중심 쪽으로 살짝 스케일 — 흰 테두리처럼 보이게
-    const inset = 5;
-    const cx = -w / 2;
-    const cy = -h / 2;
-    const scaleIn = 1 - (inset * 2) / Math.min(w, h);
-    gfx.fillStyle(fill, 1);
-    gfx.beginPath();
-    const p0x = cx + (pts[0]!.x - cx) * scaleIn;
-    const p0y = cy + (pts[0]!.y - cy) * scaleIn;
-    gfx.moveTo(p0x, p0y);
-    for (let i = 1; i < pts.length; i++) {
-      gfx.lineTo(
-        cx + (pts[i]!.x - cx) * scaleIn,
-        cy + (pts[i]!.y - cy) * scaleIn,
-      );
-    }
-    gfx.closePath();
-    gfx.fillPath();
+    // 로컬 좌표: 우하단(0,0) 기준, 뱃지는 왼쪽·위쪽(-w,-h)에 그림
+    const x0 = -w;
+    const y0 = -h;
+    const r = h * 0.48; // 캡슐 라운드
+    const spike = Math.round(h * 0.28); // 스파이크 돌출
 
-    const hex = `#${textColor.toString(16).padStart(6, "0")}`;
+    // 외곽 경로: 캡슐 + 6스파이크 (시계방향, 좌상단 근처에서 시작)
+    // 상단 스파이크 x = 1/3, 2/3 / 하단 동일 / 좌·우 중앙
+    const topY = y0;
+    const botY = y0 + h;
+    const leftX = x0;
+    const rightX = x0 + w;
+    const midY = y0 + h / 2;
+    const sx1 = x0 + w * 0.33;
+    const sx2 = x0 + w * 0.67;
+
+    const buildPath = (g: Phaser.GameObjects.Graphics, pad: number) => {
+      // pad>0 이면 바깥으로 팽창(글로우 레이어용)
+      const L = leftX - pad;
+      const R = rightX + pad;
+      const T = topY - pad;
+      const B = botY + pad;
+      const rr = r + pad * 0.5;
+      const sp = spike + pad;
+      const mY = midY;
+      const s1 = sx1;
+      const s2 = sx2;
+      g.beginPath();
+      // 좌상단 라운드 시작 → 상단 스파이크들 → 우상단 라운드 → 우측 스파이크
+      // → 우하단 라운드 → 하단 스파이크들 → 좌하단 라운드 → 좌측 스파이크 → 닫기
+      g.moveTo(L + rr, T);
+      // 상단 스파이크 1
+      g.lineTo(s1 - sp * 0.55, T);
+      g.lineTo(s1, T - sp);
+      g.lineTo(s1 + sp * 0.55, T);
+      // 상단 스파이크 2
+      g.lineTo(s2 - sp * 0.55, T);
+      g.lineTo(s2, T - sp);
+      g.lineTo(s2 + sp * 0.55, T);
+      g.lineTo(R - rr, T);
+      // 우상단 호
+      g.arc(R - rr, T + rr, rr, -Math.PI / 2, 0, false);
+      // 우측 스파이크
+      g.lineTo(R, mY - sp * 0.55);
+      g.lineTo(R + sp, mY);
+      g.lineTo(R, mY + sp * 0.55);
+      g.lineTo(R, B - rr);
+      // 우하단 호
+      g.arc(R - rr, B - rr, rr, 0, Math.PI / 2, false);
+      // 하단 스파이크 2 (우→좌)
+      g.lineTo(s2 + sp * 0.55, B);
+      g.lineTo(s2, B + sp);
+      g.lineTo(s2 - sp * 0.55, B);
+      g.lineTo(s1 + sp * 0.55, B);
+      g.lineTo(s1, B + sp);
+      g.lineTo(s1 - sp * 0.55, B);
+      g.lineTo(L + rr, B);
+      // 좌하단 호
+      g.arc(L + rr, B - rr, rr, Math.PI / 2, Math.PI, false);
+      // 좌측 스파이크
+      g.lineTo(L, mY + sp * 0.55);
+      g.lineTo(L - sp, mY);
+      g.lineTo(L, mY - sp * 0.55);
+      g.lineTo(L, T + rr);
+      // 좌상단 호
+      g.arc(L + rr, T + rr, rr, Math.PI, (Math.PI * 3) / 2, false);
+      g.closePath();
+    };
+
+    // 네온 글로우 — 바깥→안 여러 겹 (Graphics는 blur 미지원)
+    const glowLayers = [
+      { pad: 10, a: 0.06 },
+      { pad: 7, a: 0.1 },
+      { pad: 4, a: 0.16 },
+      { pad: 2, a: 0.28 },
+    ];
+    for (const gl of glowLayers) {
+      gfx.fillStyle(neon, gl.a);
+      buildPath(gfx, gl.pad);
+      gfx.fillPath();
+    }
+    // 본체 다크 필
+    gfx.fillStyle(fill, 0.94);
+    buildPath(gfx, 0);
+    gfx.fillPath();
+    // 네온 스트로크 (두껍게 → 가독·에셋 톤)
+    gfx.lineStyle(3.5, neon, 0.95);
+    buildPath(gfx, 0);
+    gfx.strokePath();
+    // 안쪽 하이라이트 림
+    gfx.lineStyle(1.4, 0xffffff, 0.28);
+    buildPath(gfx, 0);
+    gfx.strokePath();
+
+    const hex = `#${text.toString(16).padStart(6, "0")}`;
+    const fontPx = label.length > 6 ? 22 : 26;
     const txt = this.add
-      .text(-w / 2, -h / 2, label, {
-        fontSize: label.length > 6 ? "36px" : "42px",
+      .text(x0 + w / 2, y0 + h / 2, label, {
+        fontSize: `${fontPx}px`,
         fontFamily: FONT_HUD,
         fontStyle: "bold",
         color: hex,
         resolution: TXT_RES,
       })
       .setOrigin(0.5)
-      .setStroke("#0a0018", 6);
+      .setStroke("#0a0018", 5)
+      .setShadow(0, 0, `#${neon.toString(16).padStart(6, "0")}`, 8, true, true);
 
     return this.add.container(0, 0, [gfx, txt]).setDepth(36);
   }
 
-  /** 포션 획득 — HP바 좌상단에 작은 "HP+" 토스트 */
+  /** 포션 획득 — HP바 좌상단에 작은 "HP+" 토스트 (네온 민트) */
   private showHpPlusToast(): void {
     const txt = this.add
       .text(this.hpBarLeftX + 6, this.hpBarTopY - 4, "HP+", {
         fontSize: "13px",
         fontFamily: FONT_HUD,
         fontStyle: "bold",
-        color: "#4dabf7",
+        color: "#3ef0c0",
         resolution: TXT_RES,
       })
       .setOrigin(0, 1)
