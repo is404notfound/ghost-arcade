@@ -158,10 +158,10 @@ function blendBiome(a: BiomePalette, b: BiomePalette, t: number): BiomePalette {
 const BLACKOUT_START_M = 1000; // 첫 발동 최소 거리 — 초반 유저는 안 만난다
 const BLACKOUT_GAP_MIN_M = 700; // 발동 간 최소 간격(m)
 const BLACKOUT_GAP_JITTER_M = 500; // 간격 지터(m) — 시드 LCG로 결정
-const BLACKOUT_WARN_MS = 1200; // 예고(플리커) 시간
+const BLACKOUT_WARN_MS = 2200; // 예고(플리커) 시간 — 너무 짧으면 인지 전에 사라짐
 const BLACKOUT_SWEEP_IN_MS = 900; // 연기 스윕인 — 우측 끝→중앙까지 천천히 덮임
 const BLACKOUT_DARK_MS = 3000; // 차단 유지(스윕인 포함)
-const BLACKOUT_FADE_OUT_MS = 800; // 부드러운 페이드아웃
+const BLACKOUT_FADE_OUT_MS = 900; // 스윕아웃(왼쪽부터 걷힘 → 우측으로 밀려남)
 const BLACKOUT_MAX_ALPHA = 1; // 완전 차단 — 실루엣도 안 보이게 (플레이 피드백)
 const BLACKOUT_COLOR = 0x1a1a20; // 더 짙은 연기 회색 (검정보다 살짝 밝은 톤만 유지)
 // 0.45→0.7: 절반 차단은 너무 어렵다는 플레이 피드백 — 우측 30%만 차단
@@ -637,7 +637,8 @@ export class GameScene extends Phaser.Scene {
       w: 280,
       h: 72,
     });
-    this.warnBadge.setPosition(DESIGN_W - 20, DESIGN_H - 64).setVisible(false);
+    // 우측 여백 확보 — 화면 끝에 붙지 않게 안쪽으로
+    this.warnBadge.setPosition(DESIGN_W - 96, DESIGN_H - 64).setVisible(false);
     this.feverBadge = this.makeSpikeBadge("FEVER!", {
       neon: 0xffd400,
       fill: 0x1a1400,
@@ -645,7 +646,7 @@ export class GameScene extends Phaser.Scene {
       w: 240,
       h: 72,
     });
-    this.feverBadge.setPosition(DESIGN_W - 20, DESIGN_H - 64).setVisible(false);
+    this.feverBadge.setPosition(DESIGN_W - 96, DESIGN_H - 64).setVisible(false);
 
     // 메테오 풀은 createBackground() 안에서 태양보다 먼저 생성됨 (Z-order 보장).
     this.meteorSpawnMs = 0; // 게임 시작 즉시 첫 스폰
@@ -1018,9 +1019,9 @@ export class GameScene extends Phaser.Scene {
       rim.strokeRoundedRect(0.5, 0.5, RP_W - 1, RP_H - 1, 11);
       rim.lineStyle(1.2, rimHi, isMe ? 0.55 : 0.42);
       rim.strokeRoundedRect(2, 2, RP_W - 4, RP_H - 4, 9);
-      // y: 칩 세로 중앙보다 2px 위 — 네온 림·하단 글로우 때문에 시각 중심이 살짝 아래로 보임
+      // y: 칩 세로 중앙보다 2px 아래 — 네온 림·상단 글로우 때문에 시각 중심이 위로 보임
       const txt = this.add
-        .text(RP_W / 2, RP_H / 2 - 2, rpLabels[i]!, {
+        .text(RP_W / 2, RP_H / 2 + 2, rpLabels[i]!, {
           fontSize: isMe ? "15px" : "13px",
           color: isMe ? "#ffd700" : "#00e5ff",
           fontFamily: FONT_HUD,
@@ -1096,9 +1097,10 @@ export class GameScene extends Phaser.Scene {
       const colR = PW / 2 + gap / 2 + BW / 2;
       // 아트 구획 y (텍스처 세로 fraction, 실측) → 컨테이너 로컬 좌표
       const fy = (f: number, h: number) => (f - 0.5) * h;
-      // 오렌지 헤더 아래 5행 슬롯 — 실측 fraction + 아래로 내려 슬롯 세로 중앙에 맞춤
-      const rowFy = [0.302, 0.42, 0.547, 0.668, 0.813] as const;
-      const rowYPad = 24;
+      // 오렌지 헤더 아래 5행 슬롯 — divider 실측 fraction을 살짝 내려 슬롯 세로 중앙에 맞춤.
+      // (균일 pad로 밀면 하단 행이 슬롯 밖으로 이탈하는 회귀가 났음)
+      const rowFy = [0.322, 0.438, 0.562, 0.682, 0.825] as const;
+      const rowYPad = 0;
       // 네온 림·노치 안쪽까지 글자가 붙지 않게 좌우 인셋 (기존 0.12/0.10 → 살짝 여유)
       const xL = -PW / 2 + Math.round(PW * 0.17);
       const xR = PW / 2 - Math.round(PW * 0.15);
@@ -2210,22 +2212,17 @@ export class GameScene extends Phaser.Scene {
     this.refreshDailyPanel(myDist);
     this.refreshWeeklyPanel();
     this.gameOverRoot.setVisible(true);
-    // Replay 에셋+라벨 함께 천천히 점멸 — CTA 시선 유도 (렌더 전용)
-    const blinkTargets: Phaser.GameObjects.GameObject[] = [];
+    // Replay: 라벨만 점멸. 에셋까지 같이 내리면 프레임이 너무 옅어져 CTA가 약해 보임.
     if (this.replayBg) {
       this.tweens.killTweensOf(this.replayBg);
       this.replayBg.setAlpha(1);
-      blinkTargets.push(this.replayBg);
     }
     if (this.replayLabel) {
       this.tweens.killTweensOf(this.replayLabel);
       this.replayLabel.setAlpha(1);
-      blinkTargets.push(this.replayLabel);
-    }
-    if (blinkTargets.length) {
       this.tweens.add({
-        targets: blinkTargets,
-        alpha: { from: 1, to: 0.35 },
+        targets: this.replayLabel,
+        alpha: { from: 1, to: 0.4 },
         duration: 900,
         yoyo: true,
         repeat: -1,
@@ -2483,9 +2480,11 @@ export class GameScene extends Phaser.Scene {
         break;
       }
       case "recover": {
-        // 연기가 걷히듯 부드러운 페이드아웃
+        // 왼쪽부터 걷혀 우측으로 밀려나며 사라짐 (sweep 1→0). 알파 페이드만 하면 "그냥 증발"로 보임.
         const p = Math.min(1, el / BLACKOUT_FADE_OUT_MS);
-        this.drawBlackoutOverlay(BLACKOUT_MAX_ALPHA * (1 - p) * (1 - p), 1);
+        const ease = p * p; // ease-in — 초반 천천히, 끝에서 빠르게 빠짐
+        const sweep = 1 - ease;
+        this.drawBlackoutOverlay(BLACKOUT_MAX_ALPHA, sweep);
         if (p >= 1) {
           this.blackoutPhase = "idle";
           this.blackoutGfx.clear();
