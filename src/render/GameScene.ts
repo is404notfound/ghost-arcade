@@ -780,7 +780,7 @@ export class GameScene extends Phaser.Scene {
         fontSize: "13px",
         fontFamily: FONT_KR,
         fontStyle: "bold",
-        color: "#5efce8",
+        color: "#ffd700",
         resolution: TXT_RES,
         stroke: "#0a0018",
         strokeThickness: 4,
@@ -1402,26 +1402,69 @@ export class GameScene extends Phaser.Scene {
         .setDisplaySize(dispW, dispH);
       const veil = this.add
         .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.22);
-      const copy = this.add
+      // 카피·Start를 화면 중하단으로 — 슬라이드 이미지 상단 하늘과 겹침 완화
+      const copyY = DESIGN_H * 0.55;
+      const introNick = getNickname(window.localStorage);
+      const copyStyle = {
+        fontSize: "17px",
+        fontFamily: FONT_KR,
+        color: "#e8e0ff",
+        align: "center" as const,
+        lineSpacing: 6,
+        resolution: TXT_RES,
+      };
+      const copyTop = this.add
         .text(
-          DESIGN_W / 2,
-          DESIGN_H * 0.38,
-          "종말이 다가오자, 수많은 이들이\n그 비밀을 쫓다 쓰러졌다.\n\n마지막 등불, 그 흔적을 밟으며 다시 달린다.",
-          {
-            fontSize: "17px",
-            fontFamily: FONT_KR,
-            color: "#e8e0ff",
-            align: "center",
-            lineSpacing: 6,
-            resolution: TXT_RES,
-            wordWrap: { width: DESIGN_W - 80 },
-          },
+          0,
+          0,
+          "종말이 다가오자,\n수많은 이들이 그 비밀을 쫓다 쓰러졌다.",
+          { ...copyStyle, wordWrap: { width: DESIGN_W - 80 } },
         )
-        .setOrigin(0.5)
+        .setOrigin(0.5, 0)
         .setStroke("#0a0018", 5);
+      // 닉네임만 노란 강조 — Phaser Text는 한 오브젝트 다색 미지원이라 조각 합성
+      const nickPrefix = this.add
+        .text(0, 0, "마지막 등불 ", copyStyle)
+        .setOrigin(0, 0.5)
+        .setStroke("#0a0018", 5);
+      const nickHl = this.add
+        .text(0, 0, introNick, {
+          ...copyStyle,
+          color: "#ffd700",
+          fontStyle: "bold",
+        })
+        .setOrigin(0, 0.5)
+        .setStroke("#0a0018", 5);
+      const nickSuffix = this.add
+        .text(0, 0, "(당신),", copyStyle)
+        .setOrigin(0, 0.5)
+        .setStroke("#0a0018", 5);
+      const nickRowW =
+        nickPrefix.width + nickHl.width + nickSuffix.width;
+      nickPrefix.setX(-nickRowW / 2);
+      nickHl.setX(nickPrefix.x + nickPrefix.width);
+      nickSuffix.setX(nickHl.x + nickHl.width);
+      const nickRow = this.add.container(0, copyTop.height + 18, [
+        nickPrefix,
+        nickHl,
+        nickSuffix,
+      ]);
+      const copyBot = this.add
+        .text(0, nickRow.y + 22, "그 흔적을 밟으며 다시 달리는데...", {
+          ...copyStyle,
+          wordWrap: { width: DESIGN_W - 80 },
+        })
+        .setOrigin(0.5, 0)
+        .setStroke("#0a0018", 5);
+      const copyH = copyBot.y + copyBot.height;
+      const copy = this.add.container(DESIGN_W / 2, copyY, [
+        copyTop,
+        nickRow,
+        copyBot,
+      ]);
       // 카피 바로 아래 중앙 Start — 가시성↑(2배) + 부드러운 점멸(CTA)
       this.introNextBtn = this.add
-        .text(DESIGN_W / 2, DESIGN_H * 0.38 + 92, "Start →", {
+        .text(DESIGN_W / 2, copyY + copyH + 28, "Start →", {
           fontSize: "36px",
           fontFamily: FONT_HUD,
           fontStyle: "bold",
