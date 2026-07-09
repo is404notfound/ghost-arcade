@@ -960,23 +960,22 @@ export class GameScene extends Phaser.Scene {
       .setDisplaySize(barW, barH)
       .setDepth(21);
     // 하트 스트로크 안을 회색으로 채움 — 프레임(21) 아래, 게이지 fill(20) 위.
-    // 에셋 하트 아웃라인보다 살짝 작게 그려 스트로크 밖으로 안 넘치게.
+    // 에셋 하트보다 작게, 살짝 왼쪽으로 — 우측 스트로크 밖으로 안 넘치게.
     {
-      const heartCx = DESIGN_W / 2 + barW * 0.425;
+      const heartCx = DESIGN_W / 2 + barW * 0.405;
       const heartCy = barY - 0.5;
-      const hs = barH * 0.155; // 에셋 하트보다 작게 (이전 0.22는 아웃라인 밖으로 넘침)
+      const hs = barH * 0.125;
       const heart = this.add.graphics().setDepth(20.5);
       heart.fillStyle(0x6a7580, 0.92);
-      // 두 원(상단 lobe) + 하단 다이아몬드
-      heart.fillCircle(heartCx - hs * 0.52, heartCy - hs * 0.12, hs * 0.62);
-      heart.fillCircle(heartCx + hs * 0.52, heartCy - hs * 0.12, hs * 0.62);
+      heart.fillCircle(heartCx - hs * 0.5, heartCy - hs * 0.1, hs * 0.58);
+      heart.fillCircle(heartCx + hs * 0.5, heartCy - hs * 0.1, hs * 0.58);
       heart.fillTriangle(
-        heartCx - hs * 1.05,
-        heartCy + hs * 0.05,
-        heartCx + hs * 1.05,
-        heartCy + hs * 0.05,
+        heartCx - hs * 0.98,
+        heartCy + hs * 0.08,
+        heartCx + hs * 0.98,
+        heartCy + hs * 0.08,
         heartCx,
-        heartCy + hs * 1.15,
+        heartCy + hs * 1.05,
       );
     }
     // 포션 "HP+" 토스트 앵커 — 체력바 좌상단
