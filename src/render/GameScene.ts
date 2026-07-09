@@ -495,7 +495,7 @@ export class GameScene extends Phaser.Scene {
   private zoomPunch = { t: 0 }; // 펀치 줌 트윈 상태 (0 = 기본 줌)
   private sunRedrawAccMs = 0; // 태양 재드로우 누적 ms (≈10fps 스로틀)
   private starRedrawAccMs = 0; // 별 반짝임 재드로우 누적 ms (≈10fps)
-  private fxRedrawAccMs = 0; // 화염·연기·메테오·트레일 등 고비용 이펙트 (≈12fps)
+  private fxRedrawAccMs = 0; // 메테오·트레일·연기 등 (≈12fps). 화염은 매 프레임.
   // ── 정전 트랩 상태 (렌더 전용) ──
   private blackoutGfx!: Phaser.GameObjects.Graphics;
   /** 암전 예고 — 코드 드로우 스파이크 WARNING 뱃지 (에셋 미사용) */
@@ -3064,11 +3064,11 @@ export class GameScene extends Phaser.Scene {
     g.fillStyle(0xff7a1c, 0.2 * pulse);
     g.fillCircle(sx, baseY - 2, baseHalf * 1.15 * pulse);
 
-    // 불혀 — 바깥→코어 3레이어, 가닥 소수. 삼각형만 사용.
+    // 불혀 — 바깥→코어. 가닥을 살짝 늘려 일렁임이 더 부드럽게 보이게.
     const layers = [
-      { color: 0xc41e1e, hMul: 1.0, wMul: 1.0, tongues: 4, alpha: 0.48 },
-      { color: 0xff8a1c, hMul: 0.78, wMul: 0.68, tongues: 3, alpha: 0.62 },
-      { color: 0xfff0a8, hMul: 0.48, wMul: 0.32, tongues: 2, alpha: 0.88 },
+      { color: 0xc41e1e, hMul: 1.0, wMul: 1.0, tongues: 5, alpha: 0.46 },
+      { color: 0xff8a1c, hMul: 0.8, wMul: 0.7, tongues: 4, alpha: 0.6 },
+      { color: 0xfff0a8, hMul: 0.5, wMul: 0.34, tongues: 3, alpha: 0.88 },
     ];
 
     for (let li = 0; li < layers.length; li++) {
@@ -3080,24 +3080,25 @@ export class GameScene extends Phaser.Scene {
         const rootX = sx + u * layerHalf;
         const rootW = Math.max(2.5, (layerHalf / layer.tongues) * 2.0);
         const heightFall = 1 - Math.abs(u) * 0.4;
+        // 저주파 일렁임 — 프레임마다 그려도 깜빡임이 과하지 않게
         const flick =
-          0.72 + 0.28 * Math.sin(t * (5.5 + s * 0.6) + phase + s * 1.5);
+          0.78 + 0.22 * Math.sin(t * (3.2 + s * 0.35) + phase + s * 1.2);
         const tipH = layerH * heightFall * flick;
         const sway =
-          Math.sin(t * 3.8 + s * 0.9 + phase + li) *
+          Math.sin(t * 2.6 + s * 0.7 + phase + li * 0.4) *
           artH *
-          0.08 *
+          0.07 *
           (0.35 + Math.abs(u));
         const tipX = rootX + sway;
 
-        g.fillStyle(layer.color, layer.alpha * 0.22);
+        g.fillStyle(layer.color, layer.alpha * 0.2);
         g.fillTriangle(
-          rootX - rootW * 1.35,
+          rootX - rootW * 1.3,
           baseY,
-          rootX + rootW * 1.35,
+          rootX + rootW * 1.3,
           baseY,
           tipX,
-          baseY - tipH * 1.04,
+          baseY - tipH * 1.03,
         );
         g.fillStyle(layer.color, layer.alpha);
         g.fillTriangle(
@@ -3111,14 +3112,14 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // 불씨 2개만 — 반짝임 유지, 드로우 최소
-    for (let e = 0; e < 2; e++) {
-      const rise = (t * (0.9 + e * 0.15) + e * 0.37) % 1;
-      const ex = sx + Math.sin(t * 4 + e * 2.2) * baseHalf * 0.55;
+    // 불씨 — 느리게 떠올라 끊김 없이
+    for (let e = 0; e < 3; e++) {
+      const rise = (t * (0.55 + e * 0.12) + e * 0.37) % 1;
+      const ex = sx + Math.sin(t * 2.8 + e * 2.2) * baseHalf * 0.55;
       const ey = baseY - rise * artH * 1.1;
-      const tw = 0.5 + 0.5 * Math.sin(t * 16 + e * 3);
-      g.fillStyle(e % 2 === 0 ? 0xfff3c0 : 0xff9a3c, (1 - rise) * 0.8 * tw);
-      g.fillCircle(ex, ey, (1 - rise) * 1.8 + 0.4);
+      const tw = 0.55 + 0.45 * Math.sin(t * 9 + e * 2.5);
+      g.fillStyle(e % 2 === 0 ? 0xfff3c0 : 0xff9a3c, (1 - rise) * 0.75 * tw);
+      g.fillCircle(ex, ey, (1 - rise) * 1.7 + 0.4);
     }
   }
 
@@ -3362,7 +3363,8 @@ export class GameScene extends Phaser.Scene {
       this.starRedrawAccMs = 0;
       this.drawStars();
     }
-    // 화염·연기·메테오·트레일: 매 프레임 clear/redraw는 저사양 버벅임의 주원인 → ≈12fps
+    // 메테오·트레일·연기: ≈12fps. 화염(code-flame)은 매 프레임 —
+    // 스로틀하면 장애물 스크롤과 어긋나 뚝뚝 끊겨 보인다.
     const redrawFx = this.fxRedrawAccMs >= 80;
     if (redrawFx) this.fxRedrawAccMs = 0;
 
@@ -3660,8 +3662,10 @@ export class GameScene extends Phaser.Scene {
         r.setPosition(toScreenX(o.x), GROUND_Y_PX);
       }
     }
+    // 코드 화염/오염수 — 매 프레임 재드로우(스크롤 동기·일렁임 부드러움).
+    // fillTriangle 경로라 비용이 낮아 60fps에서도 감당 가능.
+    this.drawCodeObstacles(world);
     if (redrawFx) {
-      this.drawCodeObstacles(world);
       this.drawObstacleSmoke(world);
     }
     for (let i = 0; i < C.MAX_POTIONS; i++) {
