@@ -84,7 +84,8 @@ office-hours 2회차 채택(제안 상태). 상세는 DESIGN.md "플랫폼 Thesi
 
 ### 텍스트 / 폰트 / 색상 UI 폴리시 (Claude Skill로 검토 후 교체)
 - 현재 모든 UI 텍스트는 기본 폰트(monospace/sans)를 코드로 지정. 게임 분위기(synthwave 시티팝)에 맞는 폰트로 통일 필요.
-  - 후보: **"VT323"**(도트 레트로), **"Orbitron"**(SF), **"Rajdhani"**(미래형 고딕) — Google Fonts 무료
+  - 적용: **"Oxanium"**(HUD/스코어보드) + **Noto Sans KR**(한국어). Orbitron은 소형 칩에서 획이 뭉개져 교체.
+  - 후보(미사용): **"VT323"**(도트 레트로), **"Rajdhani"**(미래형 고딕) — Google Fonts 무료
   - 적용 우선순위: 거리 텍스트 > 랭킹 패널 > HP 라벨 > 팝업 텍스트
 - 색상 스타일: 현재 하드코딩된 '#ffffff', '#aaaaaa' 등을 게임 팔레트(시안 #5efce8, 마젠타 #ff5fa2 등) 기반으로 통일
 - Claude "update-cursor-settings" 또는 스타일 시트 리뷰 스킬로 글로벌 UI 스타일 정리 검토

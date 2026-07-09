@@ -120,6 +120,33 @@ def _hard_cut_alpha(im: Image.Image, min_alpha: int = 28) -> Image.Image:
     return im
 
 
+def _clear_heart_top_black(im: Image.Image) -> Image.Image:
+    """하트 상단 lobe에 남은 불투명 검정/거의검정·어두운 시안 띠를 투명화.
+
+    소스/리사이즈 과정에서 하트 꼭대기 근처에 까만/짙은 청록 띠가 남는 경우가 있음
+    (예: y≈15의 (0,21,33) 수평선). 우측 하트 구획 상단에서만 처리.
+    밝은 시안 네온 림(mx 높음)은 보존.
+    """
+    px = im.load()
+    w, h = im.size
+    x0 = int(w * 0.88)
+    y1 = int(h * 0.42)
+    for y in range(0, y1):
+        for x in range(x0, w):
+            r, g, b, a = px[x, y]
+            if a < 12:
+                continue
+            mx = max(r, g, b)
+            mn = min(r, g, b)
+            sat = (mx - mn) / mx if mx > 0 else 0.0
+            # 거의 검정 / 어두운 청록 띠 — 밝은 네온(mx>70)은 남김
+            if mx <= 48:
+                px[x, y] = (r, g, b, 0)
+            elif mx <= 60 and sat <= 0.45 and a < 220:
+                px[x, y] = (r, g, b, 0)
+    return im
+
+
 def prep_hp_frame() -> None:
     im = Image.open(os.path.join(SRC, "hp-frame-src.png")).convert("RGBA")
     # bbox 트림 (알파 > 10 — 약한 네온 글로우도 포함)
@@ -139,10 +166,13 @@ def prep_hp_frame() -> None:
     #   어두운 패딩 트림은 하지 않는다(라운드 보존 우선).
     im = _defringe(im, alpha_hi=90, lum_hi=170, sat_max=0.25)
     im = _hard_cut_alpha(im, min_alpha=18)
+    # ★ 하트 상단 까만 영역(prep/소스 아티팩트) 제거
+    im = _clear_heart_top_black(im)
     r_, g_, b_, a_ = im.split()
     a_ = a_.filter(ImageFilter.GaussianBlur(0.6))
     im = Image.merge("RGBA", (r_, g_, b_, a_))
     im = _hard_cut_alpha(im, min_alpha=14)
+    im = _clear_heart_top_black(im)  # 블러 후 재잔여 제거
     out_path = os.path.join(OUT, "hp-frame.png")
     im.save(out_path, "PNG")
     print(f"  hp-frame.png → {im.size}  (aspect {tw/th:.2f})")

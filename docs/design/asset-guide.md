@@ -652,6 +652,9 @@ NEGATIVE: colored, text, shape detail, white or black background, star outline
 > (`Graphics.fillGradientStyle → generateTexture`는 일부 환경에서 투명 텍스처가 돼 "점만" 보이는 버그.)
 > 시트 소스: `assets/images/ui/hp-bar-sheet-src.png`(프레임/fill/하트 3단) → 프레임만 슬라이스해
 > `hp-frame-src.png`로 저장 후 prep. fringe 컷은 완화해 네온 글로우를 보존.
+> **2026-07-09:** 하트 상단 까만/짙은 청록 띠는 `prep-ui.py`의 `_clear_heart_top_black`으로 제거.
+> 만땅 fill은 `HP_R_FRAC≈0.965`(캐비티 우측까지). 하트 꼭대기가 소스에서 잘려 보이면
+> `hp-frame-src`를 프롬프트(하트 아웃라인만, 상단 검정 매트 금지)로 재생성.
 
 
 | 파트            | 용도            | 권장 크기(@3x)          | 비고                              |
@@ -710,7 +713,7 @@ baked into frame, matte fringe, drop shadow on ground, multiple bars, game chara
 ### 5.7B UI 패널 — 랭킹 / 튜토리얼 / 게임오버 ★신규 (현재 코드 Rectangle → 에셋 교체)
 
 > 공통: 전부 **9-slice 가능한 프레임**으로 받아 폭/높이 가변 합성. 글자·숫자는 게임에서 코드 렌더
-> (Orbitron/Noto Sans KR). 팔레트는 HUD 통일 — 시안 `#36f9f6`/`#00e5ff`, 위험 마젠타 `#ff2d55`,
+> (Oxanium/Noto Sans KR). 팔레트는 HUD 통일 — 시안 `#36f9f6`/`#00e5ff`, 위험 마젠타 `#ff2d55`,
 > 다크 바디 `#060010`~`#10081f`. 정면 플랫(원근 금지), 투명 배경, 글자 없이.
 
 **(1) rank-panel — 상단 거리 랭킹 칩 (가로 4칸, 슬롯형)**
@@ -876,6 +879,7 @@ busy ornaments, characters
 > (`blackoutWarnBubble` Image). 알파 사인 점멸은 코드 유지.
 > 상세: `docs/design/ux-polish-2026-07.md` §4.
 > prep: `warn-bubble-src.png` → `prep-ui.py` → `assets/game/warn-bubble.png` (**504×164**).
+> 인게임 표시 폭 **≈210px**(이전 168 → 확대).
 
 
 | 파트            | 용도           | 권장 크기(@3x)     | 비고                                |
@@ -1067,7 +1071,7 @@ NEGATIVE: happy upbeat pop, acoustic guitar, orchestral strings, choir, loud sir
 **카피(코드 오버레이, 이미지엔 굽지 말 것):**
 
 ```
-종말이 되돌아오자, 수많은 이들이 그 비밀을 쫓다 쓰러졌다.
+종말이 다가오자, 수많은 이들이 그 비밀을 쫓다 쓰러졌다.
 마지막 등불, 그 흔적을 밟으며 다시 달린다.
 ```
 
