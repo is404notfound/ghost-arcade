@@ -471,6 +471,9 @@ export class GameScene extends Phaser.Scene {
   private bgBridgesTile!: Phaser.GameObjects.TileSprite;
   private bgBridgesCurvedTile!: Phaser.GameObjects.TileSprite;
   private sunGraphics!: Phaser.GameObjects.Graphics; // 코드 태양 — 렌더 전용 (일렁 애니 포함)
+  private starGfx!: Phaser.GameObjects.Graphics; // 밤하늘 네온 노란 별 — 렌더 전용
+  private starField: { x: number; y: number; r: number; phase: number; tw: number }[] =
+    [];
   private groundGrid!: Phaser.GameObjects.Graphics;
   // 장애물 주변에서 피어오르는 연기 — 두꺼운 웨이브 선, 렌더 전용 코드 드로우. sim 무관.
   private smokeGfx!: Phaser.GameObjects.Graphics;
@@ -490,7 +493,8 @@ export class GameScene extends Phaser.Scene {
   private biomeLastMs = 0; // mix 적분용 직전 renderTimeMs
   private lastKmMilestone = 0; // 마일스톤 팡파레 중복 방지
   private zoomPunch = { t: 0 }; // 펀치 줌 트윈 상태 (0 = 기본 줌)
-  private sunRedrawToggle = false; // 태양 재드로우 30fps 스로틀용 토글
+  private sunRedrawAccMs = 0; // 태양 재드로우 누적 ms (≈12fps 스로틀)
+  private starRedrawAccMs = 0; // 별 반짝임 재드로우 누적 ms (≈20fps)
   // ── 정전 트랩 상태 (렌더 전용) ──
   private blackoutGfx!: Phaser.GameObjects.Graphics;
   /** 암전 예고 — 코드 드로우 스파이크 WARNING 뱃지 (에셋 미사용) */
@@ -1452,8 +1456,8 @@ export class GameScene extends Phaser.Scene {
         .setDepth(110)
         .setVisible(false);
       this.introOverlay.setData("dispH", dispH);
-      // 시작: 바닥보다 살짝 위(≈36px)에서 슬라이드 시작 — 맨 아래 붙음 완화
-      this.introOverlay.setData("startY", DESIGN_H - 36);
+      // 시작: 화면 하단에서 꽤 위(≈130px)에서 슬라이드 — 맨 아래에서 올라오는 느낌 완화
+      this.introOverlay.setData("startY", DESIGN_H - 130);
       // 끝: 이미지 상단이 뷰포트 상단에 오도록 (origin bottom → y = dispH)
       this.introOverlay.setData("endY", dispH);
       this.beginIntro();
@@ -1967,6 +1971,8 @@ export class GameScene extends Phaser.Scene {
     if (!this.gamePaused) {
       // 렌더 전용 시계 — 레이저·이펙트 연출에만 사용 (sim과 완전 분리)
       this.renderTimeMs += delta;
+      this.sunRedrawAccMs += delta;
+      this.starRedrawAccMs += delta;
       // 코드 메테오 진행 (렌더 타이머 기반, sim 무관) — 수명 끝난 것 제거
       if (this.codeMeteors.length > 0) {
         for (const m of this.codeMeteors) m.elapsed += delta;
@@ -2736,6 +2742,11 @@ export class GameScene extends Phaser.Scene {
     this.skyGfx = this.add.graphics();
     this.drawSky(BIOMES[0]!);
 
+    // 1★) 밤하늘 네온 노란 별 — 하늘 위·태양/메테오 아래. 고정 시드 좌표 + 느린 twinkle.
+    this.starGfx = this.add.graphics();
+    this.initStarField();
+    this.drawStars();
+
     // 1a) 레이저 이펙트 Graphics — 하늘 직후, 메테오·태양보다 먼저 add → 태양 뒤에 렌더.
     this.laserGraphics = this.add.graphics();
 
@@ -2744,10 +2755,11 @@ export class GameScene extends Phaser.Scene {
     //     HUD(랭킹 칩 depth 22)보다는 아래 — 메테오가 칩을 가리지 않음.
     this.meteorGfx = this.add.graphics().setDepth(5);
 
-    // 2) 레트로웨이브 코드 태양 — syncVisuals에서 매 프레임 일렁이며 재드로우.
+    // 2) 레트로웨이브 코드 태양 — syncVisuals에서 저주파로 일렁이며 재드로우.
     // Graphics.setPosition(0, 214) 으로 기준점을 scene y=214에 두고, 드로우는 로컬 좌표(y=0이 센터).
     this.sunGraphics = this.add.graphics();
     this.sunGraphics.setPosition(0, 214).setAlpha(0.95);
+    this.updateCodeSun(); // 첫 프레임 즉시 그림 (스로틀 대기 없이)
 
     // 3) 원경 이미지 TileSprite 3종 (스카이라인/고속도로다리/아치형다리) — 가장 뒤(원경).
     //     ★ 유저 요청: 이미지 배경은 뒤로 흐리게, 코드 스카이라인(간판+작은 검은 건물)은
@@ -2828,6 +2840,67 @@ export class GameScene extends Phaser.Scene {
     g.clear();
     g.fillGradientStyle(pal.skyTop, pal.skyTop, pal.skyLow, pal.skyLow, 1);
     g.fillRect(0, 0, DESIGN_W, GROUND_Y_PX);
+  }
+
+  /**
+   * 밤하늘 별 좌표 — 고정 시드 LCG로 한 번만 생성.
+   * 지평선 위·태양 디스크와 겹치지 않게 상단~중상단에 흩뿌림.
+   */
+  private initStarField(): void {
+    const stars: typeof this.starField = [];
+    let seed = 0x5eedcafe;
+    const rnd = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed / 0x100000000;
+    };
+    const SUN_CX = DESIGN_W * 0.5;
+    const SUN_CY = 214;
+    const SUN_R = 130; // 태양 블룸 바깥까지 비움
+    const N = 48;
+    let tries = 0;
+    while (stars.length < N && tries < N * 8) {
+      tries++;
+      const x = 8 + rnd() * (DESIGN_W - 16);
+      const y = 10 + rnd() * (GROUND_Y_PX * 0.52);
+      const dx = x - SUN_CX;
+      const dy = y - SUN_CY;
+      if (dx * dx + dy * dy < SUN_R * SUN_R) continue;
+      stars.push({
+        x,
+        y,
+        r: 0.55 + rnd() * 1.35,
+        phase: rnd() * Math.PI * 2,
+        tw: 0.7 + rnd() * 1.4,
+      });
+    }
+    this.starField = stars;
+  }
+
+  /** 네온 노란 별 — soft glow + 십자 스파클. ≈20fps 스로틀로 호출. */
+  private drawStars(): void {
+    const g = this.starGfx;
+    g.clear();
+    const t = this.renderTimeMs * 0.001;
+    for (const s of this.starField) {
+      const twinkle =
+        0.45 + 0.55 * (0.5 + 0.5 * Math.sin(t * s.tw + s.phase));
+      const a = twinkle;
+      // 외곽 헤일로
+      g.fillStyle(0xffe566, 0.12 * a);
+      g.fillCircle(s.x, s.y, s.r * 3.2);
+      g.fillStyle(0xffd400, 0.28 * a);
+      g.fillCircle(s.x, s.y, s.r * 1.6);
+      // 코어
+      g.fillStyle(0xfff8c0, 0.85 * a + 0.15);
+      g.fillCircle(s.x, s.y, s.r * 0.55);
+      // 십자 스파클 (큰 별만)
+      if (s.r > 1.2) {
+        const arm = s.r * (2.8 + 1.2 * twinkle);
+        g.lineStyle(1.1, 0xffe566, 0.55 * a);
+        g.lineBetween(s.x - arm, s.y, s.x + arm, s.y);
+        g.lineBetween(s.x, s.y - arm, s.x, s.y + arm);
+      }
+    }
   }
 
   /** 바닥 네온 그리드. worldPx만큼 좌측으로 흐르는 원근 그리드 (매 프레임 redraw). */
@@ -3316,10 +3389,17 @@ export class GameScene extends Phaser.Scene {
     const jumpY = s.player.y * 0.07; // 최대 ≈26px. 과하면 멀미 — 작게 시작.
     this.bgSkylineFar.y = jumpY * 0.5; // 원경: 절반
     this.sunGraphics.y = 214 + jumpY * 0.3; // 태양: 약하게 점프 연동
-    // 태양 재드로우(블룸 동심원 18겹 + 광선)는 CPU 비용이 커 30fps로 스로틀 —
+    // 태양 재드로우(블룸+스캔라인)는 CPU 비용이 커 ≈12fps로 스로틀 —
     // 일렁임 주파수가 낮아 체감 차이 없음. 위치(y) 추적은 매 프레임 유지.
-    this.sunRedrawToggle = !this.sunRedrawToggle;
-    if (this.sunRedrawToggle) this.updateCodeSun();
+    if (this.sunRedrawAccMs >= 80) {
+      this.sunRedrawAccMs = 0;
+      this.updateCodeSun();
+    }
+    // 별 twinkle — ≈20fps면 충분히 부드러움
+    if (this.starRedrawAccMs >= 50) {
+      this.starRedrawAccMs = 0;
+      this.drawStars();
+    }
 
     // ── 바이옴 전환 (1000m마다 팔레트 순환, 렌더 전용) + 마일스톤 팡파레 ──
     const km = Math.floor(world.distance / BIOME_METERS);
@@ -4328,6 +4408,7 @@ export class GameScene extends Phaser.Scene {
   // ─── 코드로 그리는 레트로웨이브 태양 ───────────────────────────────────────
   // sunGraphics.setPosition(0, 214) 이므로 드로우 좌표 y=0 이 scene y=214 (태양 센터).
   // Math.sin 허용 구역 (렌더 전용).
+  // CPU: 블룸 겹수·스캔라인 간격·페더를 줄여 ≈12fps 스로틀과 함께 버벅임 완화.
   private updateCodeSun(): void {
     const cx = DESIGN_W * 0.5;
     const r = 112;
@@ -4335,23 +4416,20 @@ export class GameScene extends Phaser.Scene {
     const g = this.sunGraphics;
     g.clear();
 
-    // ─── 0) 외곽 블룸 헤일로 — 빛이 사방으로 번지는 광배.
-    //     Graphics는 postFX(가우시안 블러) 미지원이라, 큰→작은 동심원을 낮은 알파로
-    //     겹쳐 부드러운 방사형 그라데이션(블러 효과)을 직접 합성한다. 맥동 포함.
+    // ─── 0) 외곽 블룸 헤일로 — 동심원 합성(가우시안 대체). 맥동 포함.
     const bloomPulse = 1 + 0.05 * Math.sin(t * 0.9);
-    const BLOOM_LAYERS = 18;
+    const BLOOM_LAYERS = 7;
     for (let i = BLOOM_LAYERS; i >= 1; i--) {
       const f = i / BLOOM_LAYERS; // 1(바깥)→0(안)
       const rr = r * (0.96 + 1.05 * f) * bloomPulse;
-      const a = 0.045 * (1 - f) + 0.01; // 바깥일수록 옅게 → 빛 번짐
+      const a = 0.07 * (1 - f) + 0.015;
       g.fillStyle(this.lerpColor(0xff9a5a, 0xff6688, f), a);
       g.fillCircle(cx, 0, rr);
     }
 
-    // ─── 1) 디스크 본체 — 가로 스캔라인 그라데이션.
-    //     1.5px 간격(겹침)으로 촘촘히 + 좌우 7px 부드러운 페더 → 곡면 가장자리 계단 제거.
-    const FEATHER = 7;
-    for (let dy = -r; dy <= r; dy += 1.5) {
+    // ─── 1) 디스크 본체 — 가로 스캔라인. 3px 간격 + 좌우 2단 페더(비용↓).
+    const FEATHER = 5;
+    for (let dy = -r; dy <= r; dy += 3) {
       const hw = Math.sqrt(Math.max(0, r * r - dy * dy));
       if (hw < 1) continue;
       const fy = (dy + r) / (2 * r);
@@ -4359,30 +4437,29 @@ export class GameScene extends Phaser.Scene {
       const coreW = hw * 2 - FEATHER * 2;
       if (coreW > 0) {
         g.fillStyle(color, 1);
-        g.fillRect(cx - hw + FEATHER, dy, coreW, 2);
+        g.fillRect(cx - hw + FEATHER, dy, coreW, 3.2);
       }
-      // 좌우 페이더: 부드러운 알파 램프(곡선) → 가장자리 빛처럼 풀림
-      const edgeLen = Math.min(FEATHER, hw);
-      for (let fi = 0; fi < edgeLen; fi++) {
-        const fa = Math.pow((fi + 1) / (FEATHER + 1), 1.3);
-        g.fillStyle(color, fa);
-        g.fillRect(cx - hw + fi, dy, 1.2, 2); // 왼쪽
-        g.fillRect(cx + hw - fi - 1, dy, 1.2, 2); // 오른쪽
-      }
+      // 좌우 2단 페더만 — 픽셀 루프 제거
+      g.fillStyle(color, 0.45);
+      g.fillRect(cx - hw, dy, FEATHER, 3.2);
+      g.fillRect(cx + hw - FEATHER, dy, FEATHER, 3.2);
+      g.fillStyle(color, 0.18);
+      g.fillRect(cx - hw - 2, dy, 2.5, 3.2);
+      g.fillRect(cx + hw - 0.5, dy, 2.5, 3.2);
     }
 
-    // ─── 1b) 중심 코어 광채 — 큰 소프트 원 몇 겹으로 가운데가 환하게 번지도록.
-    for (let i = 4; i >= 1; i--) {
-      const f = i / 4;
-      g.fillStyle(0xfff2d8, 0.06 * (1 - f) + 0.03);
+    // ─── 1b) 중심 코어 광채
+    for (let i = 3; i >= 1; i--) {
+      const f = i / 3;
+      g.fillStyle(0xfff2d8, 0.07 * (1 - f) + 0.03);
       g.fillCircle(cx, -r * 0.12, r * (0.3 + 0.55 * f));
     }
 
     // 레트로웨이브 줄무늬 (하단 절반, 원근 압축 + 일렁임)
-    const stripeCount = 9;
+    const stripeCount = 8;
     for (let i = 0; i < stripeCount; i++) {
       const frac = (i + 1) / (stripeCount + 1);
-      const baseLocal = frac * frac * r * 0.97; // 이차 압축 → 아래로 갈수록 밀집
+      const baseLocal = frac * frac * r * 0.97;
       const shimmer = Math.sin(t * 2.1 + i * 0.85) * 1.8;
       const yLocal = baseLocal + shimmer;
       if (yLocal < 0 || yLocal >= r) continue;
