@@ -870,15 +870,15 @@ export class GameScene extends Phaser.Scene {
     const barW = 260;
     const barH = Math.round(barW * (126 / 780)); // ≈ 42
     const barY = DESIGN_H - 24;
-    // 내부(투명 구멍) pad 측정값(780×126): 게이지 캐비티 ≈0.04~0.90 / 하트 구획 ≈0.90+.
-    // fill 우측을 하트 구획까지(0.95) — hp=100 시 fill이 하트 밑까지 닿아 "만땅"으로 읽힘.
+    // 내부(투명 구멍) pad 측정값(780×126): 게이지 캐비티 ≈0.04~0.88 / 하트 구획 ≈0.90+.
+    // fill은 하트 직전(구획선)까지만 — 하트 안은 비우고 아이콘만 보이게.
     // fill(depth 20) 위에 하트 포함 프레임(depth 21)이 겹쳐 자연스럽게 가려진다.
     // fill 시작을 마스크 좌측과 일치 → 좌측에 track(검정)이 새는 빈틈 없음.
     // 좌측 라운드 곡면까지 fill이 차게 — 0.04면 마스크가 직선으로 잘려 검정 틈이 남음.
     // 프레임(depth 21)이 시안 림을 덮으므로 fill이 림 밑으로 살짝 들어가도 안전.
     const HP_L_FRAC = 0.01;
-    // 캐비티 우측(~0.964)까지 채움 — 이전 0.95는 하트 구획 직전에 빈 틈이 남음.
-    const HP_R_FRAC = 0.965;
+    // 하트 구획(~0.90) 직전 — 만땅도 하트 밑까지 안 침범
+    const HP_R_FRAC = 0.88;
     const HP_FILL_W = Math.round((HP_R_FRAC - HP_L_FRAC) * barW);
     const fillX = DESIGN_W / 2 - barW / 2 + Math.round(HP_L_FRAC * barW);
     // ★ 이전엔 16px 폭 텍스처를 ~14배 X-스트레치 → 늘어나며 대각선 밴딩 + 하단이 너무
@@ -894,8 +894,8 @@ export class GameScene extends Phaser.Scene {
     //   (Graphics.fillGradientStyle→generateTexture 는 일부 환경에서 투명 텍스처가 되는
     //   버그가 있어 Canvas 2D 그라데이션으로 대체.)
     // 키 버전업: 마스크/높이/좌측 인셋 변경 시 HMR 캐시 무효화.
-    if (!this.textures.exists("hp-fill-grad6")) {
-      const ct = this.textures.createCanvas("hp-fill-grad6", HP_TEX_W, fillTexH);
+    if (!this.textures.exists("hp-fill-grad7")) {
+      const ct = this.textures.createCanvas("hp-fill-grad7", HP_TEX_W, fillTexH);
       if (ct) {
         const ctx = ct.getContext();
         const grad = ctx.createLinearGradient(0, 0, 0, fillTexH);
@@ -931,7 +931,7 @@ export class GameScene extends Phaser.Scene {
     // 빈(소진) 구간용 어두운 트랙 — 항상 풀 폭. 없으면 소진 구간에 게임 배경이 투명하게
     // 비쳐 "뚫린 구멍"처럼 보였다. fill(depth20) 밑(depth19)에 깔아 빈 게이지처럼 읽히게 한다.
     this.hpTrack = this.add
-      .image(fillX, barY, "hp-fill-grad6")
+      .image(fillX, barY, "hp-fill-grad7")
       .setOrigin(0, 0.5)
       .setDepth(19)
       .setTint(0x0b1f1a)
@@ -940,7 +940,7 @@ export class GameScene extends Phaser.Scene {
     this.hpTrack.scaleY = this.hpFillFullScale;
 
     this.hpFill = this.add
-      .image(fillX, barY, "hp-fill-grad6")
+      .image(fillX, barY, "hp-fill-grad7")
       .setOrigin(0, 0.5)
       .setDepth(20)
       .setTint(0x3ef0c0); // 네온 민트 — syncVisuals 전(타이틀)에 흰색으로 보이지 않게
@@ -955,29 +955,11 @@ export class GameScene extends Phaser.Scene {
       .setAlpha(0.35); // 하트 근처 밝은 얼룩 완화
 
     // 프레임: 종횡비 그대로 스케일(왜곡 없음). 내부 투명 → fill 비침, 하트는 우측에 보존.
+    // 하트 안 회색 fill은 제거 — 게이지는 하트 직전(HP_R_FRAC)까지만 채움.
     this.hpFrame = this.add
       .image(DESIGN_W / 2, barY, "hp-frame")
       .setDisplaySize(barW, barH)
       .setDepth(21);
-    // 하트 스트로크 안을 회색으로 채움 — 프레임(21) 아래, 게이지 fill(20) 위.
-    // 에셋 하트보다 작게, 살짝 왼쪽으로 — 우측 스트로크 밖으로 안 넘치게.
-    {
-      const heartCx = DESIGN_W / 2 + barW * 0.405;
-      const heartCy = barY - 0.5;
-      const hs = barH * 0.125;
-      const heart = this.add.graphics().setDepth(20.5);
-      heart.fillStyle(0x6a7580, 0.92);
-      heart.fillCircle(heartCx - hs * 0.5, heartCy - hs * 0.1, hs * 0.58);
-      heart.fillCircle(heartCx + hs * 0.5, heartCy - hs * 0.1, hs * 0.58);
-      heart.fillTriangle(
-        heartCx - hs * 0.98,
-        heartCy + hs * 0.08,
-        heartCx + hs * 0.98,
-        heartCy + hs * 0.08,
-        heartCx,
-        heartCy + hs * 1.05,
-      );
-    }
     // 포션 "HP+" 토스트 앵커 — 체력바 좌상단
     this.hpBarLeftX = DESIGN_W / 2 - barW / 2;
     this.hpBarTopY = barY - barH / 2;
