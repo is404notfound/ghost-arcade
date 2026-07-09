@@ -414,10 +414,14 @@ export class GameScene extends Phaser.Scene {
 
   private paceText!: Phaser.GameObjects.Text; // 현재 등수 "N / M등"
   private overtakeHudText!: Phaser.GameObjects.Text; // "제침 X/N"
-  private comboRibbon!: Phaser.GameObjects.Container; // 우측 중상단 콤보 띠지 (우→좌 슬라이드)
+  private comboRibbon!: Phaser.GameObjects.Container; // 좌측 끝 콤보 띠지 (좌→우 슬라이드)
   private comboRibbonBg!: Phaser.GameObjects.Rectangle;
   private comboDisplay!: Phaser.GameObjects.Text; // 띠지 위 콤보 숫자 (combo >= 2)
   private comboRibbonVisible = false; // 슬라이드 인/아웃 중복 방지
+  private feverRibbon!: Phaser.GameObjects.Container; // 콤보 띠지 아래 FEVER TIME! 띠지
+  private feverRibbonBg!: Phaser.GameObjects.Rectangle;
+  private feverDisplay!: Phaser.GameObjects.Text;
+  private feverRibbonVisible = false; // 슬라이드 인/아웃 중복 방지
   private prevCombo = 0; // 이전 프레임 combo 값 — 증가 감지용
   private prevRank = 0; // 이전 프레임 등수 — 상승 감지용
   private feverCount = 0; // 이번 판 피버 발동 횟수 — game_over 이벤트용
@@ -830,7 +834,9 @@ export class GameScene extends Phaser.Scene {
     // fill 우측을 하트 구획까지(0.95) — hp=100 시 fill이 하트 밑까지 닿아 "만땅"으로 읽힘.
     // fill(depth 20) 위에 하트 포함 프레임(depth 21)이 겹쳐 자연스럽게 가려진다.
     // fill 시작을 마스크 좌측과 일치 → 좌측에 track(검정)이 새는 빈틈 없음.
-    const HP_L_FRAC = 0.04;
+    // fill을 왼쪽 라운드 안쪽까지 밀어 넣음(0.04면 좌측 곡면에 검정 틈).
+    // 프레임(depth 21)이 림을 덮으므로 살짝 안쪽 침범해도 안전.
+    const HP_L_FRAC = 0.028;
     // 마스크 우측과 일치 → 만땅 시 초록이 마스크 끝까지 차고 글로우도 그 지점에.
     const HP_R_FRAC = 0.95;
     const HP_FILL_W = Math.round((HP_R_FRAC - HP_L_FRAC) * barW);
@@ -1029,6 +1035,37 @@ export class GameScene extends Phaser.Scene {
         .setVisible(false);
       this.comboRibbon.setData("restX", restX);
       this.comboRibbon.setData("hiddenX", -ribbonW - 8);
+
+      // 피버 띠지 — 콤보 바로 아래. 진홍 배경 + 두 줄 FEVER TIME! (콤보보다 굵게).
+      const feverW = 118;
+      const feverH = 40;
+      const feverGap = 5;
+      const feverRestY = restY + ribbonH / 2 + feverGap + feverH / 2;
+      this.feverRibbonBg = this.add
+        .rectangle(0, 0, feverW, feverH, 0x4a0018, 0.92)
+        .setOrigin(0, 0.5)
+        .setStrokeStyle(1.5, 0xff3355, 0.85);
+      this.feverDisplay = this.add
+        .text(feverW / 2, 0, "FEVER\nTIME!", {
+          fontSize: "16px",
+          fontFamily: "'Orbitron', monospace",
+          fontStyle: "bold",
+          color: "#ff6b81",
+          align: "center",
+          lineSpacing: -4,
+          resolution: TXT_RES,
+        })
+        .setOrigin(0.5, 0.5)
+        .setStroke("#1a0008", 4);
+      this.feverRibbon = this.add
+        .container(-feverW - 8, feverRestY, [
+          this.feverRibbonBg,
+          this.feverDisplay,
+        ])
+        .setDepth(23)
+        .setVisible(false);
+      this.feverRibbon.setData("restX", restX);
+      this.feverRibbon.setData("hiddenX", -feverW - 8);
     }
 
     // ── 결과 UI = 일간 | Replay | 주간 3분할 ──
@@ -1656,6 +1693,12 @@ export class GameScene extends Phaser.Scene {
       this.comboRibbon.x = this.comboRibbon.getData("hiddenX") ?? DESIGN_W + 8;
       this.comboRibbonVisible = false;
     }
+    if (this.feverRibbon) {
+      this.tweens.killTweensOf(this.feverRibbon);
+      this.feverRibbon.setVisible(false);
+      this.feverRibbon.x = this.feverRibbon.getData("hiddenX") ?? -126;
+      this.feverRibbonVisible = false;
+    }
     if (this.rankHudLabel) this.rankHudLabel.setVisible(false);
     // 바이옴/마일스톤 리셋 — 새 판은 항상 기본 노을 팔레트에서 시작
     this.biomeFrom = 0;
@@ -1948,28 +1991,7 @@ export class GameScene extends Phaser.Scene {
       this.cameras.main.flash(200, 255, 215, 0); // 황금빛 노란 플래시 (피격 빨강과 구분)
       this.punchZoom(1.12, 170); // 주인공 쪽으로 펀치 줌인 — 가속감 강조
       this.feverOverlay.setVisible(true);
-      // 큰 FEVER! 연출 — popup()보다 크게 직접 생성
-      const fx = DESIGN_W / 2;
-      const fy = DESIGN_H * 0.45;
-      const ft = this.add
-        .text(fx, fy, "FEVER!", {
-          fontSize: "90px",
-          color: "#ffd700",
-          fontStyle: "bold",
-          resolution: TXT_RES,
-        })
-        .setOrigin(0.5)
-        .setStroke("#1a1a2e", 12);
-      this.tweens.add({
-        targets: ft,
-        y: fy - 70,
-        alpha: 0,
-        scaleX: 1.6,
-        scaleY: 1.6,
-        duration: 950,
-        ease: "Cubic.out",
-        onComplete: () => ft.destroy(),
-      });
+      // FEVER TIME! 띠지 슬라이드는 render()에서 feverFramesLeft로 구동
       // 첫 피버 발동: 게임 일시정지 + 피버 튜토리얼 표시 (최초 1회)
       if (this.needsFeverTutorial && this.feverTutorial) {
         this.needsFeverTutorial = false;
@@ -2193,11 +2215,15 @@ export class GameScene extends Phaser.Scene {
     }
     const myIdx = rows.findIndex((r) => r.isMe);
 
-    // "(나)" 접미는 좁은 패널에서 거리 숫자와 겹치므로 생략 — 내 행은 골드 색으로만 구분.
-    // 닉과 거리 사이는 중점(·)으로 분리 — "-55 1471"이 "551471"로 읽히는 걸 막음.
-    const nameLabel = (r: Row, rank: number) => `${rank}.  ${r.nickname}`;
+    // "(나)" 생략 — 내 행은 골드로만 구분.
+    // 닉이 길면 우측 거리와 겹치므로 폭에 맞게 자른다(중점 구분자는 어색·오독 유발).
+    const nameBudget = Math.max(40, xR - xL - 78); // 거리(~"47,314m") 자리 확보
+    const nameLabel = (r: Row, rank: number) => {
+      const prefix = `${rank}.  `;
+      return prefix + this.clipNickForWidth(r.nickname, nameBudget, 11);
+    };
     const distLabel = (r: Row) =>
-      `·  ${Math.floor(r.distance).toLocaleString()}m`;
+      `${Math.floor(r.distance).toLocaleString()}m`;
 
     for (let i = 0; i < this.dailyRowTexts.length; i++) {
       const name = this.dailyRowTexts[i]!;
@@ -3526,6 +3552,39 @@ export class GameScene extends Phaser.Scene {
       });
     }
     this.prevCombo = s.combo;
+
+    // 피버 띠지 — 콤보 아래. 피버 중 좌→우 슬라이드 인, 종료 시 좌로 아웃.
+    {
+      const showFever = s.feverFramesLeft > 0 && !s.gameOver;
+      const fRestX = (this.feverRibbon.getData("restX") as number) ?? 0;
+      const fHiddenX = (this.feverRibbon.getData("hiddenX") as number) ?? -126;
+      if (showFever) {
+        if (!this.feverRibbonVisible) {
+          this.feverRibbonVisible = true;
+          this.feverRibbon.setVisible(true);
+          this.feverRibbon.x = fHiddenX;
+          this.tweens.killTweensOf(this.feverRibbon);
+          this.tweens.add({
+            targets: this.feverRibbon,
+            x: fRestX,
+            duration: 280,
+            ease: "Back.out",
+          });
+        } else if (!this.tweens.isTweening(this.feverRibbon)) {
+          this.feverRibbon.x = fRestX;
+        }
+      } else if (this.feverRibbonVisible) {
+        this.feverRibbonVisible = false;
+        this.tweens.killTweensOf(this.feverRibbon);
+        this.tweens.add({
+          targets: this.feverRibbon,
+          x: fHiddenX,
+          duration: 220,
+          ease: "Cubic.in",
+          onComplete: () => this.feverRibbon.setVisible(false),
+        });
+      }
+    }
 
     // 바이크 네온 글로우 — 평시 시안, 피버 중 골드로 전환 (렌더 전용)
     if (this.playerGlow) {
