@@ -197,6 +197,15 @@ const GHOST_X_OFFSETS = [-72, -42, -20, 18, 40, 64, -54, 32, -10, 50] as const; 
 
 const MAX_METEORS = 4; // 동시 메테오 상한 — 드로우 비용 완화
 
+/** 화염 레이어 정의 — 매 프레임 재할당 방지(시각 동일). */
+const FLAME_LAYERS = [
+  { color: 0xb91d1d, hMul: 1.0, wMul: 1.0, tongues: 11, alpha: 0.4 },
+  { color: 0xe23a18, hMul: 0.9, wMul: 0.82, tongues: 9, alpha: 0.5 },
+  { color: 0xff7a1c, hMul: 0.78, wMul: 0.62, tongues: 7, alpha: 0.6 },
+  { color: 0xffb43c, hMul: 0.6, wMul: 0.42, tongues: 5, alpha: 0.74 },
+  { color: 0xfff3c0, hMul: 0.42, wMul: 0.24, tongues: 3, alpha: 0.9 },
+] as const;
+
 // 장애물 아트 텍스처 키(렌더 전용·결정론 무관). 건물은 더 이상 쓰지 않는다.
 // code-sludge(초록 오염수 분수)는 "장애물처럼 안 보인다"는 피드백으로 스폰 풀에서 제거.
 // drawSludgeFountain/스모크 프로파일은 추후 재테마 가능성 위해 남겨두되 더 이상 선택되지 않음.
@@ -284,14 +293,14 @@ function smokeProfile(key: string): SmokeProfile {
         glow: 0xff5a7a,
         fire: false,
       };
-    case "obs-barrel": // 드럼통: 검고 높은 매연 + 불씨 밑동 (가닥 1로 비용↓)
+    case "obs-barrel": // 드럼통: 검고 높은 매연 + 불씨 밑동
       return {
         color: 0x655e6c,
-        strands: 1,
-        height: 48,
+        strands: 2,
+        height: 56,
         baseW: 5,
-        alpha: 0.4,
-        spread: 0,
+        alpha: 0.42,
+        spread: 6,
         sway: 12,
         freq: 2.2,
         ember: true,
@@ -300,19 +309,19 @@ function smokeProfile(key: string): SmokeProfile {
       };
     case "code-flame-s":
     case "code-flame-m":
-    case "code-flame-l": // 코드 화염 — 본체(drawFlameFountain)만. 연기 레이어 중복은 버벅임만 키움
+    case "code-flame-l": // 코드 드로우 화염분수 — 연기는 거의 없고 빛이 강함
       return {
         color: 0x7a6a72,
-        strands: 0,
-        height: 0,
-        baseW: 0,
-        alpha: 0,
+        strands: 1,
+        height: 30,
+        baseW: 3,
+        alpha: 0.18,
         spread: 0,
-        sway: 0,
-        freq: 1,
-        ember: false,
+        sway: 9,
+        freq: 2.8,
+        ember: true,
         glow: 0xff9a3c,
-        fire: false,
+        fire: true,
       };
     case "code-sludge": // 오염수 분수 — 회색/녹색 연기
       return {
@@ -519,6 +528,18 @@ export class GameScene extends Phaser.Scene {
   private trailGfx!: Phaser.GameObjects.Graphics;
   // 코드 드로우 장애물(화염분수·오염수) 전용 Graphics
   private codeObsGfx!: Phaser.GameObjects.Graphics;
+  // drawWavyTongue 스크래치 — 매 가닥마다 new Array 방지 (시각 동일)
+  private readonly tongueCx = new Float64Array(8);
+  private readonly tongueCy = new Float64Array(8);
+  private readonly tongueHw = new Float64Array(8);
+  private readonly tongueCore: { x: number; y: number }[] = Array.from(
+    { length: 16 },
+    () => ({ x: 0, y: 0 }),
+  );
+  private readonly tongueHalo: { x: number; y: number }[] = Array.from(
+    { length: 16 },
+    () => ({ x: 0, y: 0 }),
+  );
   // 바이크 네온 글로우 FX (WebGL postFX — 비지원 기기에서는 null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private playerGlow: any = null;
@@ -3045,8 +3066,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 네온 화염분수 — 바닥에서 솟구치는 불꽃.
-   * fillTriangle 레이어로만 그림(fillPoints 리본은 할당·드로우 비용이 커 불길 등장 시 버벅임의 주원인).
+   * 네온 화염분수 — 바닥에서 솟구치는 활활 타오르는 불꽃.
+   * 각 불혀를 '다분절 곡선 리본'(drawWavyTongue)으로 그려 일렁이며 휘날리는 디테일을 살린다.
+   * 아래는 두껍고 위로 갈수록 뾰족·휘어지며, 가닥마다 위상이 달라 자연스럽게 흔들린다.
    */
   private drawFlameFountain(
     g: Phaser.GameObjects.Graphics,
@@ -3056,71 +3078,145 @@ export class GameScene extends Phaser.Scene {
     t: number,
     idx: number,
   ): void {
+    // 화면 밖이면 스킵 — 시각 동일, 동시 다수 화염 CPU만 절약
+    if (sx < -80 || sx > DESIGN_W + 80) return;
     const phase = idx * 2.3;
-    const baseHalf = Math.max(14, artH * 0.42);
+    const baseHalf = Math.max(14, artH * 0.42); // 밑동 반폭 — 두껍게
 
-    // 베이스 글로우 (1겹만 — 맥동)
+    // 베이스 글로우 (넓게 깔린 불빛, 맥동)
     const pulse = 0.7 + 0.3 * Math.sin(t * 8 + phase);
-    g.fillStyle(0xff7a1c, 0.2 * pulse);
-    g.fillCircle(sx, baseY - 2, baseHalf * 1.15 * pulse);
+    g.fillStyle(0xff5a1c, 0.16 * pulse);
+    g.fillCircle(sx, baseY - 2, baseHalf * 1.5 * pulse);
+    g.fillStyle(0xff9a3c, 0.22 * pulse);
+    g.fillCircle(sx, baseY - 2, baseHalf * 0.9);
 
-    // 불혀 — 바깥→코어. 가닥을 살짝 늘려 일렁임이 더 부드럽게 보이게.
-    const layers = [
-      { color: 0xc41e1e, hMul: 1.0, wMul: 1.0, tongues: 5, alpha: 0.46 },
-      { color: 0xff8a1c, hMul: 0.8, wMul: 0.7, tongues: 4, alpha: 0.6 },
-      { color: 0xfff0a8, hMul: 0.5, wMul: 0.34, tongues: 3, alpha: 0.88 },
-    ];
-
-    for (let li = 0; li < layers.length; li++) {
-      const layer = layers[li]!;
+    // 불혀 다발 — 색 레이어별로 바깥(짙은 빨강·큼)→안(흰노랑 코어·작음) 순서로 겹쳐 그림.
+    // 가닥 수를 늘려(11→3) 더 빽빽하게, 흔들림 위상을 가닥마다 달리해 일렁임을 살린다.
+    for (let li = 0; li < FLAME_LAYERS.length; li++) {
+      const layer = FLAME_LAYERS[li]!;
       const layerH = artH * layer.hMul;
       const layerHalf = baseHalf * layer.wMul;
       for (let s = 0; s < layer.tongues; s++) {
-        const u = layer.tongues === 1 ? 0 : (s / (layer.tongues - 1)) * 2 - 1;
+        // 불혀를 밑동 폭에 고르게 분포(-1..1)
+        const u = (s / (layer.tongues - 1)) * 2 - 1;
         const rootX = sx + u * layerHalf;
-        const rootW = Math.max(2.5, (layerHalf / layer.tongues) * 2.0);
+        const rootW = Math.max(2, (layerHalf / layer.tongues) * 2.2); // 밑동 두께(겹치게)
+        // 가닥별 높이 깜빡임 — 가운데가 가장 높음(분수형), 빠른 깜빡임으로 활활.
         const heightFall = 1 - Math.abs(u) * 0.4;
-        // 저주파 일렁임 — 프레임마다 그려도 깜빡임이 과하지 않게
-        const flick =
-          0.78 + 0.22 * Math.sin(t * (3.2 + s * 0.35) + phase + s * 1.2);
+        const flick = 0.7 + 0.3 * Math.sin(t * (6 + s * 0.7) + phase + s * 1.7);
         const tipH = layerH * heightFall * flick;
-        const sway =
-          Math.sin(t * 2.6 + s * 0.7 + phase + li * 0.4) *
-          artH *
-          0.07 *
-          (0.35 + Math.abs(u));
-        const tipX = rootX + sway;
-
-        g.fillStyle(layer.color, layer.alpha * 0.2);
-        g.fillTriangle(
-          rootX - rootW * 1.3,
+        const seed = phase + s * 1.3 + li * 0.6; // 가닥 고유 흔들림 위상
+        this.drawWavyTongue(
+          g,
+          rootX,
           baseY,
-          rootX + rootW * 1.3,
-          baseY,
-          tipX,
-          baseY - tipH * 1.03,
-        );
-        g.fillStyle(layer.color, layer.alpha);
-        g.fillTriangle(
-          rootX - rootW,
-          baseY,
-          rootX + rootW,
-          baseY,
-          tipX,
-          baseY - tipH,
+          rootW,
+          tipH,
+          t,
+          seed,
+          u,
+          layer.color,
+          layer.alpha,
         );
       }
     }
 
-    // 불씨 — 느리게 떠올라 끊김 없이
-    for (let e = 0; e < 3; e++) {
-      const rise = (t * (0.55 + e * 0.12) + e * 0.37) % 1;
-      const ex = sx + Math.sin(t * 2.8 + e * 2.2) * baseHalf * 0.55;
-      const ey = baseY - rise * artH * 1.1;
-      const tw = 0.55 + 0.45 * Math.sin(t * 9 + e * 2.5);
-      g.fillStyle(e % 2 === 0 ? 0xfff3c0 : 0xff9a3c, (1 - rise) * 0.75 * tw);
-      g.fillCircle(ex, ey, (1 - rise) * 1.7 + 0.4);
+    // 솟구치는 불씨 — 위로 떠오르며 반짝이는 점들(색·반짝임 다양화).
+    for (let e = 0; e < 8; e++) {
+      const rise = (t * (0.8 + e * 0.1) + e * 0.21) % 1; // 0→1
+      const ex = sx + Math.sin(t * 4 + e * 2) * baseHalf * 0.7;
+      const ey = baseY - rise * artH * 1.15;
+      const tw = 0.5 + 0.5 * Math.sin(t * 18 + e * 3); // 빠른 반짝임
+      const ea = (1 - rise) * 0.85 * tw;
+      const col = e % 3 === 0 ? 0xfff3c0 : e % 3 === 1 ? 0xffd27a : 0xff7a1c;
+      g.fillStyle(col, ea);
+      g.fillCircle(ex, ey, (1 - rise) * 2.0 + 0.5);
     }
+
+    // 사방으로 튀는 스파크 — 밑동에서 좌우로 부채꼴로 퍼지며 솟구쳤다 살짝 떨어짐(중력).
+    // 메테오/불꽃 주변에 불티가 더 튀길 바라는 요청 반영. 반짝임으로 평면감 완화.
+    for (let k = 0; k < 12; k++) {
+      const life = (t * (1.1 + k * 0.11) + k * 0.31) % 1; // 0→1 수명
+      const side = ((k % 6) / 5 - 0.5) * 2; // -1..1 좌우 분산
+      const px = sx + side * baseHalf * 1.7 * life;
+      const py =
+        baseY -
+        life * artH * (1.0 + (k % 3) * 0.28) +
+        life * life * artH * 0.28; // 솟다 떨어짐
+      const tw = 0.5 + 0.5 * Math.sin(t * 26 + k * 5);
+      const a = (1 - life) * 0.9 * tw;
+      g.fillStyle(k % 2 === 0 ? 0xffe7a0 : 0xff9a3c, a);
+      g.fillCircle(px, py, (1 - life) * 1.7 + 0.4);
+    }
+  }
+
+  /**
+   * 불혀 1가닥을 '다분절 곡선 리본'으로 채워 그린다(렌더 전용).
+   * 중심선이 위로 갈수록 진폭↑인 다중 사인으로 일렁이고, 폭은 밑동→끝점으로 테이퍼되어 뾰족해진다.
+   * 바깥쪽 가닥은 u 방향으로 살짝 휘어(분수 splay) 더 역동적으로 보인다.
+   * 매 호출 new Array 할당을 피하기 위해 스크래치 버퍼를 재사용(시각 동일, GC↓).
+   */
+  private drawWavyTongue(
+    g: Phaser.GameObjects.Graphics,
+    rootX: number,
+    baseY: number,
+    rootW: number,
+    tipH: number,
+    t: number,
+    seed: number,
+    u: number,
+    color: number,
+    alpha: number,
+  ): void {
+    const SEG = 7;
+    const n = SEG + 1;
+    const cx = this.tongueCx;
+    const cy = this.tongueCy;
+    const hw = this.tongueHw;
+    const core = this.tongueCore;
+    const halo = this.tongueHalo;
+    for (let k = 0; k < n; k++) {
+      const f = k / SEG; // 0(밑동)→1(끝)
+      const amp = rootW * 0.5 + f * tipH * 0.18;
+      const wob =
+        Math.sin(t * 4 + f * 4.5 + seed) * amp +
+        Math.sin(t * 7.3 + f * 2.1 + seed * 1.7) * amp * 0.4;
+      const lean = u * f * tipH * 0.12;
+      cx[k] = rootX + wob + lean;
+      cy[k] = baseY - f * tipH;
+      hw[k] = Math.max(0, rootW * Math.pow(1 - f, 0.7));
+    }
+
+    // 폴리곤: 왼쪽 에지(밑→끝) → 오른쪽 에지(끝→밑)
+    for (let k = 0; k < n; k++) {
+      const p = core[k]!;
+      p.x = cx[k]! - hw[k]!;
+      p.y = cy[k]!;
+    }
+    for (let k = 0; k < n; k++) {
+      const src = SEG - k;
+      const p = core[n + k]!;
+      p.x = cx[src]! + hw[src]!;
+      p.y = cy[src]!;
+    }
+
+    const m = rootW * 0.6;
+    for (let k = 0; k < n; k++) {
+      const p = halo[k]!;
+      p.x = cx[k]! - hw[k]! - m * (1 - k / SEG);
+      p.y = cy[k]!;
+    }
+    for (let k = 0; k < n; k++) {
+      const src = SEG - k;
+      const p = halo[n + k]!;
+      p.x = cx[src]! + hw[src]! + m * (1 - src / SEG);
+      p.y = cy[src]!;
+    }
+    g.fillStyle(color, alpha * 0.2);
+    g.fillPoints(halo, true);
+
+    g.fillStyle(color, alpha);
+    g.fillPoints(core, true);
   }
 
   /**
@@ -3135,6 +3231,7 @@ export class GameScene extends Phaser.Scene {
     t: number,
     idx: number,
   ): void {
+    if (sx < -80 || sx > DESIGN_W + 80) return;
     const phase = idx * 1.7;
     const baseHalf = Math.max(12, artH * 0.38); // 밑동 반폭
 
@@ -3145,11 +3242,12 @@ export class GameScene extends Phaser.Scene {
     g.fillStyle(0x2f9940, 0.2 * pulse);
     g.fillCircle(sx, baseY - 2, baseHalf * 0.8);
 
-    // 덩어리 레이어 — 삼각형만, 가닥 소수(화염과 동일 예산)
+    // 덩어리 레이어 — 화염과 같은 방식이지만 더 뭉툭하고 느린 진폭
     const layers = [
-      { color: 0x1a4d1a, hMul: 1.0, wMul: 1.0, tongues: 4, alpha: 0.55 },
-      { color: 0x2e7d32, hMul: 0.78, wMul: 0.68, tongues: 3, alpha: 0.65 },
-      { color: 0xb9f6ca, hMul: 0.42, wMul: 0.3, tongues: 2, alpha: 0.8 },
+      { color: 0x1a4d1a, hMul: 1.0, wMul: 1.0, tongues: 7, alpha: 0.55 }, // 짙은 회록
+      { color: 0x2e7d32, hMul: 0.82, wMul: 0.72, tongues: 5, alpha: 0.65 }, // 어두운 녹
+      { color: 0x4caf50, hMul: 0.6, wMul: 0.48, tongues: 4, alpha: 0.72 }, // 독성 녹
+      { color: 0xb9f6ca, hMul: 0.38, wMul: 0.26, tongues: 2, alpha: 0.8 }, // 밝은 코어
     ];
 
     for (const layer of layers) {
@@ -3169,16 +3267,30 @@ export class GameScene extends Phaser.Scene {
           0.07 *
           (0.3 + Math.abs(u));
         const tipX = rootX + sway;
+        const midX = (rootX + tipX) / 2;
+        const midY = baseY - tipH * 0.45;
 
-        g.fillStyle(layer.color, layer.alpha * 0.2);
+        // ── 소프트 에지 halo 2단 ──
+        g.fillStyle(layer.color, layer.alpha * 0.1);
         g.fillTriangle(
-          rootX - rootW * 1.3,
+          rootX - rootW * 1.55,
           baseY,
-          rootX + rootW * 1.3,
+          rootX + rootW * 1.55,
+          baseY,
+          tipX,
+          baseY - tipH * 1.06,
+        );
+        g.fillStyle(layer.color, layer.alpha * 0.22);
+        g.fillTriangle(
+          rootX - rootW * 1.25,
+          baseY,
+          rootX + rootW * 1.25,
           baseY,
           tipX,
           baseY - tipH * 1.03,
         );
+
+        // ── 실제 덩어리 ──
         g.fillStyle(layer.color, layer.alpha);
         g.fillTriangle(
           rootX - rootW,
@@ -3188,16 +3300,18 @@ export class GameScene extends Phaser.Scene {
           tipX,
           baseY - tipH,
         );
+        g.fillTriangle(rootX - rootW, baseY, midX, midY, tipX, baseY - tipH);
       }
     }
 
-    // 독성 방울 2개
-    for (let e = 0; e < 2; e++) {
+    // 솟구치는 독성 방울 — 느리게 올라가며 떨어짐
+    for (let e = 0; e < 4; e++) {
       const rise = (t * (0.55 + e * 0.08) + e * 0.31) % 1;
       const ex = sx + Math.sin(t * 2.5 + e * 1.8) * baseHalf * 0.55;
       const ey = baseY - rise * artH * 0.95;
-      g.fillStyle(e % 2 === 0 ? 0x69f07a : 0x2e7d32, (1 - rise) * 0.75);
-      g.fillCircle(ex, ey, (1 - rise * 0.6) * 3.0 + 0.8);
+      const ea = (1 - rise) * 0.75;
+      g.fillStyle(e % 2 === 0 ? 0x69f07a : 0x2e7d32, ea);
+      g.fillCircle(ex, ey, (1 - rise * 0.6) * 3.2 + 0.8);
     }
   }
 
@@ -3302,7 +3416,7 @@ export class GameScene extends Phaser.Scene {
       for (let s = 0; s < p.strands; s++) {
         const phase = i * 1.3 + s * 2.4;
         const baseX = sx + (s - (p.strands - 1) / 2) * p.spread;
-        const segs = 4;
+        const segs = 8;
         let px0 = baseX;
         let py0 = topY;
         for (let k = 1; k <= segs; k++) {
