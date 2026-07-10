@@ -77,10 +77,14 @@ import panelDailyUrl from "../../assets/game/panel-daily.png";
 import panelWeeklyUrl from "../../assets/game/panel-weekly.png";
 import panelGameoverUrl from "../../assets/game/panel-gameover.png";
 import panelTutorialUrl from "../../assets/game/panel-tutorial.png";
+import howtoTutorialUrl from "../../assets/game/howto-tutorial.png";
+import milestoneCheerUrl from "../../assets/game/milestone-cheer.png";
+import iconWarningUrl from "../../assets/game/icon-warning.png";
+import iconFeverUrl from "../../assets/game/icon-fever.png";
 import btnReplayUrl from "../../assets/game/btn-replay.png";
 import introSlideUrl from "../../assets/game/intro-slide.png";
 // flame-pilar 이미지 제거됨 — 코드 드로우 화염분수(code-flame-*)로 교체
-// warn-bubble 이미지 제거됨 — 코드 드로우 스파이크 뱃지(makeSpikeBadge)로 교체
+// warn/fever: icon-warning / icon-fever PNG (우측 하단 점멸)
 // bg-sun 이미지는 코드 태양(createCodeSun)으로 대체 — import 제거
 // fx-meteor-*: 코드 드로우 메테오(drawCodeMeteor)로 대체 — import 제거
 // 일본어 네온 간판 데코 (배경 패럴랙스 레이어)
@@ -91,16 +95,24 @@ import signShinyaUrl from "../../assets/images/signage/signage-shinya.png";
 
 const COLOR_GHOST = 0xb39ddb; // 고스트 — 보라 계열 반투명(스프라이트 틴트)
 
+/** Fever 아이콘에서 샘플한 형광 네온 노랑 — HUD/피버 강조 통일 */
+const NEON_YELLOW = 0xf0f838;
+const NEON_YELLOW_HEX = "#f0f838";
+
 // 텍스트 렌더 해상도 — Phaser Text는 기본 1x라 작은/저DPR 화면에서 자글거린다.
 // 카메라 줌(RENDER_DPR)으로 확대되는 만큼 글리프 텍스처를 미리 크게 렌더해 1:1 매핑.
 // 하한 2는 데스크톱(DPR 1)에서도 슈퍼샘플링으로 또렷하게. config.resolution이
 // Phaser 3.90에서 제거되어 텍스트마다 개별 지정해야 하므로 단일 상수로 통일한다.
 const TXT_RES = Math.max(RENDER_DPR, 2);
 
-/** HUD 영숫자 — Oxanium(스코어보드/HUD용). Orbitron보다 소형 칩에서 획이 덜 뭉개짐. */
-const FONT_HUD = "'Oxanium', sans-serif";
-/** 한국어 카피·말풍선 */
-const FONT_KR = "'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif";
+/** 영문 HUD — Fredoka(둥근 캐주얼). 한글 글리프는 물마루로 폴백(닉·혼합 칩). */
+const FONT_HUD = "'Fredoka', 'Mulmaru', sans-serif";
+/** 영문 임팩트 — Bangers(코믹 펀치). FEVER / PERSONAL BEST / CTA. */
+const FONT_IMPACT = "'Bangers', 'Black Han Sans', cursive";
+/** 한글 본문 — 물마루(픽셀 레트로). 라틴은 Fredoka 폴백. */
+const FONT_KR = "'Mulmaru', 'Fredoka', 'Apple SD Gothic Neo', sans-serif";
+/** 한글 임팩트 — Black Han Sans(극굵). 제침·버스트 팝업. */
+const FONT_KR_IMPACT = "'Black Han Sans', 'Bangers', sans-serif";
 
 /** 「오늘 다시 안보기」용 날짜 키 — YYYYMMDD (로컬 타임존) */
 function tutorialDayKey(): string {
@@ -478,9 +490,11 @@ export class GameScene extends Phaser.Scene {
   private startSubText!: Phaser.GameObjects.Text; // 고스트 경쟁 안내 / 첫판 조작 힌트
   private feverTutorial: Phaser.GameObjects.Container | null = null; // 첫 피버 일시정지 안내
   private needsFeverTutorial = true; // 이번 세션·오늘 미숨김이면 피버 시 1회
+  private feverContinueBtn: Phaser.GameObjects.Text | null = null;
   /** 오프닝 후 조작 안내 (인트로 Start → howto → 플레이) */
   private howtoTutorial: Phaser.GameObjects.Container | null = null;
   private howtoActive = false;
+  private howtoPlayBtn: Phaser.GameObjects.Text | null = null;
   private pauseOverlay!: Phaser.GameObjects.Container;
   private _windowTapHandler!: () => void;
   private feverOverlay!: Phaser.GameObjects.Rectangle; // 피버 중 warm tint 레이어
@@ -537,10 +551,10 @@ export class GameScene extends Phaser.Scene {
   private fxRedrawAccMs = 0; // 메테오·트레일·연기 등 (≈12fps). 화염은 매 프레임.
   // ── 정전 트랩 상태 (렌더 전용) ──
   private blackoutGfx!: Phaser.GameObjects.Graphics;
-  /** 암전 예고 — 코드 드로우 스파이크 WARNING 뱃지 (에셋 미사용) */
-  private warnBadge!: Phaser.GameObjects.Container;
-  /** 피버 — 코드 드로우 스파이크 FEVER! 뱃지 (우측 하단, 띠지 대체) */
-  private feverBadge!: Phaser.GameObjects.Container;
+  /** 암전 예고 — icon-warning PNG (우측 하단) */
+  private warnBadge!: Phaser.GameObjects.Image;
+  /** 피버 — icon-fever PNG (같은 슬롯, 상호배제) */
+  private feverBadge!: Phaser.GameObjects.Image;
   private feverBadgeVisible = false;
   private rankHudLabel!: Phaser.GameObjects.Text; // 「👑 Today's Rank」 안내
   private blackoutPhase: BlackoutPhase = "idle";
@@ -635,9 +649,9 @@ export class GameScene extends Phaser.Scene {
       frameWidth: 239,
       frameHeight: 300,
     });
-    // ghost-collapse: 엎어짐 3프레임(전처리본 1260×320 → 각 420×320). run과 동일 배율(높이300 기준).
+    // ghost-collapse: 엎어짐 3프레임(전처리본 963×320 → 각 321×320). run과 동일 배율(높이300 기준).
     this.load.spritesheet("ghost-collapse", ghostCollapseUrl, {
-      frameWidth: 420,
+      frameWidth: 321,
       frameHeight: 320,
     });
     this.load.image("fuel-can", fuelCanUrl);
@@ -667,6 +681,10 @@ export class GameScene extends Phaser.Scene {
     this.load.image("panel-weekly", panelWeeklyUrl);
     this.load.image("panel-gameover", panelGameoverUrl);
     this.load.image("panel-tutorial", panelTutorialUrl);
+    this.load.image("howto-tutorial", howtoTutorialUrl);
+    this.load.image("milestone-cheer", milestoneCheerUrl);
+    this.load.image("icon-warning", iconWarningUrl);
+    this.load.image("icon-fever", iconFeverUrl);
     this.load.image("btn-replay", btnReplayUrl);
     this.load.image("intro-slide", introSlideUrl);
   }
@@ -684,25 +702,20 @@ export class GameScene extends Phaser.Scene {
 
     // 정전 트랩 오버레이 — 월드(depth 0) 위, HUD 텍스트(10+)·순위 칩(22) 아래.
     this.blackoutGfx = this.add.graphics().setDepth(6);
-    // WARNING / FEVER — 코드 드로우 스파이크 뱃지 (샘플: 캡슐+상하2·좌우1 스파이크+네온 글로우).
-    // 같은 우측 하단 슬롯 — 동시에 하나만 표시(피버 우선).
-    this.warnBadge = this.makeSpikeBadge("WARNING", {
-      neon: 0xff2d6a,
-      fill: 0x120010,
-      text: 0xff4d8a,
-      w: 300,
-      h: 76,
-    });
-    this.warnBadge.setPosition(DESIGN_W - 52, DESIGN_H - 64).setVisible(false);
-    // FEVER = 동일 실루엣의 형광 노랑 버전
-    this.feverBadge = this.makeSpikeBadge("FEVER!", {
-      neon: 0xdfff00,
-      fill: 0x141200,
-      text: 0xf5ff66,
-      w: 260,
-      h: 76,
-    });
-    this.feverBadge.setPosition(DESIGN_W - 52, DESIGN_H - 64).setVisible(false);
+    // WARNING / FEVER — 아이콘 PNG. 같은 우측 하단 슬롯, 동시에 하나만(피버 우선).
+    const badgeDisp = 112;
+    this.warnBadge = this.add
+      .image(DESIGN_W - 20, DESIGN_H - 20, "icon-warning")
+      .setOrigin(1, 1)
+      .setDisplaySize(badgeDisp, badgeDisp)
+      .setDepth(36)
+      .setVisible(false);
+    this.feverBadge = this.add
+      .image(DESIGN_W - 20, DESIGN_H - 20, "icon-fever")
+      .setOrigin(1, 1)
+      .setDisplaySize(badgeDisp, badgeDisp)
+      .setDepth(36)
+      .setVisible(false);
 
     // 메테오 풀은 createBackground() 안에서 태양보다 먼저 생성됨 (Z-order 보장).
     this.meteorSpawnMs = 0; // 게임 시작 즉시 첫 스폰
@@ -726,6 +739,10 @@ export class GameScene extends Phaser.Scene {
       "panel-daily",
       "panel-weekly",
       "panel-tutorial",
+      "howto-tutorial",
+      "milestone-cheer",
+      "icon-warning",
+      "icon-fever",
       "panel-gameover",
       "panel-rank-hud",
       "panel-rank-hud-gold",
@@ -832,7 +849,7 @@ export class GameScene extends Phaser.Scene {
         fontSize: "13px",
         fontFamily: FONT_KR,
         fontStyle: "bold",
-        color: "#ffd700",
+        color: NEON_YELLOW_HEX,
         resolution: TXT_RES,
         stroke: "#0a0018",
         strokeThickness: 4,
@@ -884,7 +901,7 @@ export class GameScene extends Phaser.Scene {
 
     // 피버 오버레이 — 피버 중 화면 전체에 황금빛 tint (HUD보다 먼저 생성 → 그 아래 렌더)
     this.feverOverlay = this.add
-      .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0xffd700)
+      .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, NEON_YELLOW)
       .setAlpha(0.12)
       .setVisible(false);
 
@@ -1070,7 +1087,7 @@ export class GameScene extends Phaser.Scene {
         // 시안 칩은 알파를 낮춰 화면 전체와 조화(번쩍임 완화). YOU만 조금 더 또렷.
         .setAlpha(isMe ? 0.88 : 0.62);
       // 벡터 림 — 알파를 올려 축소 시 자글거림(저알파 AA)을 줄임. YOU는 더 또렷.
-      const rimColor = isMe ? 0xffd35c : 0x36f9f6;
+      const rimColor = isMe ? NEON_YELLOW : 0x36f9f6;
       const rimHi = isMe ? 0xffe9a8 : 0x9afcff;
       const rim = this.add.graphics();
       rim.lineStyle(2.6, rimColor, isMe ? 0.85 : 0.72);
@@ -1081,7 +1098,7 @@ export class GameScene extends Phaser.Scene {
       const txt = this.add
         .text(RP_W / 2, RP_H / 2, rpLabels[i]!, {
           fontSize: isMe ? "15px" : "13px",
-          color: isMe ? "#ffd700" : "#00e5ff",
+          color: isMe ? NEON_YELLOW_HEX : "#00e5ff",
           fontFamily: FONT_HUD,
           fontStyle: "bold",
           resolution: TXT_RES,
@@ -1101,8 +1118,8 @@ export class GameScene extends Phaser.Scene {
     this.rankHudLabel = this.add
       .text(0, 10, "👑 Today's Rank", {
         fontSize: "11px",
-        fontFamily: FONT_KR,
-        color: "#ffd700",
+        fontFamily: FONT_HUD,
+        color: NEON_YELLOW_HEX,
         resolution: TXT_RES,
       })
       .setOrigin(0, 0)
@@ -1124,9 +1141,9 @@ export class GameScene extends Phaser.Scene {
       this.comboDisplay = this.add
         .text(ribbonW / 2, 0, "", {
           fontSize: "14px",
-          fontFamily: FONT_HUD,
+          fontFamily: FONT_IMPACT,
           fontStyle: "bold",
-          color: "#ffd166",
+          color: NEON_YELLOW_HEX,
           resolution: TXT_RES,
         })
         .setOrigin(0.5, 0.5)
@@ -1219,6 +1236,7 @@ export class GameScene extends Phaser.Scene {
         const titleText = this.add
           .text(0, fy(0.198, PH), title, {
             fontSize: "13px",
+            fontFamily: FONT_KR,
             color: titleColor,
             fontStyle: "bold",
             resolution: TXT_RES,
@@ -1236,6 +1254,7 @@ export class GameScene extends Phaser.Scene {
           const name = this.add
             .text(xL, fy(rowFy[i]!, PH) + rowYPad, "", {
               fontSize: "11px",
+              fontFamily: FONT_KR,
               color: "#e0e0e0",
               resolution: TXT_RES,
             })
@@ -1243,6 +1262,7 @@ export class GameScene extends Phaser.Scene {
           const dist = this.add
             .text(xR, fy(rowFy[i]!, PH) + rowYPad, "", {
               fontSize: "11px",
+              fontFamily: FONT_HUD,
               color: "#e0e0e0",
               resolution: TXT_RES,
             })
@@ -1254,7 +1274,8 @@ export class GameScene extends Phaser.Scene {
         const myName = this.add
           .text(xL, fy(rowFy[4]!, PH) + rowYPad, "", {
             fontSize: "11px",
-            color: "#ffd700",
+            fontFamily: FONT_KR,
+            color: NEON_YELLOW_HEX,
             fontStyle: "bold",
             resolution: TXT_RES,
           })
@@ -1262,7 +1283,8 @@ export class GameScene extends Phaser.Scene {
         const myDist = this.add
           .text(xR, fy(rowFy[4]!, PH) + rowYPad, "", {
             fontSize: "11px",
-            color: "#ffd700",
+            fontFamily: FONT_HUD,
+            color: NEON_YELLOW_HEX,
             fontStyle: "bold",
             resolution: TXT_RES,
           })
@@ -1324,7 +1346,7 @@ export class GameScene extends Phaser.Scene {
           fontSize: "16px",
           color: "#36f9f6",
           fontStyle: "bold",
-          fontFamily: FONT_HUD,
+          fontFamily: FONT_IMPACT,
           align: "center",
           lineSpacing: 4,
           resolution: TXT_RES,
@@ -1410,7 +1432,7 @@ export class GameScene extends Phaser.Scene {
       this.startBestRankText = this.add
         .text(DESIGN_W / 2, DESIGN_H / 2 - 80, "", {
           fontSize: "28px",
-          color: "#ffd700",
+          color: NEON_YELLOW_HEX,
           fontStyle: "bold",
           align: "center",
         })
@@ -1483,7 +1505,7 @@ export class GameScene extends Phaser.Scene {
       const nickHl = this.add
         .text(0, 0, introNick, {
           ...copyStyle,
-          color: "#ffd700",
+          color: NEON_YELLOW_HEX,
           fontStyle: "bold",
         })
         .setOrigin(0, 0.5)
@@ -1519,7 +1541,7 @@ export class GameScene extends Phaser.Scene {
       this.introNextBtn = this.add
         .text(DESIGN_W / 2, copyY + copyH + 36, "Start →", {
           fontSize: "36px",
-          fontFamily: FONT_HUD,
+          fontFamily: FONT_IMPACT,
           fontStyle: "bold",
           color: "#5efce8",
           resolution: TXT_RES,
@@ -1559,53 +1581,52 @@ export class GameScene extends Phaser.Scene {
       this.beginIntro();
     }
 
-    // ── 조작 튜토리얼 (오프닝 Start 직후) — 「오늘 다시 안보기」면 스킵
+    // ── 조작 튜토리얼 (오프닝 Start 직후) — 4컷 에셋 + CTA. 「오늘 다시 안보기」면 스킵
     {
-      const htSrc = this.textures.get("panel-tutorial").getSourceImage();
-      const FH = 340;
-      const FW = Math.round((FH * htSrc.width) / htSrc.height);
+      // 배경 dim — 튜토리얼이 돋보이도록 충분히 어둡게
+      const veil = this.add
+        .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.72);
+      const htSrc = this.textures.get("howto-tutorial").getSourceImage();
+      // 가로 4컷 — 화면 중앙 블록(라벨+이미지+CTA)으로 배치. 종횡비 보존.
+      const FW = Math.min(DESIGN_W - 48, 960);
+      const FH = Math.round((FW * htSrc.height) / htSrc.width);
       const cx = DESIGN_W / 2;
-      const cy = DESIGN_H / 2;
-      const htBg = this.add.image(cx, cy, "panel-tutorial").setDisplaySize(FW, FH);
-      const htTitle = this.add
-        .text(cx, cy - FH / 2 + 48, "게임 방법", {
-          fontSize: "22px",
-          fontFamily: FONT_KR,
-          fontStyle: "bold",
-          color: "#5efce8",
-          resolution: TXT_RES,
-        })
-        .setOrigin(0.5)
-        .setStroke("#1a1a2e", 5);
-      const htDesc = this.add
-        .text(
-          cx,
-          cy - 10,
-          "탭으로 점프 · 1단 / 2단 점프\n장애물을 피하세요\n연료통을 먹으면 HP 회복!",
-          {
-            fontSize: "16px",
-            fontFamily: FONT_KR,
-            color: "#ffffff",
-            align: "center",
-            lineSpacing: 8,
-            wordWrap: { width: FW - 40 },
-            resolution: TXT_RES,
-          },
-        )
-        .setOrigin(0.5)
-        .setStroke("#1a1a2e", 3);
-      const htPlay = this.add
-        .text(cx, cy + FH / 2 - 78, "플레이 →", {
-          fontSize: "18px",
+      const labelH = 18;
+      const labelGap = 8;
+      const playGap = 22;
+      const playH = 36;
+      const blockH = labelH + labelGap + FH + playGap + playH;
+      const blockTop = Math.max(8, (DESIGN_H - blockH) / 2);
+      const imgY = blockTop + labelH + labelGap + FH / 2;
+      const imgLeft = cx - FW / 2;
+      const imgRight = cx + FW / 2;
+      const imgBottom = imgY + FH / 2;
+      const htImg = this.add
+        .image(cx, imgY, "howto-tutorial")
+        .setDisplaySize(FW, FH);
+      // 라벨 = 이미지 왼쪽 시작점에 맞춤
+      const htLabel = this.add
+        .text(imgLeft, blockTop, "💡 How to play", {
+          fontSize: "13px",
           fontFamily: FONT_HUD,
+          color: "#5efce8",
+          resolution: TXT_RES,
+        })
+        .setOrigin(0, 0)
+        .setStroke("#0a0018", 3);
+      const htPlay = this.add
+        .text(cx, imgBottom + playGap, "Let's Play !", {
+          fontSize: "22px",
+          fontFamily: FONT_IMPACT,
           fontStyle: "bold",
           color: "#5efce8",
           resolution: TXT_RES,
         })
-        .setOrigin(0.5)
-        .setStroke("#0a0018", 4)
-        .setPadding(16, 8, 16, 8)
+        .setOrigin(0.5, 0)
+        .setStroke("#0a0018", 5)
+        .setPadding(18, 8, 18, 8)
         .setInteractive({ useHandCursor: true });
+      this.howtoPlayBtn = htPlay;
       htPlay.on("pointerdown", (
         pointer: Phaser.Input.Pointer,
         _lx: number,
@@ -1616,14 +1637,15 @@ export class GameScene extends Phaser.Scene {
         pointer.event?.stopPropagation?.();
         this.dismissHowto(false);
       });
+      // 「오늘 다시 안보기」— 이미지 아래·우측 (겹침 방지)
       const htHide = this.add
-        .text(cx, cy + FH / 2 - 42, "오늘 다시 안보기", {
-          fontSize: "13px",
+        .text(imgRight - 4, imgBottom + 10, "오늘 다시 안보기", {
+          fontSize: "12px",
           fontFamily: FONT_KR,
           color: "#aaaaaa",
           resolution: TXT_RES,
         })
-        .setOrigin(0.5)
+        .setOrigin(1, 0)
         .setInteractive({ useHandCursor: true });
       htHide.on("pointerdown", (
         pointer: Phaser.Input.Pointer,
@@ -1636,7 +1658,7 @@ export class GameScene extends Phaser.Scene {
         this.dismissHowto(true);
       });
       this.howtoTutorial = this.add
-        .container(0, 0, [htBg, htTitle, htDesc, htPlay, htHide])
+        .container(0, 0, [veil, htImg, htLabel, htPlay, htHide])
         .setDepth(105)
         .setVisible(false);
     }
@@ -1645,50 +1667,65 @@ export class GameScene extends Phaser.Scene {
     // EV_FEVER_START 시 일시정지 + 패널. 「오늘 다시 안보기」또는 탭으로 닫기.
     this.needsFeverTutorial = !isTutorialHiddenToday("fever");
     if (this.needsFeverTutorial) {
-      const feverSec = Math.round(C.FEVER_INTERVAL_SEC);
       const ftSrc = this.textures.get("panel-tutorial").getSourceImage();
       const FH = 300;
       const FW = Math.round((FH * ftSrc.width) / ftSrc.height);
       const cx = DESIGN_W / 2;
       const cy = DESIGN_H / 2;
+      // 배경 dim — 패널이 돋보이도록
+      const ftVeil = this.add
+        .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.72);
+      // 실루엣 스트로크: 같은 패널을 살짝 키워 뒤에 깔아 외곽 자글거림을 가림.
+      const ftMatte = this.add
+        .image(cx, cy, "panel-tutorial")
+        .setDisplaySize(FW + 12, FH + 12)
+        .setTint(0x050010);
+      const ftRim = this.add
+        .image(cx, cy, "panel-tutorial")
+        .setDisplaySize(FW + 6, FH + 6)
+        .setTint(0x36f9f6);
       const ftBg = this.add.image(cx, cy, "panel-tutorial").setDisplaySize(FW, FH);
+      // 타이틀 칸(패널 상단 헤더 스트립)에 맞춤
       const ftTitle = this.add
-        .text(cx, cy - FH / 2 + 58, "FEVER!", {
-          fontSize: "24px",
-          fontFamily: FONT_HUD,
-          color: "#ffd700",
+        .text(cx, cy - FH / 2 + 22, "Fever Time", {
+          fontSize: "17px",
+          fontFamily: FONT_IMPACT,
+          color: NEON_YELLOW_HEX,
           fontStyle: "bold",
           resolution: TXT_RES,
         })
         .setOrigin(0.5)
-        .setStroke("#1a1a2e", 5);
+        .setStroke("#1a1a2e", 4);
       const ftDesc = this.add
         .text(
           cx,
-          cy - FH / 2 + 140,
-          `콤보를 ${feverSec}초 이상 유지하면 발동!\n무한 점프 + 탭마다 체력 회복`,
+          cy - 8,
+          "무한 점프를 할 수 있습니다\n점프 시, 체력이 회복됩니다",
           {
-            fontSize: "16px",
+            fontSize: "14px",
             fontFamily: FONT_KR,
             color: "#ffffff",
             align: "center",
-            wordWrap: { width: FW - 32 },
+            lineSpacing: 8,
+            wordWrap: { width: FW - 48 },
             resolution: TXT_RES,
           },
         )
         .setOrigin(0.5)
         .setStroke("#1a1a2e", 3);
       const ftContinue = this.add
-        .text(cx, cy + FH / 2 - 72, "계속 →", {
+        .text(cx, cy + FH / 2 - 72, "이어하기", {
           fontSize: "16px",
-          fontFamily: FONT_HUD,
-          fontStyle: "bold",
-          color: "#ffd700",
+          // Black Han Sans는 웹 서브셋/합성 bold에서 일부 음절(어 등)이 깨질 수 있어
+          // 셀프호스트 물마루로 CTA 고정
+          fontFamily: FONT_KR,
+          color: NEON_YELLOW_HEX,
           resolution: TXT_RES,
         })
         .setOrigin(0.5)
         .setPadding(12, 6, 12, 6)
         .setInteractive({ useHandCursor: true });
+      this.feverContinueBtn = ftContinue;
       ftContinue.on("pointerdown", (
         pointer: Phaser.Input.Pointer,
         _lx: number,
@@ -1699,14 +1736,15 @@ export class GameScene extends Phaser.Scene {
         pointer.event?.stopPropagation?.();
         this.dismissFeverTutorial(false);
       });
+      // 「오늘 다시 안보기」— 패널 하단 가운데
       const ftHide = this.add
-        .text(cx, cy + FH / 2 - 40, "오늘 다시 안보기", {
-          fontSize: "13px",
+        .text(cx, cy + FH / 2 - 28, "오늘 다시 안보기", {
+          fontSize: "11px",
           fontFamily: FONT_KR,
           color: "#aaaaaa",
           resolution: TXT_RES,
         })
-        .setOrigin(0.5)
+        .setOrigin(0.5, 1)
         .setInteractive({ useHandCursor: true });
       ftHide.on("pointerdown", (
         pointer: Phaser.Input.Pointer,
@@ -1719,7 +1757,16 @@ export class GameScene extends Phaser.Scene {
         this.dismissFeverTutorial(true);
       });
       this.feverTutorial = this.add
-        .container(0, 0, [ftBg, ftTitle, ftDesc, ftContinue, ftHide])
+        .container(0, 0, [
+          ftVeil,
+          ftMatte,
+          ftRim,
+          ftBg,
+          ftTitle,
+          ftDesc,
+          ftContinue,
+          ftHide,
+        ])
         .setDepth(90)
         .setVisible(false);
     }
@@ -1905,7 +1952,15 @@ export class GameScene extends Phaser.Scene {
     // (이전엔 isRetry면 무조건 스킵 → 첫 판에 피버 못 보면 영영 안 뜸)
     this.needsFeverTutorial = !isTutorialHiddenToday("fever");
     if (this.feverTutorial) this.feverTutorial.setVisible(false);
+    if (this.feverContinueBtn) {
+      this.tweens.killTweensOf(this.feverContinueBtn);
+      this.feverContinueBtn.setAlpha(1);
+    }
     if (this.howtoTutorial) this.howtoTutorial.setVisible(false);
+    if (this.howtoPlayBtn) {
+      this.tweens.killTweensOf(this.howtoPlayBtn);
+      this.howtoPlayBtn.setAlpha(1);
+    }
     this.howtoActive = false;
 
     this.gamePaused = false;
@@ -2044,6 +2099,19 @@ export class GameScene extends Phaser.Scene {
     if (!isTutorialHiddenToday("howto") && this.howtoTutorial) {
       this.howtoActive = true;
       this.howtoTutorial.setVisible(true);
+      // Let's Play ! 부드러운 점멸 (인트로 Start와 동일 리듬)
+      if (this.howtoPlayBtn) {
+        this.tweens.killTweensOf(this.howtoPlayBtn);
+        this.howtoPlayBtn.setAlpha(1);
+        this.tweens.add({
+          targets: this.howtoPlayBtn,
+          alpha: 0.35,
+          duration: 650,
+          yoyo: true,
+          repeat: -1,
+          ease: "Sine.easeInOut",
+        });
+      }
       return;
     }
     this.howtoActive = false;
@@ -2053,6 +2121,10 @@ export class GameScene extends Phaser.Scene {
   private dismissHowto(hideToday: boolean): void {
     if (!this.howtoActive) return;
     this.howtoActive = false;
+    if (this.howtoPlayBtn) {
+      this.tweens.killTweensOf(this.howtoPlayBtn);
+      this.howtoPlayBtn.setAlpha(1);
+    }
     if (this.howtoTutorial) this.howtoTutorial.setVisible(false);
     if (hideToday) hideTutorialToday("howto");
   }
@@ -2060,6 +2132,10 @@ export class GameScene extends Phaser.Scene {
   /** 피버 튜토리얼 닫기 + 일시정지 해제. hideToday면 day-key 저장. */
   private dismissFeverTutorial(hideToday: boolean): void {
     if (!this.feverTutorial?.visible) return;
+    if (this.feverContinueBtn) {
+      this.tweens.killTweensOf(this.feverContinueBtn);
+      this.feverContinueBtn.setAlpha(1);
+    }
     this.feverTutorial.setVisible(false);
     this.needsFeverTutorial = false;
     if (hideToday) hideTutorialToday("fever");
@@ -2146,17 +2222,14 @@ export class GameScene extends Phaser.Scene {
     if (this.introActive) return;
     // 조작 튜토리얼 — 버튼만 닫기 (배경 탭으로 점프/스킵 안 함)
     if (this.howtoActive) return;
+    // 피버 튜토리얼 — 「계속」/「오늘 다시 안보기」만 닫기 (배경 탭으로 재개 안 함)
+    if (this.feverTutorial?.visible) return;
     // 시작 오버레이 표시 중: 닫기 + 이후 점프로 이어짐 (return 없음)
     if (this.startOverlay.visible) {
       this.startOverlay.setVisible(false);
     }
-    // 일시정지 중 탭 = 재개.
-    // 피버 튜토리얼로 멈춰있으면 「계속」과 동일(오늘 숨김 X).
+    // 일시정지 중 탭 = 재개
     if (this.gamePaused) {
-      if (this.feverTutorial?.visible) {
-        this.dismissFeverTutorial(false);
-        return;
-      }
       this.togglePause();
       return;
     }
@@ -2282,6 +2355,18 @@ export class GameScene extends Phaser.Scene {
         this.timestep.reset();
         this.feverTutorial.setVisible(true);
         setPauseButtonState(false, false); // 튜토리얼 중 일시정지 버튼 숨김
+        if (this.feverContinueBtn) {
+          this.tweens.killTweensOf(this.feverContinueBtn);
+          this.feverContinueBtn.setAlpha(1);
+          this.tweens.add({
+            targets: this.feverContinueBtn,
+            alpha: 0.35,
+            duration: 650,
+            yoyo: true,
+            repeat: -1,
+            ease: "Sine.easeInOut",
+          });
+        }
       }
     }
     if (ev & C.EV_FEVER_END) {
@@ -2411,7 +2496,7 @@ export class GameScene extends Phaser.Scene {
     // 거리 칩 — 개인 신기록이면 골드 강조. 텍스트 폭에 맞춰 검정 캡슐 재그림.
     this.gameOverDistText
       .setText(`거리  ${Math.floor(myDist)}M`)
-      .setColor(isPersonalBest ? "#ffd700" : "#ffffff");
+      .setColor(isPersonalBest ? NEON_YELLOW_HEX : "#ffffff");
     {
       const tw = Math.max(72, this.gameOverDistText.width);
       const th = Math.max(16, this.gameOverDistText.height);
@@ -2531,7 +2616,7 @@ export class GameScene extends Phaser.Scene {
         dist.setText("");
         continue;
       }
-      const col = r.isMe ? "#ffd700" : "#e0e0e0";
+      const col = r.isMe ? NEON_YELLOW_HEX : "#e0e0e0";
       const fs = r.isMe ? "bold" : "normal";
       name.setText(nameLabel(r, i + 1)).setColor(col).setFontStyle(fs);
       dist.setText(distLabel(r)).setColor(col).setFontStyle(fs);
@@ -2541,7 +2626,7 @@ export class GameScene extends Phaser.Scene {
     const lastEntry = lastInMe ? rows[myIdx] : rows[4];
     const lastRank = lastInMe ? myIdx + 1 : 5;
     if (lastEntry) {
-      const col = lastInMe || lastEntry.isMe ? "#ffd700" : "#e0e0e0";
+      const col = lastInMe || lastEntry.isMe ? NEON_YELLOW_HEX : "#e0e0e0";
       const fs = lastInMe || lastEntry.isMe ? "bold" : "normal";
       this.dailyMyText
         .setText(nameLabel(lastEntry, lastRank))
@@ -2645,7 +2730,7 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
       const isMe = i === myIdx;
-      const col = isMe ? "#ffd700" : "#e0e0e0";
+      const col = isMe ? NEON_YELLOW_HEX : "#e0e0e0";
       const fs = isMe ? "bold" : "normal";
       name.setText(nameLabel(r, i + 1)).setColor(col).setFontStyle(fs);
       dist.setText(distLabel(r)).setColor(col).setFontStyle(fs);
@@ -2657,7 +2742,7 @@ export class GameScene extends Phaser.Scene {
     const lastEntry = lastInMe ? ranks[myIdx] : ranks[4];
     const lastRank = lastInMe ? myIdx + 1 : 5;
     if (lastEntry) {
-      const col = lastInMe ? "#ffd700" : "#e0e0e0";
+      const col = lastInMe ? NEON_YELLOW_HEX : "#e0e0e0";
       const fs = lastInMe ? "bold" : "normal";
       this.weeklyMyText
         .setText(nameLabel(lastEntry, lastRank))
@@ -2704,17 +2789,20 @@ export class GameScene extends Phaser.Scene {
           // 다음 발동 거리는 지금 확정 — 스킵 여부와 무관하게 수열은 전진 (결정론)
           this.blackoutNextAtM += BLACKOUT_GAP_MIN_M + this.blackoutRoll(BLACKOUT_GAP_JITTER_M);
           if (s.feverFramesLeft > 0) break; // 피버 중엔 스킵 — 무적이라 무의미
+          // 마일스톤과 슬롯 공유 — 마일스톤이 떠 있으면 먼저 내림
+          this.dismissMilestoneToast();
           this.blackoutPhase = "warn";
           this.blackoutPhaseStartMs = now;
           this.warnBadge.setVisible(true).setAlpha(1);
         }
         break;
       case "warn": {
-        // 피버 중이면 WARNING 숨김 — 같은 슬롯에 FEVER만 (상호배제)
-        if (s.feverFramesLeft > 0) {
+        // 피버·마일스톤과 상호배제 — 피버면 warn 숨김, 아니면 마일스톤 내리고 warn 표시
+        if (s.feverFramesLeft > 0 || this.feverBadgeVisible) {
           this.warnBadge.setVisible(false);
           this.drawBlackoutOverlay(0.1 + 0.08 * Math.abs(Math.sin(now * 0.03)), 0.25);
         } else {
+          this.dismissMilestoneToast();
           this.warnBadge.setVisible(true);
           // 우측 끝 연기 + WARNING 호흡형 점멸(완만, 0.55↔1.0)
           this.drawBlackoutOverlay(0.1 + 0.08 * Math.abs(Math.sin(now * 0.03)), 0.25);
@@ -2821,9 +2909,18 @@ export class GameScene extends Phaser.Scene {
   /**
    * 1000m 단위 응원 토스트 — 우측 하단에서 슬라이드 업 → 잠시 유지 → 슬라이드 다운.
    * (중앙 ⚡ NM 팡파레는 제거됨 — 시야 방해)
-   * 전용 상반신+굿제스처 에셋이 오면 `milestone-cheer` 키로 교체(docs/design/milestone-cheer-asset.md).
+   * fever/warning과 같은 슬롯 — 둘 중 하나라도 켜져 있으면 스킵(상호배제).
    */
   private showMilestoneCheer(meters: number): void {
+    // 우선순위: fever > warning > milestone — 상위가 점유 중이면 이번 연출 생략
+    if (
+      this.sim.state.feverFramesLeft > 0 ||
+      this.blackoutPhase === "warn" ||
+      this.feverBadgeVisible ||
+      this.warnBadge?.visible
+    ) {
+      return;
+    }
     if (this.milestoneToast) {
       this.tweens.killTweensOf(this.milestoneToast);
       this.milestoneToast.destroy();
@@ -2850,21 +2947,21 @@ export class GameScene extends Phaser.Scene {
     const portrait = this.add
       .image(0, 0, texKey, texKey === "player-ride" ? 0 : undefined)
       .setOrigin(0.5, 1);
-    const ph = 110;
-    portrait.setDisplaySize(
-      (portrait.width / Math.max(1, portrait.height)) * ph,
-      ph,
-    );
+    // 표시 높이 110→330 (3배). 우측 여백을 남기도록 x를 초상 폭 기준으로 잡음.
+    const ph = 330;
+    const pw =
+      (portrait.width / Math.max(1, portrait.height)) * ph;
+    portrait.setDisplaySize(pw, ph);
     kids.push(portrait);
 
     const label = this.add
       .text(0, 0, msg, {
-        fontSize: "14px",
+        fontSize: "15px",
         fontFamily: FONT_KR,
         color: "#ffffff",
         align: "center",
         resolution: TXT_RES,
-        wordWrap: { width: 200 },
+        wordWrap: { width: Math.max(200, Math.round(pw * 0.9)) },
       })
       .setOrigin(0.5);
     const padX = 12;
@@ -2882,7 +2979,9 @@ export class GameScene extends Phaser.Scene {
     const bubble = this.add.container(0, -ph - 18, [box, label]);
     kids.push(bubble);
 
-    const restX = DESIGN_W - 88;
+    // 초상+말풍선 묶음 — 우측 끝에서 여백(~32px) 두고 왼쪽으로
+    const rightPad = 32;
+    const restX = DESIGN_W - rightPad - pw / 2;
     const restY = DESIGN_H - 18;
     const hiddenY = DESIGN_H + 40;
     const c = this.add
@@ -2901,14 +3000,22 @@ export class GameScene extends Phaser.Scene {
       targets: c,
       y: hiddenY,
       alpha: 0,
-      delay: 2200,
-      duration: 380,
+      delay: 5800, // 유지 시간 (~5.8s)
+      duration: 420,
       ease: "Cubic.in",
       onComplete: () => {
         if (this.milestoneToast === c) this.milestoneToast = undefined;
         c.destroy();
       },
     });
+  }
+
+  /** 마일스톤 토스트 즉시 제거 — fever/warning과 우측 하단 슬롯 상호배제용 */
+  private dismissMilestoneToast(): void {
+    if (!this.milestoneToast) return;
+    this.tweens.killTweensOf(this.milestoneToast);
+    this.milestoneToast.destroy();
+    this.milestoneToast = undefined;
   }
 
   /** 개인 신기록 달성 팝업 — 화면 중앙에서 위로 올라가며 사라짐 */
@@ -2922,9 +3029,9 @@ export class GameScene extends Phaser.Scene {
     const txt = this.add
       .text(cx, cy, label, {
         fontSize: "22px",
-        fontFamily: FONT_HUD,
+        fontFamily: FONT_IMPACT,
         fontStyle: "bold",
-        color: "#ffd700",
+        color: NEON_YELLOW_HEX,
         resolution: TXT_RES,
       })
       .setOrigin(0.5)
@@ -3123,9 +3230,9 @@ export class GameScene extends Phaser.Scene {
         0.45 + 0.55 * (0.5 + 0.5 * Math.sin(t * s.tw + s.phase));
       const a = twinkle;
       // 외곽 헤일로
-      g.fillStyle(0xffe566, 0.12 * a);
+      g.fillStyle(NEON_YELLOW, 0.12 * a);
       g.fillCircle(s.x, s.y, s.r * 3.2);
-      g.fillStyle(0xffd400, 0.28 * a);
+      g.fillStyle(NEON_YELLOW, 0.28 * a);
       g.fillCircle(s.x, s.y, s.r * 1.6);
       // 코어
       g.fillStyle(0xfff8c0, 0.85 * a + 0.15);
@@ -3133,7 +3240,7 @@ export class GameScene extends Phaser.Scene {
       // 십자 스파클 (큰 별만)
       if (s.r > 1.2) {
         const arm = s.r * (2.8 + 1.2 * twinkle);
-        g.lineStyle(1.1, 0xffe566, 0.55 * a);
+        g.lineStyle(1.1, NEON_YELLOW, 0.55 * a);
         g.lineBetween(s.x - arm, s.y, s.x + arm, s.y);
         g.lineBetween(s.x, s.y - arm, s.x, s.y + arm);
       }
@@ -3709,10 +3816,13 @@ export class GameScene extends Phaser.Scene {
           : 0.9
         : 1;
     this.playerRect.setY(toScreenY(s.player.y)).setAlpha(playerAlpha);
-    // 주인공 닉네임: 머리 위 추적. 점프 시 살짝만 더 올림(이전 JUMP_HIT 전체 높이는 과함).
+    // 주인공 닉네임: 머리 위 추적. 말풍선이 떠 있으면 겹침 방지로 숨김.
     if (this.playerNickLabel) {
       const showNick =
-        !s.gameOver && !this.introActive && !this.gamePaused;
+        !s.gameOver &&
+        !this.introActive &&
+        !this.gamePaused &&
+        !this.bubble;
       this.playerNickLabel.setVisible(showNick);
       if (showNick) {
         const jumpLift =
@@ -3984,7 +4094,7 @@ export class GameScene extends Phaser.Scene {
     const hiddenX = (this.comboRibbon.getData("hiddenX") as number) ?? -126;
     if (showCombo) {
       this.comboDisplay.setText(`${s.combo} combo`);
-      this.comboDisplay.setColor(s.feverFramesLeft > 0 ? "#ffd700" : "#ffd166");
+      this.comboDisplay.setColor(NEON_YELLOW_HEX);
       if (!this.comboRibbonVisible) {
         this.comboRibbonVisible = true;
         this.comboRibbon.setVisible(true);
@@ -4026,11 +4136,11 @@ export class GameScene extends Phaser.Scene {
     }
     this.prevCombo = s.combo;
 
-    // 피버 스파이크 뱃지 — 우측 하단. 피버 중 표시·호흡 점멸, 종료 시 숨김.
-    // WARNING과 같은 슬롯 → 피버가 켜지면 warn은 강제 숨김(상호배제).
+    // 피버 아이콘 — 우측 하단. 피버 > warning > milestone 우선순위.
     {
       const showFever = s.feverFramesLeft > 0 && !s.gameOver;
       if (showFever) {
+        this.dismissMilestoneToast();
         if (this.warnBadge.visible) this.warnBadge.setVisible(false);
         if (!this.feverBadgeVisible) {
           this.feverBadgeVisible = true;
@@ -4049,7 +4159,7 @@ export class GameScene extends Phaser.Scene {
     // 바이크 네온 글로우 — 평시 시안, 피버 중 골드로 전환 (렌더 전용)
     if (this.playerGlow) {
       if (s.feverFramesLeft > 0) {
-        this.playerGlow.color = 0xffd700;
+        this.playerGlow.color = NEON_YELLOW;
         this.playerGlow.outerStrength = 7;
       } else if (s.gameOver) {
         this.playerGlow.outerStrength = 0;
@@ -4077,7 +4187,7 @@ export class GameScene extends Phaser.Scene {
     this.updateRankPanel();
     if (hasGhosts) {
       const is1st = currentRank === 1;
-      this.paceText.setColor(is1st ? "#ffd700" : "#ffffff");
+      this.paceText.setColor(is1st ? NEON_YELLOW_HEX : "#ffffff");
       this.paceText.setText(`${currentRank} / ${totalRunners}등`);
       this.paceText.setY(toScreenY(s.player.y + C.PLAYER_H) - 6);
       if (!s.gameOver) {
@@ -4104,11 +4214,14 @@ export class GameScene extends Phaser.Scene {
   private popup(msg: string, color: string) {
     const x = toScreenX(C.PLAYER_X);
     const y = boxCenterScreenY(this.sim.state.player.y, C.PLAYER_H) - 44;
+    // 한글 포함이면 Black Han Sans, 아니면 Bangers — 임팩트 토스트용
+    // Black Han Sans는 이미 극굵이라 bold 합성 금지(일부 음절 깨짐)
+    const impactFont = /[가-힣]/.test(msg) ? FONT_KR_IMPACT : FONT_IMPACT;
     const t = this.add
       .text(x, y, msg, {
         fontSize: "20px",
+        fontFamily: impactFont,
         color,
-        fontStyle: "bold",
         resolution: TXT_RES,
       })
       .setOrigin(0.5);
@@ -4120,119 +4233,6 @@ export class GameScene extends Phaser.Scene {
       ease: "Cubic.out",
       onComplete: () => t.destroy(),
     });
-  }
-
-  /**
-   * 스파이크 뱃지 — 샘플(docs/design/refs-warning-badge-sample.png) 실루엣.
-   * 둥근 캡슐 + 상하 각 2·좌우 각 1(총 6) 삼각 스파이크 + 바깥 네온 블룸.
-   * Graphics 벡터라 축소 AA 자글거림 없음. origin = 우하단.
-   */
-  private makeSpikeBadge(
-    label: string,
-    opt: { neon: number; fill: number; text: number; w: number; h: number },
-  ): Phaser.GameObjects.Container {
-    const { neon, fill, text, w, h } = opt;
-    const gfx = this.add.graphics();
-    // 로컬 좌표: 우하단(0,0) 기준, 뱃지는 왼쪽·위쪽(-w,-h)에 그림
-    const x0 = -w;
-    const y0 = -h;
-    const r = h * 0.5; // 캡슐 라운드 (샘플처럼 더 둥글게)
-    const spike = Math.round(h * 0.34); // 스파이크 돌출 (샘플처럼 더 길게)
-
-    // 외곽 경로: 캡슐 + 6스파이크 (시계방향)
-    const topY = y0;
-    const botY = y0 + h;
-    const leftX = x0;
-    const rightX = x0 + w;
-    const midY = y0 + h / 2;
-    const sx1 = x0 + w * 0.32;
-    const sx2 = x0 + w * 0.68;
-
-    const buildPath = (g: Phaser.GameObjects.Graphics, pad: number) => {
-      const L = leftX - pad;
-      const R = rightX + pad;
-      const T = topY - pad;
-      const B = botY + pad;
-      const rr = r + pad * 0.5;
-      const sp = spike + pad;
-      const mY = midY;
-      const s1 = sx1;
-      const s2 = sx2;
-      // 스파이크 밑변 폭 — 샘플처럼 좁고 뾰족
-      const base = sp * 0.42;
-      g.beginPath();
-      g.moveTo(L + rr, T);
-      g.lineTo(s1 - base, T);
-      g.lineTo(s1, T - sp);
-      g.lineTo(s1 + base, T);
-      g.lineTo(s2 - base, T);
-      g.lineTo(s2, T - sp);
-      g.lineTo(s2 + base, T);
-      g.lineTo(R - rr, T);
-      g.arc(R - rr, T + rr, rr, -Math.PI / 2, 0, false);
-      g.lineTo(R, mY - base);
-      g.lineTo(R + sp, mY);
-      g.lineTo(R, mY + base);
-      g.lineTo(R, B - rr);
-      g.arc(R - rr, B - rr, rr, 0, Math.PI / 2, false);
-      g.lineTo(s2 + base, B);
-      g.lineTo(s2, B + sp);
-      g.lineTo(s2 - base, B);
-      g.lineTo(s1 + base, B);
-      g.lineTo(s1, B + sp);
-      g.lineTo(s1 - base, B);
-      g.lineTo(L + rr, B);
-      g.arc(L + rr, B - rr, rr, Math.PI / 2, Math.PI, false);
-      g.lineTo(L, mY + base);
-      g.lineTo(L - sp, mY);
-      g.lineTo(L, mY - base);
-      g.lineTo(L, T + rr);
-      g.arc(L + rr, T + rr, rr, Math.PI, (Math.PI * 3) / 2, false);
-      g.closePath();
-    };
-
-    // 네온 블룸 — 샘플처럼 바깥으로 넓게 번지게 (Graphics는 blur 미지원 → 다층)
-    const glowLayers = [
-      { pad: 16, a: 0.04 },
-      { pad: 12, a: 0.07 },
-      { pad: 8, a: 0.12 },
-      { pad: 5, a: 0.2 },
-      { pad: 2.5, a: 0.35 },
-    ];
-    for (const gl of glowLayers) {
-      gfx.fillStyle(neon, gl.a);
-      buildPath(gfx, gl.pad);
-      gfx.fillPath();
-    }
-    // 본체 다크 필
-    gfx.fillStyle(fill, 0.96);
-    buildPath(gfx, 0);
-    gfx.fillPath();
-    // 네온 스트로크
-    gfx.lineStyle(4, neon, 1);
-    buildPath(gfx, 0);
-    gfx.strokePath();
-    // 안쪽 하이라이트 림
-    gfx.lineStyle(1.5, 0xffffff, 0.22);
-    buildPath(gfx, 0);
-    gfx.strokePath();
-
-    const hex = `#${text.toString(16).padStart(6, "0")}`;
-    const neonHex = `#${neon.toString(16).padStart(6, "0")}`;
-    const fontPx = label.length > 6 ? 24 : 28;
-    const txt = this.add
-      .text(x0 + w / 2, y0 + h / 2, label, {
-        fontSize: `${fontPx}px`,
-        fontFamily: FONT_HUD,
-        fontStyle: "bold",
-        color: hex,
-        resolution: TXT_RES,
-      })
-      .setOrigin(0.5)
-      .setStroke("#0a0018", 6)
-      .setShadow(0, 0, neonHex, 12, true, true);
-
-    return this.add.container(0, 0, [gfx, txt]).setDepth(36);
   }
 
   /** 포션 획득 — HP바 좌상단에 작은 "HP+" 토스트 (네온 민트) */
@@ -4287,6 +4287,7 @@ export class GameScene extends Phaser.Scene {
     const label = this.add
       .text(0, 0, msg, {
         fontSize: "11px",
+        fontFamily: FONT_KR,
         color: "#ffffff",
         align: "center",
         resolution: TXT_RES,
@@ -4366,7 +4367,7 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: c,
       alpha: 0,
-      delay: 4200,
+      delay: 5200, // 말풍선 유지 (+1s)
       duration: 450,
       ease: "Quad.in",
       onComplete: () => {
@@ -4793,7 +4794,7 @@ export class GameScene extends Phaser.Scene {
       // y1(좌끝)과 y2(우끝)가 반대 방향으로 흔들려 사선 느낌 유지
       const y1 = b.yMid + sweep * b.amp;
       const y2 = b.yMid - sweep * b.amp;
-      const color = fever ? 0xffd700 : b.color;
+      const color = fever ? NEON_YELLOW : b.color;
       const alpha = baseAlpha * (fever ? 1.8 : 1);
       g.lineStyle(b.width, color, Math.min(0.55, alpha));
       g.beginPath();

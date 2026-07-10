@@ -51,10 +51,25 @@ if (import.meta.env.DEV) {
 initAnalytics();
 initGameControls();
 
-// Google Fonts 로드 완료 후 게임 시작 — 폰트 미로드 상태로 첫 텍스트가 렌더되면
-// fallback 폰트로 캐싱되어 게임 내내 깨진 폰트로 보인다.
-// fonts.ready는 이미 로드된 환경에서 즉시 resolve하므로 딜레이 없음.
-void document.fonts.ready.then(() => {
+// Google Fonts + 물마루가 실제로 로드된 뒤에만 Phaser 시작.
+// fonts.ready만으로는 @font-face(물마루)처럼 "아직 DOM에서 안 쓴" 폰트를
+// 안 기다릴 수 있고, Phaser Text는 생성 순간 캔버스에 구워버려 fallback이 고정된다.
+void (async () => {
+  try {
+    // 한글 샘플을 넘겨 서브셋 폰트(Black Han Sans)가 실제 음절을 받도록 함.
+    // 인자 없이 load하면 라틴만 받아 '어' 같은 글자가 시스템 폰트로 떨어질 수 있음.
+    const krSample = "가나다라마바사아자차카타파하이어하기제침고스트계속";
+    await Promise.all([
+      document.fonts.load("600 16px Fredoka"),
+      document.fonts.load("400 16px Bangers"),
+      document.fonts.load("400 16px Mulmaru", krSample),
+      document.fonts.load("400 16px 'Black Han Sans'", krSample),
+    ]);
+    await document.fonts.ready;
+  } catch (e) {
+    // 폰트 로드 실패해도 게임은 띄운다 — fallback으로라도 플레이 가능해야 함
+    Sentry.captureException(e);
+  }
 
 try {
   new Phaser.Game({
@@ -83,4 +98,4 @@ try {
   throw e;
 }
 
-}); // document.fonts.ready
+})();

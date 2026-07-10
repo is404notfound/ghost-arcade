@@ -73,7 +73,7 @@
 | `fire.hot`          | `#ffe9a8` 코어 → `#ff7a3c` → `#d62828` (어두운 엣지 `#7a0f12`) | 메테오·불꽃 장애물                           |
 | `laser.red`         | `#ff4757` / `#ff6b81`                                   | 배경 경고 레이저                            |
 | `hp.green/warn/low` | `#2ecc71 / #f1c40f / #ff4757`                           | 체력바                                  |
-| `fever.gold`        | `#ffd700`                                               | 피버 연출                                |
+| `fever.gold`        | `#f0f838` (네온 옐로, Fever 아이콘 샘플)                      | 피버·HUD 강조 노랑 통일                     |
 
 
 > **게임플레이 4색**(플레이어 시안 / 고스트 바이올렛 / 연료 블루 / 위험 마젠타)은 **절대 닮게
@@ -713,7 +713,7 @@ baked into frame, matte fringe, drop shadow on ground, multiple bars, game chara
 ### 5.7B UI 패널 — 랭킹 / 튜토리얼 / 게임오버 ★신규 (현재 코드 Rectangle → 에셋 교체)
 
 > 공통: 전부 **9-slice 가능한 프레임**으로 받아 폭/높이 가변 합성. 글자·숫자는 게임에서 코드 렌더
-> (Oxanium/Noto Sans KR). 팔레트는 HUD 통일 — 시안 `#36f9f6`/`#00e5ff`, 위험 마젠타 `#ff2d55`,
+> (Fredoka/Bangers + 물마루/Black Han Sans). 팔레트는 HUD 통일 — 시안 `#36f9f6`/`#00e5ff`, 위험 마젠타 `#ff2d55`,
 > 다크 바디 `#060010`~`#10081f`. 정면 플랫(원근 금지), 투명 배경, 글자 없이.
 
 **(1) rank-panel — 상단 거리 랭킹 칩 (가로 4칸, 슬롯형)**
@@ -913,6 +913,19 @@ only), busy ornaments, characters, skulls, multiple bubbles
 ```
 
 > **구현(완료):** warn 페이즈에 baked Image 표시, 알파 `0.25↔1.0` 사인 점멸. Graphics 스톱갭 제거.
+
+---
+
+### 5.7H icon-warning / icon-fever — 사이렌·피버 아이콘 ✅적용
+
+> 코드 스파이크 뱃지 → **아이콘 PNG**. 상세: `docs/design/fever-warning-icon-asset.md`
+>
+> | 키 | 모티프 | 색 | 런타임 |
+> |----|--------|-----|--------|
+> | `icon-warning` | 사이렌 + WARNING | 네온 핑크 | `assets/game/icon-warning.png` |
+> | `icon-fever` | 번개+링 | 형광 노랑 `#f0f838` | `assets/game/icon-fever.png` |
+>
+> 우측 하단 112px, 상호배제·호흡 점멸(`sin(t*0.006)`). prep: `prep_icon_warning` / `prep_icon_fever`.
 
 ---
 

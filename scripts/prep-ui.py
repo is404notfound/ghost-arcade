@@ -21,6 +21,12 @@ fuel-can-src.png (RGB 흰 배경, 1024×1024):
 warn-bubble-src.png (RGB 흰 배경, ~1024×341, WARNING baked):
   흰 배경 제거 → fringe 정리 → bbox 트림 → 종횡비 보존 @3x 리사이즈.
   표시 폭 ~168 기준 → 504px. 글자·스파이크 프레임이 한 장에 구워져 있음.
+
+howto-tutorial-src.png (RGB 체커 배경, 1024×576, 4컷 가로 스트립):
+  밝은 체커 제거 → fringe → bbox 트림 → 종횡비 보존. 글자 없음(코드 CTA).
+
+milestone-cheer-src.png (RGB 체커 배경, 상반신+굿 제스처):
+  체커 제거 → fringe → bbox 트림 → 높이 기준 리사이즈(~420). 글자 없음.
 """
 from __future__ import annotations
 from PIL import Image, ImageFilter
@@ -37,6 +43,12 @@ HP_FRAME_TARGET_W = 780
 FUEL_CAN_SIZE = 104
 # warn-bubble: 인게임 ~360px 표시 → @3x ≈ 1080 (소스 1024에 가깝게 유지해 다운스케일 뭉개짐 완화)
 WARN_BUBBLE_TARGET_W = 1024
+# howto-tutorial: 4컷 가로 스트립. 표시 ≈960 → @1x 소스 유지(이미 1024폭)
+HOWTO_TUTORIAL_TARGET_W = 1024
+# milestone-cheer: 상반신 초상. 표시 ≈110px 높이 → 폭 ~360~420 @~3x
+MILESTONE_CHEER_TARGET_H = 420
+# icon-warning / icon-fever: 정사각 아이콘. 인게임 ≈112px → @3x ≈336
+ICON_BADGE_TARGET = 336
 # 흰 스트로크 두께(소스 해상도 기준 px) — 두껍게 + 하드 엣지로 자글거림 완화
 WARN_STROKE_PX = 8
 
@@ -218,8 +230,12 @@ def prep_fuel_can() -> None:
     print(f"  fuel-can.png → {canvas.size}  (content {tw}×{th})")
 
 
-def _add_white_stroke(im: Image.Image, width: int = 8) -> Image.Image:
-    """실루엣 바깥에 불투명 흰 스트로크를 깐다.
+def _add_color_stroke(
+    im: Image.Image,
+    width: int = 8,
+    rgb: tuple[int, int, int] = (255, 255, 255),
+) -> Image.Image:
+    """실루엣 바깥에 불투명 컬러 스트로크를 깐다.
 
     MaxFilter로 여러 번 팽창한 뒤 원본 알파를 빼 스트로크 마스크를 만들고,
     알파를 하드컷해 반투명 fringe(축소 시 자글거림 원인)를 제거한다.
@@ -231,17 +247,19 @@ def _add_white_stroke(im: Image.Image, width: int = 8) -> Image.Image:
     for _ in range(max(1, width)):
         expanded = expanded.filter(IF.MaxFilter(3))
     stroke_a = ImageChops.subtract(expanded, alpha)
-    # 하드컷 — mid-alpha fringe 제거 (자글거림의 주원인)
     stroke_a = stroke_a.point(lambda v: 255 if v >= 40 else 0)
-    # 1px만 살짝 블러 후 다시 하드컷 → 초미세 톱니만 완화, 반투명 띠는 안 남김
     stroke_a = stroke_a.filter(IF.GaussianBlur(0.4))
     stroke_a = stroke_a.point(lambda v: 255 if v >= 90 else 0)
-    stroke = Image.new("RGBA", im.size, (255, 255, 255, 0))
+    stroke = Image.new("RGBA", im.size, (*rgb, 0))
     stroke.putalpha(stroke_a)
     out = Image.new("RGBA", im.size, (0, 0, 0, 0))
     out.alpha_composite(stroke)
     out.alpha_composite(im)
     return out
+
+
+def _add_white_stroke(im: Image.Image, width: int = 8) -> Image.Image:
+    return _add_color_stroke(im, width=width, rgb=(255, 255, 255))
 
 
 def prep_warn_bubble() -> None:
@@ -272,9 +290,135 @@ def prep_warn_bubble() -> None:
     print(f"  warn-bubble.png → {im.size}  (content≈{tw}×{th}, hard white stroke)")
 
 
+def prep_howto_tutorial() -> None:
+    """오프닝 조작 튜토리얼 4컷 스트립 — 체커/밝은 배경 → RGBA 투명."""
+    src = os.path.join(SRC, "howto-tutorial-src.png")
+    if not os.path.isfile(src):
+        print("  howto-tutorial.png SKIP (no howto-tutorial-src.png)")
+        return
+    im = Image.open(src).convert("RGBA")
+    # 체커(밝은 회색~흰, 저채도) 제거. 패널 내부는 거의 검정/시안이라 보존됨.
+    im = _remove_white_bg(im, thresh=200, sat_thresh=0.12)
+    im = _defringe(im, alpha_hi=90, lum_hi=180, sat_max=0.25)
+    im = _hard_cut_alpha(im, min_alpha=18)
+    amask = im.split()[3].point(lambda v: 255 if v > 10 else 0)
+    bb = amask.getbbox()
+    if bb:
+        im = im.crop(bb)
+    cw, ch = im.size
+    tw = HOWTO_TUTORIAL_TARGET_W
+    th = max(1, round(ch * tw / cw))
+    if abs(cw - tw) > 2 or abs(ch - th) > 2:
+        im = im.resize((tw, th), Image.LANCZOS)
+    # 네온 시안 림 소프트닝
+    r_, g_, b_, a_ = im.split()
+    a_ = a_.filter(ImageFilter.GaussianBlur(0.5))
+    im = Image.merge("RGBA", (r_, g_, b_, a_))
+    im = _hard_cut_alpha(im, min_alpha=14)
+    out_path = os.path.join(OUT, "howto-tutorial.png")
+    im.save(out_path, "PNG")
+    print(f"  howto-tutorial.png → {im.size}  (aspect {im.size[0]/im.size[1]:.2f})")
+
+
+def prep_milestone_cheer() -> None:
+    """1000m 마일스톤 응원 초상 — 체커 제거 + 다크/시안 스트로크로 톱니 가림."""
+    src = os.path.join(SRC, "milestone-cheer-src.png")
+    if not os.path.isfile(src):
+        print("  milestone-cheer.png SKIP (no milestone-cheer-src.png)")
+        return
+    im = Image.open(src).convert("RGBA")
+    im = _remove_white_bg(im, thresh=200, sat_thresh=0.12)
+    im = _defringe(im, alpha_hi=90, lum_hi=180, sat_max=0.25)
+    im = _hard_cut_alpha(im, min_alpha=18)
+    amask = im.split()[3].point(lambda v: 255 if v > 10 else 0)
+    bb = amask.getbbox()
+    if bb:
+        im = im.crop(bb)
+    cw, ch = im.size
+    th = MILESTONE_CHEER_TARGET_H
+    tw = max(1, round(cw * th / ch))
+    if abs(cw - tw) > 2 or abs(ch - th) > 2:
+        im = im.resize((tw, th), Image.LANCZOS)
+    r_, g_, b_, a_ = im.split()
+    a_ = a_.filter(ImageFilter.GaussianBlur(0.5))
+    im = Image.merge("RGBA", (r_, g_, b_, a_))
+    im = _hard_cut_alpha(im, min_alpha=14)
+    # 외곽 톱니 가림: 다크 매트 → 시안 림 (인게임 네온 톤)
+    stroke_pad = 8
+    canvas = Image.new(
+        "RGBA",
+        (im.size[0] + stroke_pad * 2, im.size[1] + stroke_pad * 2),
+        (0, 0, 0, 0),
+    )
+    canvas.paste(im, (stroke_pad, stroke_pad), im)
+    canvas = _add_color_stroke(canvas, width=5, rgb=(8, 4, 24))  # 다크 매트
+    canvas = _add_color_stroke(canvas, width=2, rgb=(54, 249, 246))  # 시안 림
+    out_path = os.path.join(OUT, "milestone-cheer.png")
+    canvas.save(out_path, "PNG")
+    print(f"  milestone-cheer.png → {canvas.size}  (content≈{tw}×{th}, dark+cyan stroke)")
+
+
+def _prep_square_icon(
+    src_name: str,
+    out_name: str,
+    stroke_rgb: tuple[int, int, int] | None = None,
+) -> None:
+    """체커 배경 정사각 아이콘 → RGBA 투명 + (선택) 외곽 스트로크."""
+    src = os.path.join(SRC, src_name)
+    if not os.path.isfile(src):
+        print(f"  {out_name} SKIP (no {src_name})")
+        return
+    im = Image.open(src).convert("RGBA")
+    im = _remove_white_bg(im, thresh=200, sat_thresh=0.12)
+    im = _defringe(im, alpha_hi=90, lum_hi=180, sat_max=0.25)
+    im = _hard_cut_alpha(im, min_alpha=18)
+    amask = im.split()[3].point(lambda v: 255 if v > 10 else 0)
+    bb = amask.getbbox()
+    if bb:
+        im = im.crop(bb)
+    cw, ch = im.size
+    # 스트로크 여유를 남기고 콘텐츠 리사이즈
+    stroke_pad = 10 if stroke_rgb else 0
+    inner = ICON_BADGE_TARGET - stroke_pad * 2
+    if cw > ch:
+        tw, th = inner, max(1, round(inner * ch / cw))
+    else:
+        tw, th = max(1, round(inner * cw / ch)), inner
+    im = im.resize((tw, th), Image.LANCZOS)
+    r_, g_, b_, a_ = im.split()
+    a_ = a_.filter(ImageFilter.GaussianBlur(0.5))
+    im = Image.merge("RGBA", (r_, g_, b_, a_))
+    im = _hard_cut_alpha(im, min_alpha=14)
+    size = ICON_BADGE_TARGET
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    canvas.paste(im, ((size - tw) // 2, (size - th) // 2), im)
+    if stroke_rgb is not None:
+        # 다크 매트 → 컬러 림 (톱니/자글거림 가림)
+        canvas = _add_color_stroke(canvas, width=4, rgb=(8, 4, 24))
+        canvas = _add_color_stroke(canvas, width=2, rgb=stroke_rgb)
+    out_path = os.path.join(OUT, out_name)
+    canvas.save(out_path, "PNG")
+    tag = f", stroke {stroke_rgb}" if stroke_rgb else ""
+    print(f"  {out_name} → {canvas.size}  (content {tw}×{th}{tag})")
+
+
+def prep_icon_warning() -> None:
+    # 네온 핑크 림
+    _prep_square_icon("icon-warning-src.png", "icon-warning.png", stroke_rgb=(255, 45, 106))
+
+
+def prep_icon_fever() -> None:
+    # Fever 아이콘 네온 옐로 #f0f838
+    _prep_square_icon("icon-fever-src.png", "icon-fever.png", stroke_rgb=(240, 248, 56))
+
+
 if __name__ == "__main__":
     print("[ui assets]")
     prep_hp_frame()
     prep_fuel_can()
     prep_warn_bubble()
+    prep_howto_tutorial()
+    prep_milestone_cheer()
+    prep_icon_warning()
+    prep_icon_fever()
     print("done.")
