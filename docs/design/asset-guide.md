@@ -1232,9 +1232,9 @@ NEGATIVE: horror stinger, scream, heavy impact boom, sad solo violin, choir, lon
 
 | 트리거                    | 파일 / 톤                                                          | 길이                            | 상태  |
 | ---------------------- | -------------------------------------------------------------- | ----------------------------- | --- |
-| 점프 (EV_JUMP)           | `sfx-jump.wav` — 중저음 엔진 럼블 (Mixkit engine working, 경적급 스피드업 폐기) | ~0.38s (2단 `detune:200`) · vol 0.55 | ✅   |
+| 점프 (EV_JUMP)           | `sfx-jump.wav` — 중저음 엔진 럼블 (Mixkit engine working, 경적급 스피드업 폐기) | ~0.38s (2단 `detune:200`) · vol 1.0 | ✅   |
 | 피격 (EV_HIT)            | `sfx-hit.wav` — **드리프트/스키드** (Freesound Sonic Skid CC0)         | ~0.46s                        | ✅   |
-| 연료 획득 (EV_POTION)      | `sfx-potion.wav` — **꿀꺽** (Freesound Drinking w/ Gulp CC0, 피크 정규화) | ~0.6s · vol 0.85              | ✅   |
+| 연료 획득 (EV_POTION)      | `sfx-potion.wav` — **꿀꺽** (Freesound Drinking w/ Gulp CC0, 피크 정규화) | ~0.6s · vol 1.0               | ✅   |
 | 피버 시작 (EV_FEVER_START) | `sfx-fever.wav` — 신스 파워 서지 (합성) → 프롬프트 A                      | ≤0.8s                         | 🔄  |
 | 제침 (고스트 finished)      | `sfx-overtake.wav` — 상승 스윕 (합성) → 프롬프트 B                       | ≤0.25s                        | 🔄  |
 | 콤보틱 / UI탭              | `sfx-tick.wav` — 시안 블립 (합성) → 프롬프트 C                           | ≤0.1s                         | 🔄  |
