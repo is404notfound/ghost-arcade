@@ -1234,7 +1234,7 @@ NEGATIVE: horror stinger, scream, heavy impact boom, sad solo violin, choir, lon
 | ---------------------- | -------------------------------------------------------------- | ----------------------------- | --- |
 | 점프 (EV_JUMP)           | `sfx-jump.wav` — 중저음 엔진 럼블 (Mixkit engine working, 경적급 스피드업 폐기) | ~0.38s (2단 `detune:200`) · vol 0.7 | ✅   |
 | 피격 (EV_HIT)            | `sfx-hit.wav` — **드리프트/스키드** (Freesound Sonic Skid CC0)         | ~0.46s                        | ✅   |
-| 연료 획득 (EV_POTION)      | `sfx-potion.wav` — 게임 픽업/리필 톤 (Mixkit health recharge; gulp는 무음급이라 교체) | ~0.45s · vol 0.5              | ✅   |
+| 연료 획득 (EV_POTION)      | `sfx-potion.wav` — 게임 픽업/리필 톤 (Mixkit health recharge; gulp는 무음급이라 교체) | ~0.45s · vol 0.35             | ✅   |
 | 피버 시작 (EV_FEVER_START) | `sfx-fever.wav` — 신스 파워 서지 (합성) → 프롬프트 A                      | ≤0.8s                         | 🔄  |
 | 제침 (고스트 finished)      | `sfx-overtake.wav` — 상승 스윕 (합성) → 프롬프트 B                       | ≤0.25s                        | 🔄  |
 | 콤보틱 / UI탭              | `sfx-tick.wav` — 시안 블립 (합성) → 프롬프트 C                           | ≤0.1s                         | 🔄  |
