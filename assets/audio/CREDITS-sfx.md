@@ -4,9 +4,10 @@
 
 | 파일 | 용도 | 출처 | 라이선스 | 원본 / 가공 |
 |------|------|------|----------|-------------|
-| `sfx-jump.wav` | 점프 부르릉 | [Mixkit — Motorcycle engine working](https://mixkit.co/free-sound-effects/motorcycle/) (id 1606 preview) | [Mixkit License](https://mixkit.co/license/#sfxFree) (무료 상업 이용, 귀속 불필요) | 중저음 럼블 ~0.38s, 피크 정규화 (구 2724 스피드업은 경적처럼 들려 교체) |
+| `sfx-jump.wav` | 점프 부르릉 | [Mixkit — Motorcycle changing gears](https://mixkit.co/free-sound-effects/motorcycle/) (id 2730 preview) | [Mixkit License](https://mixkit.co/license/#sfxFree) | ~0.4s 트림·정규화. (구 engine-working / racing speedup 교체) |
 | `sfx-hit.wav` | 피격 드리프트/스키드 | [Freesound — Sonic Skid (plasterbrain #464910)](https://freesound.org/people/plasterbrain/sounds/464910/) | CC0 | ~0.46s, 게인 보정 |
 | `sfx-potion.wav` | 연료 획득 | [Mixkit — Video game health recharge](https://mixkit.co/free-sound-effects/drink/) (id 2837 preview) | [Mixkit License](https://mixkit.co/license/#sfxFree) | ~0.45s, 피크 정규화. (구 Freesound gulp는 BGM에 완전 묻혀 교체) |
+| `sfx-siren.wav` | 정전 WARNING | [Mixkit — Police siren US](https://mixkit.co/free-sound-effects/siren/) (id 1643 preview) | [Mixkit License](https://mixkit.co/license/#sfxFree) | ~1.4s 루프, warn 페이즈만 |
 | `sfx-fever.wav` | 피버 시작 | `scripts/gen-sfx.mjs` 합성 | 자체 | 실샘플 교체 시 §6.2 프롬프트 |
 | `sfx-tick.wav` | 콤보/UI | 합성 | 자체 | 〃 |
 | `sfx-overtake.wav` | 제침 | 합성 | 자체 | 〃 |

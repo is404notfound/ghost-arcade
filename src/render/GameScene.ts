@@ -97,6 +97,7 @@ import sfxFeverUrl from "../../assets/audio/sfx-fever.wav";
 import sfxTickUrl from "../../assets/audio/sfx-tick.wav";
 import sfxOvertakeUrl from "../../assets/audio/sfx-overtake.wav";
 import sfxDeathUrl from "../../assets/audio/sfx-death.wav";
+import sfxSirenUrl from "../../assets/audio/sfx-siren.wav";
 // flame-pilar 이미지 제거됨 — 코드 드로우 화염분수(code-flame-*)로 교체
 // warn/fever: icon-warning / icon-fever PNG (우측 하단 점멸)
 // bg-sun 이미지는 코드 태양(createCodeSun)으로 대체 — import 제거
@@ -117,8 +118,10 @@ const NEON_YELLOW_HEX = "#f0f838";
 const BGM_VOL_INTRO = 0.16;
 /** 메인 플레이 BGM 볼륨 — 러너 중 존재감 (소스 자체가 조용해서 거의 풀로) */
 const BGM_VOL_MAIN = 1.0;
-/** 피버 BGM 볼륨 — 메인보다 낮게 (짧고 자주 뜨므로 과하면 피로) */
-const BGM_VOL_FEVER = 0.07;
+/** 피버 중 메인 덕킹 — 피버 레이어가 들리게 */
+const BGM_VOL_MAIN_FEVER_DUCK = 0.42;
+/** 피버 BGM 볼륨 — 메인 위에 레이어 (0.07은 사실상 무음이라 폐기) */
+const BGM_VOL_FEVER = 0.55;
 /** 게임오버/결과 BGM 볼륨 — 여운·한 판 더 톤, 메인보다 낮게 */
 const BGM_VOL_GAMEOVER = 0.42;
 /** 인트로↔메인 크로스페이드 길이 */
@@ -134,6 +137,7 @@ const SFX_VOL_FEVER = 0.68;
 const SFX_VOL_TICK = 0.38;
 const SFX_VOL_OVERTAKE = 0.48;
 const SFX_VOL_DEATH = 0.58;
+const SFX_VOL_SIREN = 0.45; // 정전 warn 사이렌 — 경고감만, BGM 압도 X
 /** 2단 점프 피치 올림 (센트) — 가이드 detune:200 */
 const SFX_JUMP_DOUBLE_DETUNE = 200;
 
@@ -144,7 +148,8 @@ type SfxKey =
   | "sfx-fever"
   | "sfx-tick"
   | "sfx-overtake"
-  | "sfx-death";
+  | "sfx-death"
+  | "sfx-siren";
 
 /** Phaser BaseSound에는 volume이 타입에 없음 — Web/HTML5 사운드만 가짐 */
 type BgmSound = Phaser.Sound.BaseSound & { volume: number };
@@ -553,6 +558,8 @@ export class GameScene extends Phaser.Scene {
   private bgmFever: BgmSound | null = null;
   /** 게임오버/결과 BGM (§6.1 E · The Final Quarter) */
   private bgmGameover: BgmSound | null = null;
+  /** 정전 warn 사이렌 루프 */
+  private warnSiren: Phaser.Sound.BaseSound | null = null;
   /** stale 페이드 onComplete 무시용 — 트랙 전환 시 증가 */
   private bgmFadeEpoch = 0;
   private pauseOverlay!: Phaser.GameObjects.Container;
@@ -758,6 +765,7 @@ export class GameScene extends Phaser.Scene {
     this.load.audio("sfx-tick", sfxTickUrl);
     this.load.audio("sfx-overtake", sfxOvertakeUrl);
     this.load.audio("sfx-death", sfxDeathUrl);
+    this.load.audio("sfx-siren", sfxSirenUrl);
   }
 
   create() {
@@ -2113,6 +2121,7 @@ export class GameScene extends Phaser.Scene {
       this.tweens.killTweensOf(this.warnBadge);
       this.warnBadge.setVisible(false).setAlpha(1);
     }
+    this.stopWarnSiren();
     if (this.rankHudLabel) this.rankHudLabel.setVisible(false);
     // 바이옴/마일스톤 리셋 — 새 판은 항상 기본 노을 팔레트에서 시작
     this.biomeFrom = 0;
@@ -2381,17 +2390,23 @@ export class GameScene extends Phaser.Scene {
     this.fadeInBgm(main, BGM_VOL_MAIN);
   }
 
-  /** 피버 BGM — 메인 위에 레이어로 얹음 (메인은 계속 재생). */
+  /** 피버 BGM — 메인 덕킹 + 피버 레이어. (예전 vol 0.07은 사실상 무음) */
   private startFeverBgm(): void {
     this.unlockAudio();
     const fever = this.ensureBgm("bgm-fever", "bgmFever", BGM_VOL_FEVER);
     if (!fever) return;
-    // 메인 페이드 콜백은 건드리지 않음 — 메인은 그대로 루프
+    // 메인을 살짝 내려 피버 레이어가 들리게
+    if (this.bgmMain && (this.bgmMain.isPlaying || this.bgmMain.isPaused)) {
+      this.fadeBgmVolume(this.bgmMain, BGM_VOL_MAIN_FEVER_DUCK, undefined, BGM_FEVER_FADE_MS);
+    }
     this.fadeInBgm(fever, BGM_VOL_FEVER, BGM_FEVER_FADE_MS);
   }
 
-  /** 피버 종료 — 메인 유지, 피버 레이어만 짧게 페이드아웃. */
+  /** 피버 종료 — 메인 볼륨 복구, 피버 레이어만 짧게 페이드아웃. */
   private endFeverBgm(): void {
+    if (this.bgmMain && (this.bgmMain.isPlaying || this.bgmMain.isPaused)) {
+      this.fadeBgmVolume(this.bgmMain, BGM_VOL_MAIN, undefined, BGM_FEVER_FADE_MS);
+    }
     if (!this.bgmFever) return;
     const fever = this.bgmFever;
     this.tweens.killTweensOf(fever);
@@ -2416,6 +2431,26 @@ export class GameScene extends Phaser.Scene {
     this.bgmFever.stop();
     this.bgmFever.destroy();
     this.bgmFever = null;
+  }
+
+  /** 정전 warn 사이렌 — 루프, warn 페이즈에서만 */
+  private startWarnSiren(): void {
+    this.stopWarnSiren();
+    if (!this.cache.audio.exists("sfx-siren")) return;
+    this.unlockAudio();
+    if (this.sound.locked) return;
+    this.warnSiren = this.sound.add("sfx-siren", {
+      loop: true,
+      volume: SFX_VOL_SIREN,
+    });
+    this.warnSiren.play();
+  }
+
+  private stopWarnSiren(): void {
+    if (!this.warnSiren) return;
+    this.warnSiren.stop();
+    this.warnSiren.destroy();
+    this.warnSiren = null;
   }
 
   /** 게임오버/결과 BGM — 메인·피버를 페이드아웃하고 여운 루프. */
@@ -2453,15 +2488,6 @@ export class GameScene extends Phaser.Scene {
     if (this.bgmMain.isPlaying) this.bgmMain.pause();
   }
 
-  private resumeMainBgm(): void {
-    if (!this.bgmMain) return;
-    this.tweens.killTweensOf(this.bgmMain);
-    if (this.bgmMain.isPaused) {
-      this.bgmMain.volume = BGM_VOL_MAIN;
-      this.bgmMain.resume();
-    }
-  }
-
   /** 플레이 중 BGM 일시정지 — 메인+피버 레이어 둘 다 (일시정지/피버 튜토리얼용) */
   private pausePlayBgm(): void {
     if (this.bgmFever && this.bgmFever.isPlaying) {
@@ -2472,7 +2498,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private resumePlayBgm(): void {
-    this.resumeMainBgm();
+    // 피버 레이어가 살아 있으면 메인 덕킹 유지
+    const feverActive = !!(this.bgmFever && (this.bgmFever.isPaused || this.bgmFever.isPlaying));
+    if (this.bgmMain) {
+      this.tweens.killTweensOf(this.bgmMain);
+      if (this.bgmMain.isPaused) {
+        this.bgmMain.volume = feverActive ? BGM_VOL_MAIN_FEVER_DUCK : BGM_VOL_MAIN;
+        this.bgmMain.resume();
+      } else if (this.bgmMain.isPlaying && feverActive) {
+        this.bgmMain.volume = BGM_VOL_MAIN_FEVER_DUCK;
+      }
+    }
     if (this.bgmFever?.isPaused) {
       this.tweens.killTweensOf(this.bgmFever);
       this.bgmFever.volume = BGM_VOL_FEVER;
@@ -2489,6 +2525,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private stopAllBgm(): void {
+    this.stopWarnSiren();
     this.stopIntroBgm();
     this.stopFeverBgm();
     this.stopGameoverBgm();
@@ -3241,6 +3278,7 @@ export class GameScene extends Phaser.Scene {
         this.blackoutPhase = "idle";
         this.blackoutGfx.clear();
         this.warnBadge.setVisible(false);
+        this.stopWarnSiren();
       }
       return;
     }
@@ -3258,12 +3296,14 @@ export class GameScene extends Phaser.Scene {
           this.blackoutPhase = "warn";
           this.blackoutPhaseStartMs = now;
           this.warnBadge.setVisible(true).setAlpha(1);
+          this.startWarnSiren();
         }
         break;
       case "warn": {
         // 피버·마일스톤과 상호배제 — 피버면 warn 숨김, 아니면 마일스톤 내리고 warn 표시
         if (s.feverFramesLeft > 0 || this.feverBadgeVisible) {
           this.warnBadge.setVisible(false);
+          this.stopWarnSiren();
           this.drawBlackoutOverlay(0.1 + 0.08 * Math.abs(Math.sin(now * 0.03)), 0.25);
         } else {
           this.dismissMilestoneToast();
@@ -3271,11 +3311,13 @@ export class GameScene extends Phaser.Scene {
           // 우측 끝 연기 + WARNING 호흡형 점멸(완만, 0.55↔1.0)
           this.drawBlackoutOverlay(0.1 + 0.08 * Math.abs(Math.sin(now * 0.03)), 0.25);
           this.warnBadge.setAlpha(0.55 + 0.45 * (0.5 + 0.5 * Math.sin(now * 0.006)));
+          if (!this.warnSiren?.isPlaying) this.startWarnSiren();
         }
         if (el >= BLACKOUT_WARN_MS) {
           this.blackoutPhase = "dark";
           this.blackoutPhaseStartMs = now;
           this.warnBadge.setVisible(false);
+          this.stopWarnSiren();
         }
         break;
       }

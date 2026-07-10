@@ -113,10 +113,10 @@
 | `intro-slide`                                           | 인트로 스토리 이미지(세로 슬라이드)        | 오버레이                         | ✅   | §6.3. 매 판·Start→바로 플레이. 고화질 재생성 권장(≥1536w)                                                      |
 | `bgm-main`                                              | 메인 플레이 BGM (루프)               | —                            | ✅   | §6.1 (A). `assets/audio/bgm-main.mp3` · Midnight Motorway. 인트로/howto 후 재생, vol 1.0 · 페이드 전환 |
 | `bgm-intro`                                             | 타이틀/인트로 BGM (루프)             | —                            | ✅   | §6.1 (C). `assets/audio/bgm-intro.mp3` · Last Light of the World. 인트로(+howto) 중, vol 0.16 · 페이드 전환 |
-| `bgm-fever`                                             | 피버 타임 BGM (루프)                | —                            | ✅   | §6.1 (B). `assets/audio/bgm-fever.mp3` · Combo Multiplier. 피버 중 메인 위에 레이어, vol 0.07 · 페이드 220ms |
+| `bgm-fever`                                             | 피버 타임 BGM (루프)                | —                            | ✅   | §6.1 (B). `assets/audio/bgm-fever.mp3` · Combo Multiplier. 피버 중 메인 덕킹(0.42)+레이어 vol 0.55 · 페이드 220ms |
 | `bgm-gameover`                                          | 게임오버/결과 BGM (루프)             | —                            | ✅   | §6.1 (E). `assets/audio/bgm-gameover.mp3` · The Final Quarter. 사망→결과 패널, vol 0.42 · 메인/피버와 페이드 전환 |
 | `sfx-jump` / `sfx-hit` / `sfx-potion` / `sfx-fever`     | 핵심 이벤트 SFX                    | —                            | ✅/🔄 | §6.2. jump/hit/potion=무료 실샘플([CREDITS-sfx.md](../../assets/audio/CREDITS-sfx.md)). fever=합성→프롬프트 A |
-| `sfx-tick` / `sfx-overtake` / `sfx-death`               | UI틱·제침·사망 SFX                 | —                            | 🔄  | §6.2. 합성 임시. 교체 프롬프트 B/C/D + Gemini 1초 가드레일 |
+| `sfx-tick` / `sfx-overtake` / `sfx-death` / `sfx-siren` | UI틱·제침·사망·정전사이렌 SFX       | —                            | ✅/🔄 | §6.2. siren=Mixkit police(warn 루프). tick/overtake/death=합성 |
 
 
 > **코드로 두는 게 이득**: 하늘·그리드·속도선·트레일·**태양·메테오·레이저**(이미 코드화 완료).
@@ -1232,10 +1232,11 @@ NEGATIVE: horror stinger, scream, heavy impact boom, sad solo violin, choir, lon
 
 | 트리거                    | 파일 / 톤                                                          | 길이                            | 상태  |
 | ---------------------- | -------------------------------------------------------------- | ----------------------------- | --- |
-| 점프 (EV_JUMP)           | `sfx-jump.wav` — 중저음 엔진 럼블 (Mixkit engine working, 경적급 스피드업 폐기) | ~0.38s (2단 `detune:200`) · vol 0.7 | ✅   |
+| 점프 (EV_JUMP)           | `sfx-jump.wav` — 기어 변속 부르릉 (Mixkit changing gears)              | ~0.4s (2단 `detune:200`) · vol 0.7 | ✅   |
 | 피격 (EV_HIT)            | `sfx-hit.wav` — **드리프트/스키드** (Freesound Sonic Skid CC0)         | ~0.46s                        | ✅   |
 | 연료 획득 (EV_POTION)      | `sfx-potion.wav` — 게임 픽업/리필 톤 (Mixkit health recharge; gulp는 무음급이라 교체) | ~0.45s · vol 0.35             | ✅   |
 | 피버 시작 (EV_FEVER_START) | `sfx-fever.wav` — 신스 파워 서지 (합성) → 프롬프트 A                      | ≤0.8s                         | 🔄  |
+| 정전 WARNING             | `sfx-siren.wav` — 폴리스 사이렌 루프 (Mixkit Police siren US)           | warn ~2.2s 동안 루프 · vol 0.45 | ✅   |
 | 제침 (고스트 finished)      | `sfx-overtake.wav` — 상승 스윕 (합성) → 프롬프트 B                       | ≤0.25s                        | 🔄  |
 | 콤보틱 / UI탭              | `sfx-tick.wav` — 시안 블립 (합성) → 프롬프트 C                           | ≤0.1s                         | 🔄  |
 | 사망 (EV_GAME_OVER)      | `sfx-death.wav` — 하강 톤 (합성) → 프롬프트 D                           | ≤0.4s                         | 🔄  |
