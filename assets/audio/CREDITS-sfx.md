@@ -6,7 +6,7 @@
 |------|------|------|----------|-------------|
 | `sfx-jump.wav` | 점프 부르릉 | [Mixkit — Motorcycle engine working](https://mixkit.co/free-sound-effects/motorcycle/) (id 1606 preview) | [Mixkit License](https://mixkit.co/license/#sfxFree) (무료 상업 이용, 귀속 불필요) | 중저음 럼블 ~0.38s, 피크 정규화 (구 2724 스피드업은 경적처럼 들려 교체) |
 | `sfx-hit.wav` | 피격 드리프트/스키드 | [Freesound — Sonic Skid (plasterbrain #464910)](https://freesound.org/people/plasterbrain/sounds/464910/) | CC0 | ~0.46s, 게인 보정 |
-| `sfx-potion.wav` | 연료 꿀꺽 | [Freesound — Drinking w/ Gulp (Christopherderp #342233)](https://freesound.org/people/Christopherderp/sounds/342233/) | CC0 | 피크 구간 ~0.6s 트림 |
+| `sfx-potion.wav` | 연료 획득 | [Mixkit — Video game health recharge](https://mixkit.co/free-sound-effects/drink/) (id 2837 preview) | [Mixkit License](https://mixkit.co/license/#sfxFree) | ~0.45s, 피크 정규화. (구 Freesound gulp는 BGM에 완전 묻혀 교체) |
 | `sfx-fever.wav` | 피버 시작 | `scripts/gen-sfx.mjs` 합성 | 자체 | 실샘플 교체 시 §6.2 프롬프트 |
 | `sfx-tick.wav` | 콤보/UI | 합성 | 자체 | 〃 |
 | `sfx-overtake.wav` | 제침 | 합성 | 자체 | 〃 |

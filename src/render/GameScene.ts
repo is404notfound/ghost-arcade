@@ -127,9 +127,9 @@ const BGM_FADE_MS = 900;
 const BGM_FEVER_FADE_MS = 220;
 
 /** SFX 볼륨 — BGM mid를 뚫되 클리핑은 피함 (§6.2) */
-const SFX_VOL_JUMP = 1.0; // BGM에 묻히지 않게 최대
+const SFX_VOL_JUMP = 0.7; // 최대(1.0) 대비 약 30% 감소
 const SFX_VOL_HIT = 0.62;
-const SFX_VOL_POTION = 1.0; // BGM에 묻히지 않게 최대
+const SFX_VOL_POTION = 0.5; // health recharge — 최대 대비 50%
 const SFX_VOL_FEVER = 0.68;
 const SFX_VOL_TICK = 0.38;
 const SFX_VOL_OVERTAKE = 0.48;
