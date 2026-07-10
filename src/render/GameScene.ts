@@ -135,7 +135,7 @@ const SFX_VOL_HIT = 0.62;
 const SFX_VOL_POTION = 0.35; // 0.5에서 약 30% 추가 감소
 const SFX_VOL_FEVER = 0.68;
 const SFX_VOL_TICK = 0.38;
-const SFX_VOL_OVERTAKE = 0.48;
+const SFX_VOL_OVERTAKE = 0.65; // 고스트 제침 푸쉬시 — BGM에 안 묻히게
 const SFX_VOL_DEATH = 0.58;
 const SFX_VOL_SIREN = 0.45; // 정전 warn 사이렌 — 경고감만, BGM 압도 X
 /** 2단 점프 피치 올림 (센트) — 가이드 detune:200 */

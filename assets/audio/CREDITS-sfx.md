@@ -10,7 +10,7 @@
 | `sfx-siren.wav` | 정전 WARNING | [Mixkit — Police siren US](https://mixkit.co/free-sound-effects/siren/) (id 1643 preview) | [Mixkit License](https://mixkit.co/license/#sfxFree) | ~1.4s 루프, warn 페이즈만 |
 | `sfx-fever.wav` | 피버 시작 | `scripts/gen-sfx.mjs` 합성 | 자체 | 실샘플 교체 시 §6.2 프롬프트 |
 | `sfx-tick.wav` | 콤보/UI | 합성 | 자체 | 〃 |
-| `sfx-overtake.wav` | 제침 | 합성 | 자체 | 〃 |
+| `sfx-overtake.wav` | 고스트 제침(사망) 푸쉬시 | [Mixkit — Ghostly whoosh passing](https://mixkit.co/free-sound-effects/whoosh/) (id 2623 preview) | [Mixkit License](https://mixkit.co/license/#sfxFree) | 피크 ~0.38s 트림. 고스트 finished 시 재생 |
 | `sfx-death.wav` | 사망 | 합성 | 자체 | 〃 |
 
 > Mixkit preview CDN(`assets.mixkit.co/.../preview.mp3`)은 Mixkit 무료 SFX와 동일 라이선스 범위로 사용.

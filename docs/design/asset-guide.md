@@ -1237,7 +1237,7 @@ NEGATIVE: horror stinger, scream, heavy impact boom, sad solo violin, choir, lon
 | 연료 획득 (EV_POTION)      | `sfx-potion.wav` — 게임 픽업/리필 톤 (Mixkit health recharge; gulp는 무음급이라 교체) | ~0.45s · vol 0.35             | ✅   |
 | 피버 시작 (EV_FEVER_START) | `sfx-fever.wav` — 신스 파워 서지 (합성) → 프롬프트 A                      | ≤0.8s                         | 🔄  |
 | 정전 WARNING             | `sfx-siren.wav` — 폴리스 사이렌 루프 (Mixkit Police siren US)           | warn ~2.2s 동안 루프 · vol 0.45 | ✅   |
-| 제침 (고스트 finished)      | `sfx-overtake.wav` — 상승 스윕 (합성) → 프롬프트 B                       | ≤0.25s                        | 🔄  |
+| 제침 (고스트 finished)      | `sfx-overtake.wav` — **푸쉬시** (Mixkit Ghostly whoosh)               | ~0.38s · vol 0.65             | ✅   |
 | 콤보틱 / UI탭              | `sfx-tick.wav` — 시안 블립 (합성) → 프롬프트 C                           | ≤0.1s                         | 🔄  |
 | 사망 (EV_GAME_OVER)      | `sfx-death.wav` — 하강 톤 (합성) → 프롬프트 D                           | ≤0.4s                         | 🔄  |
 | 니어미스                   | — (코어에서 `EV_NEAR_MISS` 제거됨)                                    | —                             | ❌   |
