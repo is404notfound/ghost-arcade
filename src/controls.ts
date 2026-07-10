@@ -1,4 +1,4 @@
-// 전체화면 토글 + 일시정지 + 다시하기 DOM 버튼
+// 전체화면 토글 + 음소거 + 일시정지 + 다시하기 DOM 버튼
 //
 //  - pointerdown/click stopPropagation으로 게임 점프(window pointerdown)와 분리
 //  - 일시정지 콜백은 GameScene.create()에서 registerPauseToggle로 등록
@@ -6,8 +6,10 @@
 
 let _onPauseToggle: (() => void) | null = null;
 let _onRestart: (() => void) | null = null;
+let _onMuteToggle: (() => void) | null = null;
 let _pauseBtn: HTMLButtonElement | null = null;
 let _restartBtn: HTMLButtonElement | null = null;
+let _muteBtn: HTMLButtonElement | null = null;
 
 /** GameScene.create() 시 등록 — 일시정지 토글 핸들러 */
 export function registerPauseToggle(cb: () => void): void {
@@ -17,6 +19,11 @@ export function registerPauseToggle(cb: () => void): void {
 /** GameScene.create() 시 등록 — 다시하기(startRun) 핸들러 */
 export function registerRestart(cb: () => void): void {
   _onRestart = cb;
+}
+
+/** GameScene.create() 시 등록 — 음소거 토글 핸들러 */
+export function registerMuteToggle(cb: () => void): void {
+  _onMuteToggle = cb;
 }
 
 /** 일시정지 버튼 상태 갱신 (GameScene에서 호출) */
@@ -30,6 +37,13 @@ export function setPauseButtonState(paused: boolean, visible: boolean): void {
 export function setRestartButtonVisible(visible: boolean): void {
   if (!_restartBtn) return;
   _restartBtn.style.display = visible ? '' : 'none';
+}
+
+/** 음소거 버튼 아이콘 갱신 */
+export function setMuteButtonState(muted: boolean): void {
+  if (!_muteBtn) return;
+  _muteBtn.textContent = muted ? '🔇' : '🔊';
+  _muteBtn.setAttribute('aria-label', muted ? '소리 켜기' : '음소거');
 }
 
 export function initGameControls(): void {
@@ -62,6 +76,20 @@ export function initGameControls(): void {
     })();
   });
   document.addEventListener('fullscreenchange', updateFsIcon);
+
+  // ─── 음소거 버튼 ─────────────────────────────────────────────
+  const muteBtn = document.createElement('button');
+  muteBtn.id = 'mute-btn';
+  muteBtn.setAttribute('aria-label', '음소거');
+  muteBtn.textContent = '🔊';
+  wrap.appendChild(muteBtn);
+  _muteBtn = muteBtn;
+
+  muteBtn.addEventListener('pointerdown', (e: PointerEvent) => { e.stopPropagation(); });
+  muteBtn.addEventListener('click', (e: MouseEvent) => {
+    e.stopPropagation();
+    _onMuteToggle?.();
+  });
 
   // ─── 일시정지 버튼 ───────────────────────────────────────────
   const pauseBtn = document.createElement('button');

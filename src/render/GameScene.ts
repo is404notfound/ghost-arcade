@@ -47,7 +47,10 @@ import {
   setPauseButtonState,
   registerRestart,
   setRestartButtonVisible,
+  registerMuteToggle,
+  setMuteButtonState,
 } from "../controls";
+import { loadUserSettings, saveUserSettings } from "../data/UserSettings";
 import { track } from "../analytics";
 
 // 게임 에셋(전처리본 assets/game/*) — Vite가 해시 URL로 번들. scripts/prep-assets.py 산출물.
@@ -83,6 +86,17 @@ import iconWarningUrl from "../../assets/game/icon-warning.png";
 import iconFeverUrl from "../../assets/game/icon-fever.png";
 import btnReplayUrl from "../../assets/game/btn-replay.png";
 import introSlideUrl from "../../assets/game/intro-slide.png";
+import bgmMainUrl from "../../assets/audio/bgm-main.mp3";
+import bgmIntroUrl from "../../assets/audio/bgm-intro.mp3";
+import bgmFeverUrl from "../../assets/audio/bgm-fever.mp3";
+import bgmGameoverUrl from "../../assets/audio/bgm-gameover.mp3";
+import sfxJumpUrl from "../../assets/audio/sfx-jump.wav";
+import sfxHitUrl from "../../assets/audio/sfx-hit.wav";
+import sfxPotionUrl from "../../assets/audio/sfx-potion.wav";
+import sfxFeverUrl from "../../assets/audio/sfx-fever.wav";
+import sfxTickUrl from "../../assets/audio/sfx-tick.wav";
+import sfxOvertakeUrl from "../../assets/audio/sfx-overtake.wav";
+import sfxDeathUrl from "../../assets/audio/sfx-death.wav";
 // flame-pilar 이미지 제거됨 — 코드 드로우 화염분수(code-flame-*)로 교체
 // warn/fever: icon-warning / icon-fever PNG (우측 하단 점멸)
 // bg-sun 이미지는 코드 태양(createCodeSun)으로 대체 — import 제거
@@ -98,6 +112,42 @@ const COLOR_GHOST = 0xb39ddb; // 고스트 — 보라 계열 반투명(스프라
 /** Fever 아이콘에서 샘플한 형광 네온 노랑 — HUD/피버 강조 통일 */
 const NEON_YELLOW = 0xf0f838;
 const NEON_YELLOW_HEX = "#f0f838";
+
+/** 인트로 BGM 볼륨 — 메인(1.0) 대비 배경 서사만 남기게 */
+const BGM_VOL_INTRO = 0.16;
+/** 메인 플레이 BGM 볼륨 — 러너 중 존재감 (소스 자체가 조용해서 거의 풀로) */
+const BGM_VOL_MAIN = 1.0;
+/** 피버 BGM 볼륨 — 메인보다 낮게 (짧고 자주 뜨므로 과하면 피로) */
+const BGM_VOL_FEVER = 0.07;
+/** 게임오버/결과 BGM 볼륨 — 여운·한 판 더 톤, 메인보다 낮게 */
+const BGM_VOL_GAMEOVER = 0.42;
+/** 인트로↔메인 크로스페이드 길이 */
+const BGM_FADE_MS = 900;
+/** 피버 전환은 짧게 — 피버 자체가 ~2.5초라 900ms면 거의 다 페이드만 들림 */
+const BGM_FEVER_FADE_MS = 220;
+
+/** SFX 볼륨 — BGM mid를 뚫되 클리핑은 피함 (§6.2) */
+const SFX_VOL_JUMP = 0.55; // 중저음 럼블 — 존재감 있게 (경적 샘플 폐기 후)
+const SFX_VOL_HIT = 0.62;
+const SFX_VOL_POTION = 0.85; // 꿀꺽은 짧고 묻히기 쉬워 BGM 대비 크게
+const SFX_VOL_FEVER = 0.68;
+const SFX_VOL_TICK = 0.38;
+const SFX_VOL_OVERTAKE = 0.48;
+const SFX_VOL_DEATH = 0.58;
+/** 2단 점프 피치 올림 (센트) — 가이드 detune:200 */
+const SFX_JUMP_DOUBLE_DETUNE = 200;
+
+type SfxKey =
+  | "sfx-jump"
+  | "sfx-hit"
+  | "sfx-potion"
+  | "sfx-fever"
+  | "sfx-tick"
+  | "sfx-overtake"
+  | "sfx-death";
+
+/** Phaser BaseSound에는 volume이 타입에 없음 — Web/HTML5 사운드만 가짐 */
+type BgmSound = Phaser.Sound.BaseSound & { volume: number };
 
 // 텍스트 렌더 해상도 — Phaser Text는 기본 1x라 작은/저DPR 화면에서 자글거린다.
 // 카메라 줌(RENDER_DPR)으로 확대되는 만큼 글리프 텍스처를 미리 크게 렌더해 1:1 매핑.
@@ -495,6 +545,16 @@ export class GameScene extends Phaser.Scene {
   private howtoTutorial: Phaser.GameObjects.Container | null = null;
   private howtoActive = false;
   private howtoPlayBtn: Phaser.GameObjects.Text | null = null;
+  /** 메인 플레이 BGM (§6.1 A · Midnight Motorway) — 인트로/howto 끝난 뒤 루프 */
+  private bgmMain: BgmSound | null = null;
+  /** 타이틀/인트로 BGM (§6.1 C · Last Light of the World) */
+  private bgmIntro: BgmSound | null = null;
+  /** 피버 BGM (§6.1 B · Combo Multiplier) */
+  private bgmFever: BgmSound | null = null;
+  /** 게임오버/결과 BGM (§6.1 E · The Final Quarter) */
+  private bgmGameover: BgmSound | null = null;
+  /** stale 페이드 onComplete 무시용 — 트랙 전환 시 증가 */
+  private bgmFadeEpoch = 0;
   private pauseOverlay!: Phaser.GameObjects.Container;
   private _windowTapHandler!: () => void;
   private feverOverlay!: Phaser.GameObjects.Rectangle; // 피버 중 warm tint 레이어
@@ -687,6 +747,17 @@ export class GameScene extends Phaser.Scene {
     this.load.image("icon-fever", iconFeverUrl);
     this.load.image("btn-replay", btnReplayUrl);
     this.load.image("intro-slide", introSlideUrl);
+    this.load.audio("bgm-main", bgmMainUrl);
+    this.load.audio("bgm-intro", bgmIntroUrl);
+    this.load.audio("bgm-fever", bgmFeverUrl);
+    this.load.audio("bgm-gameover", bgmGameoverUrl);
+    this.load.audio("sfx-jump", sfxJumpUrl);
+    this.load.audio("sfx-hit", sfxHitUrl);
+    this.load.audio("sfx-potion", sfxPotionUrl);
+    this.load.audio("sfx-fever", sfxFeverUrl);
+    this.load.audio("sfx-tick", sfxTickUrl);
+    this.load.audio("sfx-overtake", sfxOvertakeUrl);
+    this.load.audio("sfx-death", sfxDeathUrl);
   }
 
   create() {
@@ -819,14 +890,14 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < 3; i++) {
       const lbl = this.add
         .text(0, 0, RANK_TEXT[i]!, {
-          // 12px — 머리 위 과점유 완화(16→14→12).
-          fontSize: "12px",
+          // 17px — 머리 위 가독성(12는 스크롤 중 안 보임).
+          fontSize: "17px",
           fontFamily: FONT_HUD,
           fontStyle: "bold",
           color: RANK_COLORS[i],
           resolution: TXT_RES,
           stroke: "#0a0018",
-          strokeThickness: 3,
+          strokeThickness: 4,
         })
         .setOrigin(0.5, 1)
         .setAlpha(0.95)
@@ -1130,8 +1201,9 @@ export class GameScene extends Phaser.Scene {
 
     // 좌측 끝 콤보 띠지 — 랭킹 칩 아래(y 유지), x는 항상 화면 왼쪽. 좌→우 슬라이드 인.
     {
-      const ribbonW = 118;
-      const ribbonH = 26;
+      // 가시성: 세로≈2배 (26→52), 글자도 맞춤. 가로는 UI 가림 줄이려고 타이트하게.
+      const ribbonW = 128;
+      const ribbonH = 52;
       const restX = 0; // 화면 왼쪽 끝 밀착 (여백 없음)
       // 칩(y=28,h=42) 아래 여백을 더 줘서 랭킹과 간격 확보
       const restY = 28 + 42 + 18 + ribbonH / 2;
@@ -1140,14 +1212,14 @@ export class GameScene extends Phaser.Scene {
         .setOrigin(0, 0.5);
       this.comboDisplay = this.add
         .text(ribbonW / 2, 0, "", {
-          fontSize: "14px",
+          fontSize: "26px",
           fontFamily: FONT_IMPACT,
           fontStyle: "bold",
           color: NEON_YELLOW_HEX,
           resolution: TXT_RES,
         })
         .setOrigin(0.5, 0.5)
-        .setStroke("#1a1a2e", 3);
+        .setStroke("#1a1a2e", 4);
       this.comboRibbon = this.add
         .container(-ribbonW - 8, restY, [this.comboRibbonBg, this.comboDisplay])
         .setDepth(23)
@@ -1158,16 +1230,17 @@ export class GameScene extends Phaser.Scene {
 
     // ── 결과 UI = 일간 | Replay | 주간 3분할 ──
     // 좌/우는 같은 세로 패널 프레임(panel-daily / panel-weekly). 가운데만 Replay CTA.
+    // baked 구획이 있어 세로 nineslice는 위험 — 가로는 여백을 쓰도록 PW를 종횡비와 분리해 넓힘.
     // 전체 화면 탭 재시작은 제거 — Replay 히트영역만 startRun(true).
     {
-      const rankSrc = this.textures.get("panel-daily").getSourceImage();
       const btnSrc = this.textures.get("btn-replay").getSourceImage();
-      // 화면 폭 1040 — 좌·우 패널 + 중앙 버튼 + 여백이 한 줄에 들어가게 스케일.
+      // DESIGN_H=480 — 상단 거리 칩 여유를 위해 세로는 400, 가로는 좌우 여백을 먹여 360.
+      // (종횡비 유지 ≈208이면 닉·거리 겹침. 가로만 넓혀 가독성 확보.)
       const PH = 400;
-      const PW = Math.round((PH * rankSrc.width) / rankSrc.height); // ≈210
-      const BH = 220;
-      const BW = Math.round((BH * btnSrc.width) / btnSrc.height); // ≈82
-      const gap = 18;
+      const PW = 360;
+      const BH = 200;
+      const BW = Math.round((BH * btnSrc.width) / btnSrc.height); // ≈74
+      const gap = 12;
       const colL = -(PW / 2 + gap / 2 + BW / 2);
       const colR = PW / 2 + gap / 2 + BW / 2;
       // 아트 구획 y (텍스처 세로 fraction, 실측) → 컨테이너 로컬 좌표
@@ -1176,11 +1249,12 @@ export class GameScene extends Phaser.Scene {
       // (균일 pad로 밀면 하단 행이 슬롯 밖으로 이탈하는 회귀가 났음)
       const rowFy = [0.322, 0.438, 0.562, 0.682, 0.825] as const;
       const rowYPad = 0;
-      // 네온 림·노치 안쪽까지 글자가 붙지 않게 좌우 인셋 (기존 0.12/0.10 → 살짝 여유)
-      const xL = -PW / 2 + Math.round(PW * 0.17);
-      const xR = PW / 2 - Math.round(PW * 0.15);
-      // 거리 열(~"47,314m" ≈ 58px) + 간격 — 닉이 거리 위로 겹치지 않게
-      this.rankNameMaxPx = Math.max(48, xR - xL - 62);
+      // 네온 림·노치 안쪽 인셋 — 가로가 넓어져 비율 인셋도 살짝 줄임
+      const xL = -PW / 2 + Math.round(PW * 0.14);
+      const xR = PW / 2 - Math.round(PW * 0.12);
+      // 거리 열("52,874m" @14px ≈ 78) + 간격 — 닉이 거리와 겹치지 않게
+      const RANK_ROW_FONT = 14;
+      this.rankNameMaxPx = Math.max(72, xR - xL - 86);
 
       const buildRankPanel = (
         texKey: string,
@@ -1235,7 +1309,7 @@ export class GameScene extends Phaser.Scene {
         // 오렌지 헤더 박스 안 — 살짝 아래로 (0.185는 박스 상단에 붙음)
         const titleText = this.add
           .text(0, fy(0.198, PH), title, {
-            fontSize: "13px",
+            fontSize: "15px",
             fontFamily: FONT_KR,
             color: titleColor,
             fontStyle: "bold",
@@ -1253,7 +1327,7 @@ export class GameScene extends Phaser.Scene {
         for (let i = 0; i < 4; i++) {
           const name = this.add
             .text(xL, fy(rowFy[i]!, PH) + rowYPad, "", {
-              fontSize: "11px",
+              fontSize: `${RANK_ROW_FONT}px`,
               fontFamily: FONT_KR,
               color: "#e0e0e0",
               resolution: TXT_RES,
@@ -1261,7 +1335,7 @@ export class GameScene extends Phaser.Scene {
             .setOrigin(0, 0.5);
           const dist = this.add
             .text(xR, fy(rowFy[i]!, PH) + rowYPad, "", {
-              fontSize: "11px",
+              fontSize: `${RANK_ROW_FONT}px`,
               fontFamily: FONT_HUD,
               color: "#e0e0e0",
               resolution: TXT_RES,
@@ -1273,7 +1347,7 @@ export class GameScene extends Phaser.Scene {
         }
         const myName = this.add
           .text(xL, fy(rowFy[4]!, PH) + rowYPad, "", {
-            fontSize: "11px",
+            fontSize: `${RANK_ROW_FONT}px`,
             fontFamily: FONT_KR,
             color: NEON_YELLOW_HEX,
             fontStyle: "bold",
@@ -1282,7 +1356,7 @@ export class GameScene extends Phaser.Scene {
           .setOrigin(0, 0.5);
         const myDist = this.add
           .text(xR, fy(rowFy[4]!, PH) + rowYPad, "", {
-            fontSize: "11px",
+            fontSize: `${RANK_ROW_FONT}px`,
             fontFamily: FONT_HUD,
             color: NEON_YELLOW_HEX,
             fontStyle: "bold",
@@ -1325,7 +1399,7 @@ export class GameScene extends Phaser.Scene {
 
       // 가운데 Replay — 에셋 프레임 + 세로 스택 글자. 탭 히트만 재시작.
       this.replayBg = this.add.image(0, 0, "btn-replay").setDisplaySize(BW, BH);
-      // 거리 칩: Replay 위 · 좌우 패널 상단(y=-PH/2)과 정렬. 검정 캡슐로 태양 대비 확보.
+      // 거리 칩: 패널 상단(-PH/2)보다 위에 띄워 가림·화면 상단 클리핑 방지.
       this.gameOverDistChipBg = this.add.graphics();
       this.gameOverDistText = this.add
         .text(0, 0, "", {
@@ -1336,7 +1410,7 @@ export class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5)
         .setStroke("#000000", 3);
-      const distChip = this.add.container(0, -PH / 2, [
+      const distChip = this.add.container(0, -PH / 2 - 22, [
         this.gameOverDistChipBg,
         this.gameOverDistText,
       ]);
@@ -1371,6 +1445,7 @@ export class GameScene extends Phaser.Scene {
         const ev = pointer.event as Event | undefined;
         ev?.stopPropagation?.();
         if (!this.gameOverRoot.visible) return;
+        this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
         this.ignoreNextWindowTap = true;
         this.startRun(true);
       });
@@ -1382,7 +1457,8 @@ export class GameScene extends Phaser.Scene {
       ]);
 
       this.gameOverRoot = this.add
-        .container(DESIGN_W / 2, DESIGN_H * 0.52, [
+        // 상단 거리 칩이 뷰포트에 잘리지 않게 중앙보다 살짝 아래 (하단 여백 활용)
+        .container(DESIGN_W / 2, DESIGN_H / 2 + 28, [
           this.dailyPanel,
           this.weeklyPanel,
           this.replayBtn,
@@ -1562,7 +1638,9 @@ export class GameScene extends Phaser.Scene {
           // stopPropagation 시 ignore 플래그가 남아 다음 탭을 삼킨다 → DOM+Phaser 둘 다 차단.
           event.stopPropagation();
           pointer.event?.stopPropagation?.();
-          pointer.event?.stopImmediatePropagation?.();
+          // stopImmediatePropagation은 AudioContext unlock 리스너까지 막을 수 있어 쓰지 않음.
+          this.unlockAudio();
+          this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
           this.endIntro(true);
         },
       );
@@ -1593,13 +1671,14 @@ export class GameScene extends Phaser.Scene {
       const cx = DESIGN_W / 2;
       const labelH = 18;
       const labelGap = 8;
-      const playGap = 22;
-      const playH = 36;
-      const blockH = labelH + labelGap + FH + playGap + playH;
+      const playGap = 18;
+      const playH = 44;
+      const hideGap = 10;
+      const hideH = 28;
+      const blockH = labelH + labelGap + FH + playGap + playH + hideGap + hideH;
       const blockTop = Math.max(8, (DESIGN_H - blockH) / 2);
       const imgY = blockTop + labelH + labelGap + FH / 2;
       const imgLeft = cx - FW / 2;
-      const imgRight = cx + FW / 2;
       const imgBottom = imgY + FH / 2;
       const htImg = this.add
         .image(cx, imgY, "howto-tutorial")
@@ -1616,7 +1695,7 @@ export class GameScene extends Phaser.Scene {
         .setStroke("#0a0018", 3);
       const htPlay = this.add
         .text(cx, imgBottom + playGap, "Let's Play !", {
-          fontSize: "22px",
+          fontSize: "24px",
           fontFamily: FONT_IMPACT,
           fontStyle: "bold",
           color: "#5efce8",
@@ -1624,7 +1703,7 @@ export class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5, 0)
         .setStroke("#0a0018", 5)
-        .setPadding(18, 8, 18, 8)
+        .setPadding(20, 10, 20, 10)
         .setInteractive({ useHandCursor: true });
       this.howtoPlayBtn = htPlay;
       htPlay.on("pointerdown", (
@@ -1635,17 +1714,19 @@ export class GameScene extends Phaser.Scene {
       ) => {
         event.stopPropagation();
         pointer.event?.stopPropagation?.();
+        this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
         this.dismissHowto(false);
       });
-      // 「오늘 다시 안보기」— 이미지 아래·우측 (겹침 방지)
+      // 「오늘 다시 안보기」— Let's Play 바로 아래. 탭하면 Start/Play와 동일하게 화면 넘김.
       const htHide = this.add
-        .text(imgRight - 4, imgBottom + 10, "오늘 다시 안보기", {
-          fontSize: "12px",
+        .text(cx, imgBottom + playGap + playH + hideGap, "오늘 다시 안보기", {
+          fontSize: "13px",
           fontFamily: FONT_KR,
           color: "#aaaaaa",
           resolution: TXT_RES,
         })
-        .setOrigin(1, 0)
+        .setOrigin(0.5, 0)
+        .setPadding(12, 8, 12, 8)
         .setInteractive({ useHandCursor: true });
       htHide.on("pointerdown", (
         pointer: Phaser.Input.Pointer,
@@ -1655,6 +1736,7 @@ export class GameScene extends Phaser.Scene {
       ) => {
         event.stopPropagation();
         pointer.event?.stopPropagation?.();
+        this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
         this.dismissHowto(true);
       });
       this.howtoTutorial = this.add
@@ -1714,8 +1796,8 @@ export class GameScene extends Phaser.Scene {
         .setOrigin(0.5)
         .setStroke("#1a1a2e", 3);
       const ftContinue = this.add
-        .text(cx, cy + FH / 2 - 72, "이어하기", {
-          fontSize: "16px",
+        .text(cx, cy + FH / 2 - 78, "이어하기", {
+          fontSize: "20px",
           // Black Han Sans는 웹 서브셋/합성 bold에서 일부 음절(어 등)이 깨질 수 있어
           // 셀프호스트 물마루로 CTA 고정
           fontFamily: FONT_KR,
@@ -1723,7 +1805,7 @@ export class GameScene extends Phaser.Scene {
           resolution: TXT_RES,
         })
         .setOrigin(0.5)
-        .setPadding(12, 6, 12, 6)
+        .setPadding(16, 10, 16, 10)
         .setInteractive({ useHandCursor: true });
       this.feverContinueBtn = ftContinue;
       ftContinue.on("pointerdown", (
@@ -1734,17 +1816,19 @@ export class GameScene extends Phaser.Scene {
       ) => {
         event.stopPropagation();
         pointer.event?.stopPropagation?.();
+        this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
         this.dismissFeverTutorial(false);
       });
-      // 「오늘 다시 안보기」— 패널 하단 가운데
+      // 「오늘 다시 안보기」— 이어하기와 동일하게 닫고 재개. 히트영역만 넉넉히.
       const ftHide = this.add
-        .text(cx, cy + FH / 2 - 28, "오늘 다시 안보기", {
-          fontSize: "11px",
+        .text(cx, cy + FH / 2 - 24, "오늘 다시 안보기", {
+          fontSize: "13px",
           fontFamily: FONT_KR,
           color: "#aaaaaa",
           resolution: TXT_RES,
         })
         .setOrigin(0.5, 1)
+        .setPadding(12, 8, 12, 8)
         .setInteractive({ useHandCursor: true });
       ftHide.on("pointerdown", (
         pointer: Phaser.Input.Pointer,
@@ -1754,6 +1838,7 @@ export class GameScene extends Phaser.Scene {
       ) => {
         event.stopPropagation();
         pointer.event?.stopPropagation?.();
+        this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
         this.dismissFeverTutorial(true);
       });
       this.feverTutorial = this.add
@@ -1779,8 +1864,11 @@ export class GameScene extends Phaser.Scene {
       this.pauseOverlay.setVisible(false);
       this.gamePaused = false;
       setRestartButtonVisible(false);
+      this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
       this.startRun(true);
     });
+    registerMuteToggle(() => this.toggleMute());
+    this.applyMute(loadUserSettings().audio.muted);
 
     // 화면 어디를 탭해도 점프 — 캔버스 밖 빈 공간(좌우 기둥)도 포함
     // #fs-btn은 pointerdown에서 stopPropagation → 이 핸들러까지 버블되지 않음
@@ -1792,6 +1880,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.events.once("shutdown", () => {
       window.removeEventListener("pointerdown", this._windowTapHandler);
+      this.stopAllBgm();
     });
 
     // Space·ArrowUp도 같은 onTap 경로 — e.repeat는 꾹 누름 자동반복이라 한 번만 처리
@@ -2056,9 +2145,361 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** AudioContext 언락 — WebView 자동재생 정책 대응 */
+  private unlockAudio(): void {
+    if (this.sound.locked) this.sound.unlock();
+  }
+
+  /**
+   * 원샷 SFX — 캐시에 없으면 조용히 스킵.
+   * mute는 Phaser SoundManager.mute가 BGM/SFX 일괄 적용.
+   */
+  private playSfx(
+    key: SfxKey,
+    config?: Phaser.Types.Sound.SoundConfig,
+  ): void {
+    if (!this.cache.audio.exists(key)) return;
+    this.unlockAudio();
+    if (this.sound.locked) return;
+    this.sound.play(key, config);
+  }
+
+  private applyMute(muted: boolean): void {
+    this.sound.mute = muted;
+    setMuteButtonState(muted);
+  }
+
+  private toggleMute(): void {
+    const next = !this.sound.mute;
+    this.applyMute(next);
+    const settings = loadUserSettings();
+    settings.audio.muted = next;
+    saveUserSettings(settings);
+  }
+
+  private ensureBgm(
+    key: "bgm-main" | "bgm-intro" | "bgm-fever" | "bgm-gameover",
+    slot: "bgmMain" | "bgmIntro" | "bgmFever" | "bgmGameover",
+    volume: number,
+  ): BgmSound | null {
+    const existing = this[slot];
+    if (existing) return existing;
+    if (!this.cache.audio.exists(key)) return null;
+    const snd = this.sound.add(key, { loop: true, volume }) as BgmSound;
+    this[slot] = snd;
+    return snd;
+  }
+
+  /** 볼륨 트윈 — 전환 페이드 인/아웃용 */
+  private fadeBgmVolume(
+    snd: BgmSound,
+    to: number,
+    onComplete?: () => void,
+    duration = BGM_FADE_MS,
+  ): void {
+    const epoch = this.bgmFadeEpoch;
+    this.tweens.killTweensOf(snd);
+    this.tweens.add({
+      targets: snd,
+      volume: to,
+      duration,
+      ease: "Sine.easeInOut",
+      onComplete: () => {
+        // 이후 전환이 epoch를 올렸으면 이 콜백은 폐기 (인트로 재시작을 죽이던 회귀 방지)
+        if (epoch !== this.bgmFadeEpoch) return;
+        onComplete?.();
+      },
+    });
+  }
+
+  /** 재생 중/일시정지 트랙을 페이드아웃 후 stop (인스턴스는 유지) */
+  private fadeOutBgmKeep(
+    snd: BgmSound | null,
+    duration = BGM_FADE_MS,
+  ): void {
+    if (!snd) return;
+    this.tweens.killTweensOf(snd);
+    if (snd.isPaused) snd.resume();
+    if (snd.isPlaying) {
+      this.fadeBgmVolume(
+        snd,
+        0,
+        () => {
+          snd.stop();
+        },
+        duration,
+      );
+    } else {
+      snd.stop();
+    }
+  }
+
+  /** 0에서 목표 볼륨까지 페이드인하며 play/resume */
+  private fadeInBgm(
+    snd: BgmSound,
+    targetVol: number,
+    duration = BGM_FADE_MS,
+  ): void {
+    this.tweens.killTweensOf(snd);
+    if (snd.isPaused) {
+      snd.volume = 0;
+      snd.resume();
+    } else if (!snd.isPlaying) {
+      snd.volume = 0;
+      snd.play();
+    } else {
+      // 이미 재생 중(페이드아웃 도중 재진입) — 현재 볼륨에서 목표로만 올림
+    }
+    this.fadeBgmVolume(snd, targetVol, undefined, duration);
+  }
+
+  /** 인트로/howto 구간에만 인트로 BGM 유지 */
+  private shouldHearIntroBgm(): boolean {
+    return this.introActive || this.howtoActive;
+  }
+
+  /** 인트로 BGM — 언락 전이면 unlocked 이벤트에 걸어 두고, 메인이 없으면 즉시 풀볼륨. */
+  private startIntroBgm(): void {
+    this.unlockAudio();
+    const intro = this.ensureBgm("bgm-intro", "bgmIntro", BGM_VOL_INTRO);
+    if (!intro) return;
+
+    const playIntro = () => {
+      if (!this.shouldHearIntroBgm()) return;
+      this.bgmFadeEpoch++; // 이전 메인의 stopIntro 콜백 무효화
+
+      const crossFromPlay = !!(
+        (this.bgmMain && this.bgmMain.isPlaying) ||
+        (this.bgmGameover && this.bgmGameover.isPlaying)
+      );
+      this.fadeOutBgmKeep(this.bgmMain);
+
+      if (this.bgmFever) {
+        const fever = this.bgmFever;
+        this.tweens.killTweensOf(fever);
+        if (fever.isPaused) fever.resume();
+        if (fever.isPlaying) {
+          this.fadeBgmVolume(fever, 0, () => this.stopFeverBgm(), BGM_FEVER_FADE_MS);
+        } else {
+          this.stopFeverBgm();
+        }
+      }
+
+      // 결과 화면 BGM → 재시도 인트로
+      if (this.bgmGameover) {
+        const go = this.bgmGameover;
+        this.tweens.killTweensOf(go);
+        if (go.isPaused) go.resume();
+        if (go.isPlaying) {
+          this.fadeBgmVolume(go, 0, () => this.stopGameoverBgm());
+        } else {
+          this.stopGameoverBgm();
+        }
+      }
+
+      this.tweens.killTweensOf(intro);
+      if (!intro.isPlaying) {
+        // 플레이/결과에서 넘어올 때만 0→페이드. 첫 인트로/무음 재개는 바로 들리게.
+        intro.volume = crossFromPlay ? 0 : BGM_VOL_INTRO;
+        intro.play();
+      }
+      if (crossFromPlay || intro.volume < BGM_VOL_INTRO * 0.85) {
+        this.fadeBgmVolume(intro, BGM_VOL_INTRO);
+      } else {
+        intro.volume = BGM_VOL_INTRO;
+      }
+    };
+
+    if (this.sound.locked) {
+      // 회귀 지점: 예전엔 여기서 return만 해서 첫 인트로·재시도 직후가 영구 무음이 됨
+      this.sound.once("unlocked", playIntro);
+      return;
+    }
+    playIntro();
+  }
+
+  private stopIntroBgm(): void {
+    if (!this.bgmIntro) return;
+    this.tweens.killTweensOf(this.bgmIntro);
+    this.bgmIntro.stop();
+    this.bgmIntro.destroy();
+    this.bgmIntro = null;
+  }
+
+  /** 메인 BGM — 인트로/피버와 크로스페이드 후 루프. */
+  private startMainBgm(): void {
+    this.unlockAudio();
+    const main = this.ensureBgm("bgm-main", "bgmMain", BGM_VOL_MAIN);
+    if (!main) return;
+    this.bgmFadeEpoch++;
+
+    // 인트로 페이드아웃 → 정리
+    if (this.bgmIntro) {
+      const intro = this.bgmIntro;
+      this.tweens.killTweensOf(intro);
+      if (intro.isPaused) intro.resume();
+      if (intro.isPlaying) {
+        this.fadeBgmVolume(intro, 0, () => {
+          this.stopIntroBgm();
+        });
+      } else {
+        this.stopIntroBgm();
+      }
+    }
+
+    // 피버 페이드아웃 → 정리 (짧게)
+    if (this.bgmFever) {
+      const fever = this.bgmFever;
+      this.tweens.killTweensOf(fever);
+      if (fever.isPaused) fever.resume();
+      if (fever.isPlaying) {
+        this.fadeBgmVolume(
+          fever,
+          0,
+          () => {
+            this.stopFeverBgm();
+          },
+          BGM_FEVER_FADE_MS,
+        );
+      } else {
+        this.stopFeverBgm();
+      }
+    }
+
+    // 게임오버 잔여분이 있으면 정리 (안전망)
+    if (this.bgmGameover) {
+      const go = this.bgmGameover;
+      this.tweens.killTweensOf(go);
+      if (go.isPaused) go.resume();
+      if (go.isPlaying) {
+        this.fadeBgmVolume(go, 0, () => this.stopGameoverBgm());
+      } else {
+        this.stopGameoverBgm();
+      }
+    }
+
+    this.fadeInBgm(main, BGM_VOL_MAIN);
+  }
+
+  /** 피버 BGM — 메인 위에 레이어로 얹음 (메인은 계속 재생). */
+  private startFeverBgm(): void {
+    this.unlockAudio();
+    const fever = this.ensureBgm("bgm-fever", "bgmFever", BGM_VOL_FEVER);
+    if (!fever) return;
+    // 메인 페이드 콜백은 건드리지 않음 — 메인은 그대로 루프
+    this.fadeInBgm(fever, BGM_VOL_FEVER, BGM_FEVER_FADE_MS);
+  }
+
+  /** 피버 종료 — 메인 유지, 피버 레이어만 짧게 페이드아웃. */
+  private endFeverBgm(): void {
+    if (!this.bgmFever) return;
+    const fever = this.bgmFever;
+    this.tweens.killTweensOf(fever);
+    if (fever.isPaused) fever.resume();
+    if (fever.isPlaying) {
+      this.fadeBgmVolume(
+        fever,
+        0,
+        () => {
+          this.stopFeverBgm();
+        },
+        BGM_FEVER_FADE_MS,
+      );
+    } else {
+      this.stopFeverBgm();
+    }
+  }
+
+  private stopFeverBgm(): void {
+    if (!this.bgmFever) return;
+    this.tweens.killTweensOf(this.bgmFever);
+    this.bgmFever.stop();
+    this.bgmFever.destroy();
+    this.bgmFever = null;
+  }
+
+  /** 게임오버/결과 BGM — 메인·피버를 페이드아웃하고 여운 루프. */
+  private startGameoverBgm(): void {
+    this.unlockAudio();
+    const go = this.ensureBgm("bgm-gameover", "bgmGameover", BGM_VOL_GAMEOVER);
+    if (!go) return;
+    this.bgmFadeEpoch++;
+
+    this.fadeOutBgmKeep(this.bgmMain);
+    if (this.bgmFever) {
+      const fever = this.bgmFever;
+      this.tweens.killTweensOf(fever);
+      if (fever.isPaused) fever.resume();
+      if (fever.isPlaying) {
+        this.fadeBgmVolume(fever, 0, () => this.stopFeverBgm(), BGM_FEVER_FADE_MS);
+      } else {
+        this.stopFeverBgm();
+      }
+    }
+    this.fadeInBgm(go, BGM_VOL_GAMEOVER);
+  }
+
+  private stopGameoverBgm(): void {
+    if (!this.bgmGameover) return;
+    this.tweens.killTweensOf(this.bgmGameover);
+    this.bgmGameover.stop();
+    this.bgmGameover.destroy();
+    this.bgmGameover = null;
+  }
+
+  private pauseMainBgm(): void {
+    if (!this.bgmMain) return;
+    this.tweens.killTweensOf(this.bgmMain);
+    if (this.bgmMain.isPlaying) this.bgmMain.pause();
+  }
+
+  private resumeMainBgm(): void {
+    if (!this.bgmMain) return;
+    this.tweens.killTweensOf(this.bgmMain);
+    if (this.bgmMain.isPaused) {
+      this.bgmMain.volume = BGM_VOL_MAIN;
+      this.bgmMain.resume();
+    }
+  }
+
+  /** 플레이 중 BGM 일시정지 — 메인+피버 레이어 둘 다 (일시정지/피버 튜토리얼용) */
+  private pausePlayBgm(): void {
+    if (this.bgmFever && this.bgmFever.isPlaying) {
+      this.tweens.killTweensOf(this.bgmFever);
+      this.bgmFever.pause();
+    }
+    this.pauseMainBgm();
+  }
+
+  private resumePlayBgm(): void {
+    this.resumeMainBgm();
+    if (this.bgmFever?.isPaused) {
+      this.tweens.killTweensOf(this.bgmFever);
+      this.bgmFever.volume = BGM_VOL_FEVER;
+      this.bgmFever.resume();
+    }
+  }
+
+  private stopMainBgm(): void {
+    if (!this.bgmMain) return;
+    this.tweens.killTweensOf(this.bgmMain);
+    this.bgmMain.stop();
+    this.bgmMain.destroy();
+    this.bgmMain = null;
+  }
+
+  private stopAllBgm(): void {
+    this.stopIntroBgm();
+    this.stopFeverBgm();
+    this.stopGameoverBgm();
+    this.stopMainBgm();
+  }
+
   /** 인트로 시작 — 시작 오버레이를 가리고 천천히 세로 슬라이드. Start로만 종료. */
   private beginIntro(): void {
     this.introActive = true;
+    // 재시도 판: 메인/피버/결과 → 인트로 크로스페이드
+    this.startIntroBgm();
     if (this.startOverlay) this.startOverlay.setVisible(false);
     const startY = (this.introOverlay.getData("startY") as number) ?? DESIGN_H;
     const endY = (this.introOverlay.getData("endY") as number) ?? DESIGN_H;
@@ -2099,6 +2540,8 @@ export class GameScene extends Phaser.Scene {
     if (!isTutorialHiddenToday("howto") && this.howtoTutorial) {
       this.howtoActive = true;
       this.howtoTutorial.setVisible(true);
+      // Start 제스처로 AudioContext 언락된 직후 — 인트로 BGM 유지(첫 방문 포함)
+      this.startIntroBgm();
       // Let's Play ! 부드러운 점멸 (인트로 Start와 동일 리듬)
       if (this.howtoPlayBtn) {
         this.tweens.killTweensOf(this.howtoPlayBtn);
@@ -2115,6 +2558,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
     this.howtoActive = false;
+    this.startMainBgm();
   }
 
   /** 조작 튜토리얼 닫기. hideToday면 day-key 저장. */
@@ -2127,6 +2571,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.howtoTutorial) this.howtoTutorial.setVisible(false);
     if (hideToday) hideTutorialToday("howto");
+    this.startMainBgm();
   }
 
   /** 피버 튜토리얼 닫기 + 일시정지 해제. hideToday면 day-key 저장. */
@@ -2143,6 +2588,7 @@ export class GameScene extends Phaser.Scene {
       this.gamePaused = false;
       this.timestep.reset();
       setPauseButtonState(false, true);
+      this.resumePlayBgm();
     }
   }
 
@@ -2227,6 +2673,7 @@ export class GameScene extends Phaser.Scene {
     // 시작 오버레이 표시 중: 닫기 + 이후 점프로 이어짐 (return 없음)
     if (this.startOverlay.visible) {
       this.startOverlay.setVisible(false);
+      this.startMainBgm();
     }
     // 일시정지 중 탭 = 재개
     if (this.gamePaused) {
@@ -2247,6 +2694,9 @@ export class GameScene extends Phaser.Scene {
     this.gamePaused = !this.gamePaused;
     if (!this.gamePaused) {
       this.timestep.reset(); // 재개: 멈춘 동안 쌓인 delta → burst-step 방지
+      this.resumePlayBgm();
+    } else {
+      this.pausePlayBgm();
     }
     this.pauseOverlay.setVisible(this.gamePaused);
     setPauseButtonState(this.gamePaused, true);
@@ -2311,6 +2761,7 @@ export class GameScene extends Phaser.Scene {
             if (!wasFinished && g.finished) {
               this.overtakenLive++;
               this.popup("고스트 제침!", "#b39ddb");
+              this.playSfx("sfx-overtake", { volume: SFX_VOL_OVERTAKE });
             }
           }
         }
@@ -2327,12 +2778,17 @@ export class GameScene extends Phaser.Scene {
       // 2단 점프는 조금 더 강하게(40ms). Vibration API 없는 환경은 에러 없이 스킵.
       const isDoubleJump = this.sim.state.player.jumpsUsed >= 2;
       navigator.vibrate?.(isDoubleJump ? 40 : 22);
+      this.playSfx("sfx-jump", {
+        volume: SFX_VOL_JUMP,
+        detune: isDoubleJump ? SFX_JUMP_DOUBLE_DETUNE : 0,
+      });
     }
     if (ev & C.EV_HIT) {
       this.cameras.main.flash(140, 255, 70, 70);
       this.punchZoom(1.07, 90); // 짧고 약하게 — 기존 쉐이크와 중첩
       // 피격 진동 — 점프보다 길고 강하게(타격감).
       navigator.vibrate?.(60);
+      this.playSfx("sfx-hit", { volume: SFX_VOL_HIT });
     }
     if (ev & C.EV_COMBO_BREAK) {
       // 콤보가 끊긴 순간 — 화면 흔들림 + 빨간 팝업
@@ -2341,18 +2797,22 @@ export class GameScene extends Phaser.Scene {
     }
     if (ev & C.EV_POTION) {
       this.showHpPlusToast();
+      this.playSfx("sfx-potion", { volume: SFX_VOL_POTION });
     }
     if (ev & C.EV_FEVER_START) {
       this.feverCount++;
       this.cameras.main.flash(200, 255, 215, 0); // 황금빛 노란 플래시 (피격 빨강과 구분)
       this.punchZoom(1.12, 170); // 주인공 쪽으로 펀치 줌인 — 가속감 강조
       this.feverOverlay.setVisible(true);
+      this.startFeverBgm(); // 메인 유지 + 피버 레이어 온
+      this.playSfx("sfx-fever", { volume: SFX_VOL_FEVER });
       // FEVER TIME! 띠지 슬라이드는 render()에서 feverFramesLeft로 구동
       // 첫 피버 발동: 게임 일시정지 + 피버 튜토리얼 표시 (최초 1회)
       if (this.needsFeverTutorial && this.feverTutorial) {
         this.needsFeverTutorial = false;
         this.gamePaused = true;
         this.timestep.reset();
+        this.pausePlayBgm(); // 메인+피버 일시정지 (튜토리얼 닫으면 resume)
         this.feverTutorial.setVisible(true);
         setPauseButtonState(false, false); // 튜토리얼 중 일시정지 버튼 숨김
         if (this.feverContinueBtn) {
@@ -2371,8 +2831,12 @@ export class GameScene extends Phaser.Scene {
     }
     if (ev & C.EV_FEVER_END) {
       this.feverOverlay.setVisible(false);
+      this.endFeverBgm(); // 메인 유지, 피버 레이어만 오프
     }
     if (ev & C.EV_GAME_OVER) {
+      this.playSfx("sfx-death", { volume: SFX_VOL_DEATH });
+      // 메인/피버 → 결과 BGM 크로스페이드 (한 판 더 여운)
+      this.startGameoverBgm();
       setPauseButtonState(false, false); // 게임오버 → 일시정지 버튼 숨김
       setRestartButtonVisible(false); // 게임오버 → 다시하기 버튼도 숨김
       const myDist = this.sim.state.distance;
@@ -3094,10 +3558,9 @@ export class GameScene extends Phaser.Scene {
     // 1a) 레이저 이펙트 Graphics — 하늘 직후, 메테오·태양보다 먼저 add → 태양 뒤에 렌더.
     this.laserGraphics = this.add.graphics();
 
-    // 1b) 코드 드로우 메테오 Graphics — 연막(blackout depth 6) 아래, 배경·태양 위.
-    //     이유: 연막이 나왔을 때 메테오가 연막 위로 뜨면 "연막이 가리지 못함"처럼 보임.
-    //     HUD(랭킹 칩 depth 22)보다는 아래 — 메테오가 칩을 가리지 않음.
-    this.meteorGfx = this.add.graphics().setDepth(5);
+    // 1b) 코드 드로우 메테오 Graphics — Today's Rank 칩(depth 22)·콤보 띠지(23) 위로 지나감.
+    //     게임오버/튜토리얼(40+)보다는 아래. (예전엔 depth 5라 칩 뒤로 깔렸음)
+    this.meteorGfx = this.add.graphics().setDepth(24);
 
     // 2) 레트로웨이브 코드 태양 — syncVisuals에서 저주파로 일렁이며 재드로우.
     // Graphics.setPosition(0, 214) 으로 기준점을 scene y=214에 두고, 드로우는 로컬 좌표(y=0이 센터).
@@ -3806,11 +4269,14 @@ export class GameScene extends Phaser.Scene {
     this.drawGroundGrid(worldPx, pal);
     this.updateBlackout(s);
 
-    // 플레이어 (무적 중엔 시뮬 프레임 기반 깜빡임, 죽으면 그 자리에서 디밍).
+    // 플레이어 (피격 무적·피버 종료 유예 중엔 시뮬 프레임 기반 깜빡임, 죽으면 그 자리에서 디밍).
     // 아트 origin이 하단이므로 y = 히트박스 바닥의 화면 y = toScreenY(player.y).
+    // feverGrace는 충돌만 막고 invincibleFrames는 안 올려서, 점멸을 따로 켜 줘야 "아직 무적"이 보인다.
+    const blinkInvincible =
+      s.invincibleFrames > 0 || s.feverGraceFramesLeft > 0;
     const playerAlpha = s.gameOver
       ? DEAD_PLAYER_ALPHA
-      : s.invincibleFrames > 0
+      : blinkInvincible
         ? s.frame % 8 < 4
           ? 0.3
           : 0.9
@@ -4091,7 +4557,7 @@ export class GameScene extends Phaser.Scene {
     // 좌측 콤보 띠지 — 랭킹 칩 아래. 2 이상일 때 좌→우 슬라이드 인, 끊기면 좌로 아웃.
     const showCombo = s.combo >= 2 && !s.gameOver;
     const restX = (this.comboRibbon.getData("restX") as number) ?? 0;
-    const hiddenX = (this.comboRibbon.getData("hiddenX") as number) ?? -126;
+    const hiddenX = (this.comboRibbon.getData("hiddenX") as number) ?? -136;
     if (showCombo) {
       this.comboDisplay.setText(`${s.combo} combo`);
       this.comboDisplay.setColor(NEON_YELLOW_HEX);
@@ -4112,6 +4578,7 @@ export class GameScene extends Phaser.Scene {
           this.comboRibbon.x = restX;
         }
         if (s.combo > this.prevCombo) {
+          this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
           this.tweens.killTweensOf(this.comboDisplay);
           this.comboDisplay.setScale(1.12);
           this.tweens.add({
@@ -4165,7 +4632,8 @@ export class GameScene extends Phaser.Scene {
         this.playerGlow.outerStrength = 0;
       } else {
         this.playerGlow.color = 0x5efce8;
-        this.playerGlow.outerStrength = s.invincibleFrames > 0 ? 6 : 3;
+        this.playerGlow.outerStrength =
+          s.invincibleFrames > 0 || s.feverGraceFramesLeft > 0 ? 6 : 3;
       }
     }
 
@@ -4631,10 +5099,11 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * 결과 패널용 닉 자르기 — 거리 열과 겹치지 않을 길이로.
-   * 한글≈11px, 영숫자≈7px(11px 폰트) 근사. 말줄임표 포함.
+   * 한글≈fontSize, 영숫자≈0.62×fontSize 근사. 말줄임표 포함.
+   * (행 폰트와 같은 크기로 재야 14px 표시에서 겹침이 안 남)
    */
   private clipNickForPanel(nick: string): string {
-    return this.clipNickToPx(nick, this.rankNameMaxPx, 11);
+    return this.clipNickToPx(nick, this.rankNameMaxPx, 14);
   }
 
   /** 상단 칩용 — 글자 수 기준 단순 컷. */

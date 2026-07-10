@@ -24,9 +24,37 @@ export function saveUserSettings(settings: UserSettings): void {
 }
 
 export function loadUserSettings(): UserSettings {
-  const raw = localStorage.getItem(SETTINGS_KEY);
-  const settings = JSON.parse(raw!);
-  return { volume: settings.audio.volume, ...settings };
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) {
+      return {
+        showFps: DEFAULT_SETTINGS.showFps,
+        audio: { ...DEFAULT_SETTINGS.audio },
+      };
+    }
+    const parsed = JSON.parse(raw) as Partial<UserSettings>;
+    return {
+      showFps:
+        typeof parsed.showFps === "boolean"
+          ? parsed.showFps
+          : DEFAULT_SETTINGS.showFps,
+      audio: {
+        volume:
+          typeof parsed.audio?.volume === "number"
+            ? parsed.audio.volume
+            : DEFAULT_SETTINGS.audio.volume,
+        muted:
+          typeof parsed.audio?.muted === "boolean"
+            ? parsed.audio.muted
+            : DEFAULT_SETTINGS.audio.muted,
+      },
+    };
+  } catch {
+    return {
+      showFps: DEFAULT_SETTINGS.showFps,
+      audio: { ...DEFAULT_SETTINGS.audio },
+    };
+  }
 }
 
 export function resetUserSettings(): void {

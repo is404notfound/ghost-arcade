@@ -39,6 +39,7 @@ canvas {
 }
 
 #fs-btn,
+#mute-btn,
 #pause-btn,
 #restart-btn {
   width: 40px;

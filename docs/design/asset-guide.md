@@ -73,7 +73,7 @@
 | `fire.hot`          | `#ffe9a8` 코어 → `#ff7a3c` → `#d62828` (어두운 엣지 `#7a0f12`) | 메테오·불꽃 장애물                           |
 | `laser.red`         | `#ff4757` / `#ff6b81`                                   | 배경 경고 레이저                            |
 | `hp.green/warn/low` | `#2ecc71 / #f1c40f / #ff4757`                           | 체력바                                  |
-| `fever.gold`        | `#f0f838` (네온 옐로, Fever 아이콘 샘플)                      | 피버·HUD 강조 노랑 통일                     |
+| `fever.gold`        | `#f0f838` (네온 옐로, Fever 아이콘 샘플)                         | 피버·HUD 강조 노랑 통일                      |
 
 
 > **게임플레이 4색**(플레이어 시안 / 고스트 바이올렛 / 연료 블루 / 위험 마젠타)은 **절대 닮게
@@ -111,6 +111,12 @@
 | `bg-sky` / `ground-grid` / `fx-speedlines` / `fx-trail` | 하늘·바닥그리드·속도선·트레일            | —                            | 💠  | 코드 권장(이미지 X)                                                                                    |
 | `fx-particles`                                          | 스파크/+HP/제침 파티클              | ~16×16                       | ⬜   | 흰색 1종 → 코드 틴트                                                                                   |
 | `intro-slide`                                           | 인트로 스토리 이미지(세로 슬라이드)        | 오버레이                         | ✅   | §6.3. 매 판·Start→바로 플레이. 고화질 재생성 권장(≥1536w)                                                      |
+| `bgm-main`                                              | 메인 플레이 BGM (루프)               | —                            | ✅   | §6.1 (A). `assets/audio/bgm-main.mp3` · Midnight Motorway. 인트로/howto 후 재생, vol 1.0 · 페이드 전환 |
+| `bgm-intro`                                             | 타이틀/인트로 BGM (루프)             | —                            | ✅   | §6.1 (C). `assets/audio/bgm-intro.mp3` · Last Light of the World. 인트로(+howto) 중, vol 0.16 · 페이드 전환 |
+| `bgm-fever`                                             | 피버 타임 BGM (루프)                | —                            | ✅   | §6.1 (B). `assets/audio/bgm-fever.mp3` · Combo Multiplier. 피버 중 메인 위에 레이어, vol 0.07 · 페이드 220ms |
+| `bgm-gameover`                                          | 게임오버/결과 BGM (루프)             | —                            | ✅   | §6.1 (E). `assets/audio/bgm-gameover.mp3` · The Final Quarter. 사망→결과 패널, vol 0.42 · 메인/피버와 페이드 전환 |
+| `sfx-jump` / `sfx-hit` / `sfx-potion` / `sfx-fever`     | 핵심 이벤트 SFX                    | —                            | ✅/🔄 | §6.2. jump/hit/potion=무료 실샘플([CREDITS-sfx.md](../../assets/audio/CREDITS-sfx.md)). fever=합성→프롬프트 A |
+| `sfx-tick` / `sfx-overtake` / `sfx-death`               | UI틱·제침·사망 SFX                 | —                            | 🔄  | §6.2. 합성 임시. 교체 프롬프트 B/C/D + Gemini 1초 가드레일 |
 
 
 > **코드로 두는 게 이득**: 하늘·그리드·속도선·트레일·**태양·메테오·레이저**(이미 코드화 완료).
@@ -358,6 +364,7 @@ white or black background, realistic, 3D, checkerboard
 > `match this exact hooded ghost — same hoodie, yellow eyes, golden halo, proportions` 지시.
 > 파일명 예: `ghost-collapse-1/2/3.png`. 적용 후 prep → 인게임에서 run→collapse 전환 시
 > 같은 캐릭터로 읽히는지 확인.
+
 ---
 
 ### 5.3 obstacle-apoc — 아포칼립스 장애물 세트 (건물 외 다양화)
@@ -882,8 +889,8 @@ busy ornaments, characters
 > 인게임: **우측 하단**, 표시 폭 **≈360px**. 흰 외곽 스트로크는 prep에서 합성.
 
 
-| 파트            | 용도           | 권장 크기(@3x)     | 비고                                |
-| ------------- | ------------ | -------------- | --------------------------------- |
+| 파트            | 용도              | 권장 크기(@3x)  | 비고                                        |
+| ------------- | --------------- | ----------- | ----------------------------------------- |
 | `warn-bubble` | 스파이크 WARNING 뱃지 | **504×164** | WARNING baked. 위험 마젠타 `#ff2d55`/`#ff5fa2` |
 
 
@@ -920,10 +927,12 @@ only), busy ornaments, characters, skulls, multiple bubbles
 
 > 코드 스파이크 뱃지 → **아이콘 PNG**. 상세: `docs/design/fever-warning-icon-asset.md`
 >
-> | 키 | 모티프 | 색 | 런타임 |
-> |----|--------|-----|--------|
-> | `icon-warning` | 사이렌 + WARNING | 네온 핑크 | `assets/game/icon-warning.png` |
-> | `icon-fever` | 번개+링 | 형광 노랑 `#f0f838` | `assets/game/icon-fever.png` |
+>
+> | 키              | 모티프           | 색               | 런타임                            |
+> | -------------- | ------------- | --------------- | ------------------------------ |
+> | `icon-warning` | 사이렌 + WARNING | 네온 핑크           | `assets/game/icon-warning.png` |
+> | `icon-fever`   | 번개+링          | 형광 노랑 `#f0f838` | `assets/game/icon-fever.png`   |
+>
 >
 > 우측 하단 112px, 상호배제·호흡 점멸(`sin(t*0.006)`). prep: `prep_icon_warning` / `prep_icon_fever`.
 
@@ -1042,36 +1051,321 @@ seams at edges, drop shadow, straight-only flat overpass
 > 이미지 생성기로는 음원·영상 못 뽑음. **BGM/SFX = Suno·Udio·ElevenLabs·freesound**,
 > **영상 = Sora·Runway·Veo**.
 
-### 6.1 BGM — 시티팝 × 사이렌 루프
+### 6.1 BGM — 시티팝 × 픽셀·카툰 레트로 (게임용)
+
+> **왜 이 믹스인가:** 순수 시티팝은 분위기(무드)는 좋지만 “아케이드 한 판” 느낌이 약하다.
+> 픽셀/카툰 레트로(치ptune·FM·스퀘어 리드)를 **멜로디 레이어에만** 얹으면 시티팝 하모니는
+> 유지하면서 게임 정체성이 살아난다. 보컬·오케스트라는 SFX·UI 틱과 주파수 충돌이 나서 금지.
+
+**게임 BGM 공통 제약 (모든 프롬프트에 붙일 것):**
+
+| 제약 | 값 | 왜 |
+| --- | --- | --- |
+| 루프 | 60–90s, seamless, no fade-in/out | Phaser `loop: true` — 이음매 클릭 = 몰입 파괴 |
+| BPM | 메인 108–116 / 피버 128–136 | 러너 탭 리듬과 맞추되 너무 빠르면 피로 |
+| 밀도 | mid 비우기, lead는 짧게·띄엄띄엄 | 점프·피격·연료 SFX가 들어갈 자리 |
+| 보컬 | **instrumental only** | 가사 = 주의 분산 + 루프 어색 |
+| 사이렌 | distant, periodic, low in mix | 세계관 힌트만 — 멜로디를 덮지 말 것 |
+| 볼륨 가정 | 최종 인게임 ~0.30–0.40 | 생성 단계에서 이미 “배경”으로 뽑을 것 |
+
+> MP3/OGG 128–192kbps. 메인 `bgm-main` **1.0** / 인트로 `bgm-intro` **0.16** / 피버 `bgm-fever` **0.07**,
+> 인트로↔메인 **900ms** / 피버 전환 **220ms** 크로스페이드. 피버 종료·사망 시 메인 복귀.
+
+---
+
+#### (A) 메인 플레이 — 시티팝 뼈대 + 16-bit 카툰 리드 ★적용
+
+> **적용 음원:** `assets/audio/bgm-main.mp3` (`Midnight_Motorway`) —
+> Phaser 키 `bgm-main`, 루프·볼륨 1.0. 인트로/howto 종료 후 페이드인, 일시정지 시 pause.
 
 ```
 Suno / Udio:
-[genre] city pop, synthwave, apocalyptic city
-[feel] nostalgic, tense, late-night highway, neon lights
-[instrumentation] mellow electric guitar chord stabs, warm bass, 80s drum machine, a distant
-emergency siren wailing periodically in the background (not intrusive), lush reverb, lo-fi
-cassette warmth, BPM 105-115
-[structure] seamless 60-120s loop, no lyrics, no fade-out (loop-ready)
-NEGATIVE: happy upbeat pop, acoustic guitar, orchestral strings, choir, loud siren drowning melody
+[genre] city pop, synthwave, 16-bit game soundtrack, cartoon retro arcade
+[feel] nostalgic late-night neon highway, playful but tense apocalypse, endless runner energy,
+       cute-danger contrast like a cartoon racing through a ruined city
+[instrumentation]
+  - warm city-pop electric guitar chord stabs (short, rhythmic, not shredding)
+  - round slap/synth bass with slight FM bite
+  - 80s drum machine + light chiptune percussion ticks (not full 8-bit drums)
+  - bright square/triangle wave melody lead, simple catchy 4-bar hook, cartoonish bounce
+  - soft pad under the chords for neon atmosphere
+  - distant emergency siren wailing occasionally far in the background (very low, not intrusive)
+  - light cassette/lo-fi warmth, restrained reverb (keep midrange clear for game SFX)
+[structure] seamless 60-90s instrumental loop, clear downbeat every bar, no vocals, no fade-out,
+            loop-ready, leave space between melody phrases
+[BPM] 110-114
+NEGATIVE: modern EDM drop, heavy dubstep bass, orchestral strings, choir, full vocal pop,
+          acoustic folk guitar, loud siren drowning melody, busy wall-of-sound, trap hi-hats,
+          photoreal cinematic trailer music, sad piano ballad
 ```
 
-> MP3/OGG 128–192kbps, 루프 이음매 클릭 없게. `this.sound.add('bgm', { loop: true, volume: 0.35 })`.
-> 피버용 레이어/템포업을 별도로 받아 컷 전환하면 §7 쾌감↑.
+---
+
+#### (B) 피버 스팅 — 짧은·빠른 호흡 루프 ★적용
+
+> **왜 긴 곡이 안 맞나:** 피버는 sim상 **`FEVER_SEC = 2.5초`** 뿐이고 자주 재발동된다.
+> 45–60초 시티팝 레이어는 훅이 나오기 전에 끝나고, 같은 도입부만 반복되어 피로하다.
+> → **8–12초 심리스 루프**, 첫 박부터 풀 에너지, BPM 빠르게, 카툰/치ptune 펀치.
+
+> **적용 음원:** `assets/audio/bgm-fever.mp3` (`Combo_Multiplier`) —
+> Phaser 키 `bgm-fever`, 루프·볼륨 0.07. **메인 BGM은 끄지 않고** 위에 레이어로 얹음.
+> 인게임 페이드 **220ms** (`BGM_FEVER_FADE_MS`) — 긴 페이드면 피버 내내 볼륨만 오르내림.
+
+```
+Suno / Udio:
+[genre] 16-bit fever jingle, chiptune power-up loop, cartoon retro arcade stinger
+[feel] instant rush, neon boost, 2-3 second gameplay burst that may re-trigger often,
+       playful hype not dark boss metal — like a cartoon motorcycle nitro flash
+[use case] endless-runner FEVER mode lasting only ~2.5 seconds; player will hear the SAME
+           opening many times per session — must stay fresh and not fatiguing
+[instrumentation]
+  - cold-start: NO ambient intro, NO riser buildup — energy from beat 1
+  - tight square/pulse lead hook (2-bar earworm max), cartoon bounce
+  - punchy chip bass ostinato + fast 16-bit drums (noise snare, short kick)
+  - tiny FM sparkle / arpeggio glitter every bar (power-up candy)
+  - optional one-shot "whoosh" accent on bar 1 only (very short)
+  - leave a little midrange space for jump/hit SFX
+[structure] seamless **8–12 second** instrumental loop ONLY (not 45s+),
+            loop point must be invisible, no fade-in/out, no vocals,
+            designed so any 2.5s window still sounds exciting
+[BPM] 148-160
+NEGATIVE: long cinematic intro, slow city-pop groove, soft pads, ballad, orchestra, choir,
+          vocals, 45-90s song form, brostep drop, metal, horror drone, continuous siren,
+          sleepy lo-fi, trap hi-hat wash, anything that needs 10+ seconds to "get good"
+```
+
+---
+
+#### (C) 타이틀 / 인트로 — 아포칼립스 × 픽셀 레트로 × 장엄한 “지구를 구하라” ★적용
+
+> **적용 음원:** `assets/audio/bgm-intro.mp3` (`Last_Light_of_the_World`) —
+> Phaser 키 `bgm-intro`, 루프·볼륨 0.16. 인트로 슬라이드(+howto) 중 재생 → 플레이 시작 시 main과 크로스페이드.
+
+> **왜 (A)와 다른가:** 메인 BGM은 “달리는 쾌감”, 인트로는 “왜 달리느냐”의 스테이크.
+> 시티팝 감성 라디오가 아니라 **멸망 직전의 지구를 구하러 떠나는 마지막 라이더** —
+> 장엄하되 실오케스트라가 아니라 **16-bit/카툰 레트로로 번역된 서사**여야 비주얼(픽셀·네온)과 맞는다.
+> 인트로 구간은 SFX가 거의 없어 mid를 조금 더 채워도 된다.
+
+```
+Suno / Udio:
+[genre] 16-bit apocalyptic game title theme, cartoon retro RPG overture, synthwave, pixel epic
+[feel] majestic but hopeful last stand, "save the dying earth", lone hero before the run,
+       ruined neon city under a burning sunset, solemn cartoon-epic (not horror, not comedy)
+[story cue] the final rider sets out to uncover why the meteors fell and to save what's left
+            of the world — weighty, heroic, bittersweet resolve
+[instrumentation]
+  - slow rising FM / chip-brass fanfare motif (short heroic call, 4–8 notes) — the "save the earth" hook
+  - deep synth choir pads voiced like 16-bit RPG title screens (synthetic, not real human choir)
+  - warm analog bass drone + soft timpani-like chip percussion (sparse, ceremonial)
+  - distant thunderous low boom every 8–16 bars (meteor / world-stakes pulse), very low in mix
+  - faint square-wave countermelody with cartoon-pixel clarity (keeps it game-like, not trailer)
+  - restrained neon synth shimmer; optional very distant muffled siren as texture only
+  - NO busy city-pop guitar groove, NO dance drums — this is overture, not highway cruise
+[structure] 8–15s majestic opening swell → seamless 60–90s instrumental loop body,
+            no vocals, no fade-out, loop-ready; dynamics wide but peak below "trailer loud"
+[BPM] 84-92 (half-time feel ok; keep a clear pulse for the slide timing)
+NEGATIVE: happy city pop, upbeat disco, acoustic folk, real orchestral Hollywood trailer,
+          loud choir vocals, metal, horror drones, jump-scare stingers, trap hi-hats,
+          EDM drop, comedy cartoon SFX spam, lyrics, continuous loud siren
+```
+
+---
+
+#### (D) 치ptune 비중↑ 변형 — “더 픽셀/카툰”이 필요할 때
+
+> (A)가 너무 시티팝·성인 라디오 같으면 이걸로 재생성. 시티팝 코드는 남기고 **리드·퍼커션만**
+> 8-bit/카툰으로 밀어 게임다움을 올린다.
+
+```
+Suno / Udio:
+[genre] 8-bit / 16-bit video game music, city pop harmony, cartoon retro arcade runner
+[feel] pixel-art motorcycle chase through neon ruins, cute but urgent, Saturday-morning cartoon
+       energy mixed with 80s Japanese city night
+[instrumentation]
+  - chord progression and groove inspired by city pop (major7 / sus colors), but voiced on
+    chip-style pulse and FM electric-piano patches
+  - punchy square-wave bassline (simple, looping ostinato)
+  - classic video-game drum kit (noise snare, short kick) + light cowbell/clave cartoon ticks
+  - memorable chiptune lead melody with call-and-response, short rests between phrases
+  - optional tiny sample-like “cartoon boing” accent every 8 bars (subtle, not comedy sketch)
+  - distant muffled siren as texture only
+[structure] seamless 60-90s instrumental loop, strong downbeats for runner sync, no vocals,
+            no fade-out, midrange not overcrowded
+[BPM] 112-116
+NEGATIVE: pure modern city pop with live band only, realistic orchestra, vocal hooks,
+          phonk, hyperpop, heavy metal, long ambient pads with no rhythm, loud continuous siren
+```
+
+---
+
+#### (E) 게임오버 / 결과 — 짧은 스팅 + 루프 바디 ★적용
+
+> **적용 음원:** `assets/audio/bgm-gameover.mp3` (`The_Final_Quarter`) —
+> Phaser 키 `bgm-gameover`, 루프·볼륨 0.42. `EV_GAME_OVER` 시 메인/피버와 크로스페이드,
+> 재시도(인트로) 시 인트로 BGM으로 페이드 전환.
+
+```
+Suno / Udio:
+[genre] city pop, soft synthwave, 16-bit game over jingle
+[feel] bittersweet neon afterglow, “one more run”, not depressing funeral
+[instrumentation]
+  - 3-5s descending chiptune sting (cartoon “fail but charming”), then soft city-pop pad loop
+  - clean guitar or electric piano, minimal drums or none
+  - tiny square-wave echo of the main theme motif (recognition)
+[structure] short sting + 30-45s quiet instrumental loop, no vocals
+[BPM] 88-96
+NEGATIVE: horror stinger, scream, heavy impact boom, sad solo violin, choir, long silence
+```
+
+---
+
+**생성 후 체크리스트**
+
+1. 헤드폰으로 **루프 이음매** 2회 이상 청취 — 클릭/키 점프 있으면 재생성 또는 DAW에서 크로스페이드.
+2. 인게임 볼륨 0.35에서 **점프 SFX**와 동시에 들어보기 — 멜로디가 가리면 (A)→(D) 또는 mid 비운 재생성.
+3. 피버는 (B)를 (A)와 **같은 키**로 맞출수록 전환이 자연스럽다 (안 맞으면 피치±2로 보정 가능).
 
 ### 6.2 SFX 목록 (전부 기존 sim 이벤트에 얹음 — 렌더 전용)
 
+> **출처 요약:** 점프/피격/연료 = 무료 실샘플 ([`CREDITS-sfx.md`](../../assets/audio/CREDITS-sfx.md)).
+> 피버·틱·제침·사망 = 합성 임시 → 아래 프롬프트로 교체 가능.
 
-| 트리거                    | 검색/프롬프트                                                          | 길이                            |
-| ---------------------- | ---------------------------------------------------------------- | ----------------------------- |
-| 점프 (EV_JUMP)           | "quick high-rev motorcycle engine burst, aggressive exhaust pop" | 0.3–0.5s (2단 점프 `detune:200`) |
-| 피격 (EV_HIT)            | "electric sparks and metal scrape collision, short sharp impact" | 0.2s                          |
-| 연료 획득 (EV_POTION)      | "quick liquid refuel sound, small pour and clunk, satisfying"    | 0.3s                          |
-| 피버 시작 (EV_FEVER_START) | "retro synthwave power surge, ascending sweep and sparkle"       | 0.8s                          |
-| 제침/등수↑/콤보틱/사망/UI탭/니어미스 | 짧은 신스 틱·스윕                                                       | 짧게·프리로드                       |
+| 트리거                    | 파일 / 톤                                                          | 길이                            | 상태  |
+| ---------------------- | -------------------------------------------------------------- | ----------------------------- | --- |
+| 점프 (EV_JUMP)           | `sfx-jump.wav` — 중저음 엔진 럼블 (Mixkit engine working, 경적급 스피드업 폐기) | ~0.38s (2단 `detune:200`) · vol 0.55 | ✅   |
+| 피격 (EV_HIT)            | `sfx-hit.wav` — **드리프트/스키드** (Freesound Sonic Skid CC0)         | ~0.46s                        | ✅   |
+| 연료 획득 (EV_POTION)      | `sfx-potion.wav` — **꿀꺽** (Freesound Drinking w/ Gulp CC0, 피크 정규화) | ~0.6s · vol 0.85              | ✅   |
+| 피버 시작 (EV_FEVER_START) | `sfx-fever.wav` — 신스 파워 서지 (합성) → 프롬프트 A                      | ≤0.8s                         | 🔄  |
+| 제침 (고스트 finished)      | `sfx-overtake.wav` — 상승 스윕 (합성) → 프롬프트 B                       | ≤0.25s                        | 🔄  |
+| 콤보틱 / UI탭              | `sfx-tick.wav` — 시안 블립 (합성) → 프롬프트 C                           | ≤0.1s                         | 🔄  |
+| 사망 (EV_GAME_OVER)      | `sfx-death.wav` — 하강 톤 (합성) → 프롬프트 D                           | ≤0.4s                         | 🔄  |
+| 니어미스                   | — (코어에서 `EV_NEAR_MISS` 제거됨)                                    | —                             | ❌   |
 
 
-> 구현: `preload()`에서 `load.audio` → `syncVisuals()`에서 이벤트 비트마스크 읽어 재생.
-> WebView 자동재생 정책: 첫 탭(TAP TO START) 후 오디오 컨텍스트 언락. 음소거 토글 제공.
+> **구현 (2026-07-10):** `preload()` → `load.audio` → `handleStepEvents()`(및 제침/콤보/CTA)에서 재생.
+> 합성 재생성: `npm run gen:sfx` (점프/피격/연료 WAV는 **덮어쓰지 말 것** — 실샘플).
+> WebView 자동재생: 첫 제스처 후 `unlockAudio()`. 우상단 🔊 음소거 토글 (`UserSettings.audio.muted`).
+>
+> **왜 `syncVisuals`가 아니라 `handleStepEvents`인가:** 이벤트 비트는 스텝당 1회만 살아 있고,
+> 비주얼 동기화 루프는 매 렌더 프레임이라 같은 비트를 여러 번 읽어 소리가 중복될 수 있다.
+
+#### 6.2.1 AI SFX 가드레일 (Gemini / Suno / ElevenLabs 공통 — 필수)
+
+> **문제:** Gemini 등이 “효과음” 요청을 **1분+ 배경음악(BGM)** 으로 만들어 버리는 경우가 많다.
+> SFX는 **원샷·초단위**다. 아래를 프롬프트 **맨 앞·맨 뒤**에 반복해서 붙일 것.
+
+**하드 가드레일 (복붙 블록):**
+
+```
+HARD CONSTRAINTS — GAME SOUND EFFECT (NOT MUSIC):
+- Output ONE short one-shot SFX only. Total length MUST be under 1.0 second (prefer 0.2–0.8s).
+- DO NOT create background music, BGM, loop, song, melody bed, beat, or ambient pad.
+- DO NOT make anything longer than 1 second. If you tend to make 60s tracks, STOP — that is wrong.
+- No intro, no outro, no fade-in longer than 20ms, no silence padding over 50ms.
+- Mono or stereo OK. Dry, punchy, game-ready. Leave headroom (no clipping).
+- Single event only — not a sequence of many events over time.
+```
+
+**네거티브 (같이 붙이기):**
+
+```
+NEGATIVE: background music, BGM, soundtrack, 1 minute, 60 seconds, long loop, full song,
+verse chorus, drums beat groove, cinematic trailer score, ambient drone bed, podcast,
+voiceover narration, silence padding, repeated loop cycle
+```
+
+**길이 체크:** 받은 파일이 **1초 초과**면 폐기하고 재생성. DAW/스크립트로 트림해도 되지만,
+모델이 BGM을 뽑으면 트림해도 “곡 조각”이라 게임 톤이 안 맞는다 → **프롬프트부터 다시**.
+
+#### 6.2.2 교체용 에셋 프롬프트 (합성 → 실샘플/AI)
+
+**A — 피버 시작 (`sfx-fever`, ≤0.8s)**
+
+```
+(HARD CONSTRAINTS block above)
+
+Retro synthwave power-up one-shot for a neon endless-runner fever mode.
+Ascending synth sweep + sparkle glitter, triumphant but tiny, arcade UI stinger.
+Duration 0.6–0.8 seconds ONLY. Not a song. Not a loop.
+
+NEGATIVE: (negative block above)
+```
+
+**B — 제침 (`sfx-overtake`, ≤0.25s)**
+
+```
+(HARD CONSTRAINTS block above)
+
+Short rising synth blip/sweep for overtaking a rival ghost in a racing game.
+Bright cyan neon UI success tick. Duration 0.12–0.22 seconds ONLY.
+
+NEGATIVE: (negative block above)
+```
+
+**C — 콤보/UI 틱 (`sfx-tick`, ≤0.1s)**
+
+```
+(HARD CONSTRAINTS block above)
+
+Tiny cyan UI click/blip for combo increment and button tap. Soft, clean, not harsh.
+Duration 0.05–0.09 seconds ONLY.
+
+NEGATIVE: (negative block above), glass shatter, explosion, long whoosh
+```
+
+**D — 사망 (`sfx-death`, ≤0.4s)**
+
+```
+(HARD CONSTRAINTS block above)
+
+Short descending tone + light grit for player crash/game-over sting.
+Melancholy but punchy, not dramatic orchestra. Duration 0.25–0.4 seconds ONLY.
+
+NEGATIVE: (negative block above), long sad piano piece, vocal choir
+```
+
+**E — (선택) 점프 부르릉 재생성** — 현 Mixkit 트림이 마음에 안 들 때
+
+```
+(HARD CONSTRAINTS block above)
+
+Quick motorcycle engine rev burst / aggressive exhaust pop for a jump action.
+High-rev "vroom" one-shot, dirty exhaust, no idle loop. Duration 0.3–0.5 seconds ONLY.
+
+NEGATIVE: (negative block above), long ride-by, 10 second engine idle
+```
+
+**F — (선택) 피격 드리프트 재생성**
+
+```
+(HARD CONSTRAINTS block above)
+
+Short car/bike tire drift skid screech for hitting an obstacle.
+Sharp rubber squeal, one skid only. Duration 0.25–0.45 seconds ONLY.
+
+NEGATIVE: (negative block above), long burnout, 10 second drift sequence, crash explosion bed
+```
+
+**G — (선택) 연료 꿀꺽 재생성**
+
+```
+(HARD CONSTRAINTS block above)
+
+Cute double gulp / glug-glug liquid swallow for picking up a fuel can.
+Wet throat gulp, satisfying, cartoonish but not silly. Duration 0.35–0.6 seconds ONLY.
+
+NEGATIVE: (negative block above), pouring faucet 5 seconds, soda fizz bed, voice saying "ahhh"
+```
+
+#### 6.2.3 무료 소스 재다운로드 메모
+
+| 슬롯 | 추천 검색 | 라이선스 |
+|------|-----------|----------|
+| 점프 | Mixkit `motorcycle` / Freesound CC0 `motorcycle rev` | Mixkit Free / CC0 |
+| 피격 | Freesound CC0 `skid` / `tire squeal` (짧을수록 좋음) | CC0 |
+| 연료 | Freesound CC0 `gulp` / `drink swallow` | CC0 |
+
+ZapSplat 등은 **계정·귀속 조건**이 갈리니, 이 프로젝트는 **Mixkit Free + Freesound CC0** 만 기본으로 쓴다.
 
 ### 6.3 인트로 / 튜토리얼 비주얼 (#최후 폴리시)
 
