@@ -102,6 +102,33 @@ const FONT_HUD = "'Oxanium', sans-serif";
 /** 한국어 카피·말풍선 */
 const FONT_KR = "'Noto Sans KR', 'Apple SD Gothic Neo', sans-serif";
 
+/** 「오늘 다시 안보기」용 날짜 키 — YYYYMMDD (로컬 타임존) */
+function tutorialDayKey(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}${m}${day}`;
+}
+
+/** 오늘 해당 튜토리얼을 숨겼는지 (day-key) */
+function isTutorialHiddenToday(kind: "howto" | "fever"): boolean {
+  try {
+    return window.localStorage.getItem(`ga:${kind}-hide:${tutorialDayKey()}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** 「오늘 다시 안보기」 — 자정(로컬)까지 해당 튜토리얼 스킵 */
+function hideTutorialToday(kind: "howto" | "fever"): void {
+  try {
+    window.localStorage.setItem(`ga:${kind}-hide:${tutorialDayKey()}`, "1");
+  } catch {
+    /* 무시 */
+  }
+}
+
 // 배경(코드 스킨) 팔레트 — docs/design/asset-guide.md §3 컬러 토큰. 전부 렌더 전용.
 // 하늘 색은 BIOMES[0](기본 노을 팔레트)로 이동 — 바이옴 전환 도입
 const COLOR_NEON_CYAN = 0x36f9f6; // 바닥 그리드 / 지평선 글로우
@@ -450,7 +477,10 @@ export class GameScene extends Phaser.Scene {
   private startBestRankText!: Phaser.GameObjects.Text; // 최고 등수 (이력 있으면 표시)
   private startSubText!: Phaser.GameObjects.Text; // 고스트 경쟁 안내 / 첫판 조작 힌트
   private feverTutorial: Phaser.GameObjects.Container | null = null; // 첫 피버 일시정지 안내
-  private needsFeverTutorial = true; // 첫 피버 멈춤 튜토리얼 필요 여부
+  private needsFeverTutorial = true; // 이번 세션·오늘 미숨김이면 피버 시 1회
+  /** 오프닝 후 조작 안내 (인트로 Start → howto → 플레이) */
+  private howtoTutorial: Phaser.GameObjects.Container | null = null;
+  private howtoActive = false;
   private pauseOverlay!: Phaser.GameObjects.Container;
   private _windowTapHandler!: () => void;
   private feverOverlay!: Phaser.GameObjects.Rectangle; // 피버 중 warm tint 레이어
@@ -654,23 +684,23 @@ export class GameScene extends Phaser.Scene {
 
     // 정전 트랩 오버레이 — 월드(depth 0) 위, HUD 텍스트(10+)·순위 칩(22) 아래.
     this.blackoutGfx = this.add.graphics().setDepth(6);
-    // WARNING / FEVER — 코드 드로우 스파이크 뱃지 (에셋과 동일: 캡슐+6스파이크).
-    // 우측 하단. FEVER는 WARNING과 같은 슬롯(피버 중엔 연막 스킵이라 충돌 없음).
+    // WARNING / FEVER — 코드 드로우 스파이크 뱃지 (샘플: 캡슐+상하2·좌우1 스파이크+네온 글로우).
+    // 같은 우측 하단 슬롯 — 동시에 하나만 표시(피버 우선).
     this.warnBadge = this.makeSpikeBadge("WARNING", {
-      neon: 0xff5fa2,
-      fill: 0x140018,
-      text: 0xff7ab8,
-      w: 280,
-      h: 72,
+      neon: 0xff2d6a,
+      fill: 0x120010,
+      text: 0xff4d8a,
+      w: 300,
+      h: 76,
     });
-    // 우측 여백은 유지하되, 이전(-96)보다 오른쪽으로
     this.warnBadge.setPosition(DESIGN_W - 52, DESIGN_H - 64).setVisible(false);
+    // FEVER = 동일 실루엣의 형광 노랑 버전
     this.feverBadge = this.makeSpikeBadge("FEVER!", {
-      neon: 0xffd400,
-      fill: 0x1a1400,
-      text: 0xffe566,
-      w: 240,
-      h: 72,
+      neon: 0xdfff00,
+      fill: 0x141200,
+      text: 0xf5ff66,
+      w: 260,
+      h: 76,
     });
     this.feverBadge.setPosition(DESIGN_W - 52, DESIGN_H - 64).setVisible(false);
 
@@ -1529,53 +1559,167 @@ export class GameScene extends Phaser.Scene {
       this.beginIntro();
     }
 
-    // 피버 튜토리얼 — localStorage 'ga:fever-tutorial' 없으면 최초 1회 표시.
-    // 첫 EV_FEVER_START 발동 시 게임을 일시정지하고 이 패널을 보여준다.
-    try {
-      this.needsFeverTutorial =
-        !window.localStorage.getItem("ga:fever-tutorial");
-    } catch {
-      this.needsFeverTutorial = false;
+    // ── 조작 튜토리얼 (오프닝 Start 직후) — 「오늘 다시 안보기」면 스킵
+    {
+      const htSrc = this.textures.get("panel-tutorial").getSourceImage();
+      const FH = 340;
+      const FW = Math.round((FH * htSrc.width) / htSrc.height);
+      const cx = DESIGN_W / 2;
+      const cy = DESIGN_H / 2;
+      const htBg = this.add.image(cx, cy, "panel-tutorial").setDisplaySize(FW, FH);
+      const htTitle = this.add
+        .text(cx, cy - FH / 2 + 48, "게임 방법", {
+          fontSize: "22px",
+          fontFamily: FONT_KR,
+          fontStyle: "bold",
+          color: "#5efce8",
+          resolution: TXT_RES,
+        })
+        .setOrigin(0.5)
+        .setStroke("#1a1a2e", 5);
+      const htDesc = this.add
+        .text(
+          cx,
+          cy - 10,
+          "탭으로 점프 · 1단 / 2단 점프\n장애물을 피하세요\n연료통을 먹으면 HP 회복!",
+          {
+            fontSize: "16px",
+            fontFamily: FONT_KR,
+            color: "#ffffff",
+            align: "center",
+            lineSpacing: 8,
+            wordWrap: { width: FW - 40 },
+            resolution: TXT_RES,
+          },
+        )
+        .setOrigin(0.5)
+        .setStroke("#1a1a2e", 3);
+      const htPlay = this.add
+        .text(cx, cy + FH / 2 - 78, "플레이 →", {
+          fontSize: "18px",
+          fontFamily: FONT_HUD,
+          fontStyle: "bold",
+          color: "#5efce8",
+          resolution: TXT_RES,
+        })
+        .setOrigin(0.5)
+        .setStroke("#0a0018", 4)
+        .setPadding(16, 8, 16, 8)
+        .setInteractive({ useHandCursor: true });
+      htPlay.on("pointerdown", (
+        pointer: Phaser.Input.Pointer,
+        _lx: number,
+        _ly: number,
+        event: Phaser.Types.Input.EventData,
+      ) => {
+        event.stopPropagation();
+        pointer.event?.stopPropagation?.();
+        this.dismissHowto(false);
+      });
+      const htHide = this.add
+        .text(cx, cy + FH / 2 - 42, "오늘 다시 안보기", {
+          fontSize: "13px",
+          fontFamily: FONT_KR,
+          color: "#aaaaaa",
+          resolution: TXT_RES,
+        })
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
+      htHide.on("pointerdown", (
+        pointer: Phaser.Input.Pointer,
+        _lx: number,
+        _ly: number,
+        event: Phaser.Types.Input.EventData,
+      ) => {
+        event.stopPropagation();
+        pointer.event?.stopPropagation?.();
+        this.dismissHowto(true);
+      });
+      this.howtoTutorial = this.add
+        .container(0, 0, [htBg, htTitle, htDesc, htPlay, htHide])
+        .setDepth(105)
+        .setVisible(false);
     }
+
+    // 피버 튜토리얼 — 오늘 숨김이 아니면 세션당 첫 피버 시 1회.
+    // EV_FEVER_START 시 일시정지 + 패널. 「오늘 다시 안보기」또는 탭으로 닫기.
+    this.needsFeverTutorial = !isTutorialHiddenToday("fever");
     if (this.needsFeverTutorial) {
-      const feverSec = Math.round(C.FEVER_INTERVAL_SEC); // 하드코딩 방지
-      // panel-tutorial: prep 산출 실제 크기의 종횡비 그대로(늘림 0). 화면(480)에 맞춰 FH 고정.
+      const feverSec = Math.round(C.FEVER_INTERVAL_SEC);
       const ftSrc = this.textures.get("panel-tutorial").getSourceImage();
       const FH = 300;
       const FW = Math.round((FH * ftSrc.width) / ftSrc.height);
-      const cx = DESIGN_W / 2, cy = DESIGN_H / 2;
-      const ftBg = this.add.image(cx, cy, "panel-tutorial")
-        .setDisplaySize(FW, FH);
+      const cx = DESIGN_W / 2;
+      const cy = DESIGN_H / 2;
+      const ftBg = this.add.image(cx, cy, "panel-tutorial").setDisplaySize(FW, FH);
       const ftTitle = this.add
-        .text(cx, cy - FH / 2 + 70, "FEVER!", {
+        .text(cx, cy - FH / 2 + 58, "FEVER!", {
           fontSize: "24px",
+          fontFamily: FONT_HUD,
           color: "#ffd700",
           fontStyle: "bold",
+          resolution: TXT_RES,
         })
         .setOrigin(0.5)
         .setStroke("#1a1a2e", 5);
       const ftDesc = this.add
         .text(
           cx,
-          cy - FH / 2 + 155,
+          cy - FH / 2 + 140,
           `콤보를 ${feverSec}초 이상 유지하면 발동!\n무한 점프 + 탭마다 체력 회복`,
           {
-            fontSize: "17px",
+            fontSize: "16px",
+            fontFamily: FONT_KR,
             color: "#ffffff",
             align: "center",
             wordWrap: { width: FW - 32 },
+            resolution: TXT_RES,
           },
         )
         .setOrigin(0.5)
         .setStroke("#1a1a2e", 3);
-      const ftSub = this.add
-        .text(cx, cy + FH / 2 - 55, "탭하여 계속 →", {
-          fontSize: "14px",
-          color: "#aaaaaa",
+      const ftContinue = this.add
+        .text(cx, cy + FH / 2 - 72, "계속 →", {
+          fontSize: "16px",
+          fontFamily: FONT_HUD,
+          fontStyle: "bold",
+          color: "#ffd700",
+          resolution: TXT_RES,
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setPadding(12, 6, 12, 6)
+        .setInteractive({ useHandCursor: true });
+      ftContinue.on("pointerdown", (
+        pointer: Phaser.Input.Pointer,
+        _lx: number,
+        _ly: number,
+        event: Phaser.Types.Input.EventData,
+      ) => {
+        event.stopPropagation();
+        pointer.event?.stopPropagation?.();
+        this.dismissFeverTutorial(false);
+      });
+      const ftHide = this.add
+        .text(cx, cy + FH / 2 - 40, "오늘 다시 안보기", {
+          fontSize: "13px",
+          fontFamily: FONT_KR,
+          color: "#aaaaaa",
+          resolution: TXT_RES,
+        })
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true });
+      ftHide.on("pointerdown", (
+        pointer: Phaser.Input.Pointer,
+        _lx: number,
+        _ly: number,
+        event: Phaser.Types.Input.EventData,
+      ) => {
+        event.stopPropagation();
+        pointer.event?.stopPropagation?.();
+        this.dismissFeverTutorial(true);
+      });
       this.feverTutorial = this.add
-        .container(0, 0, [ftBg, ftTitle, ftDesc, ftSub])
+        .container(0, 0, [ftBg, ftTitle, ftDesc, ftContinue, ftHide])
         .setDepth(90)
         .setVisible(false);
     }
@@ -1663,26 +1807,26 @@ export class GameScene extends Phaser.Scene {
   /**
    * 상단 실시간 칩용 top3 거리·닉 캐시.
    * records는 거리 내림차순이어야 한다(mergeGhostRecords 산출물).
-   * 본인 과거 기록(같은 닉)은 칩에서 제외 — 안 그러면 "시안매-12"로 도배되고
-   * 게임오버 패널(원격/봇 이름)과 어긋난다. 타인/봇이 없으면 폴백으로 전체 사용.
+   *
+   * 닉네임별 최고 거리 1건만 남긴다 — 본인 기록이 여러 판이면 최고만,
+   * 타인/봇도 동일 닉 중복을 칩에 쌓지 않는다. 본인 최고는 그대로 표시
+   * (이전엔 본인 닉을 통째로 빼서 1등 직후 리플레이에 Today's Rank가 비는 버그).
    */
   private cacheTop3FromRecords(records: GhostRecord[]): void {
-    let myNick = "";
-    try {
-      myNick = getNickname(window.localStorage);
-    } catch {
-      /* ignore */
-    }
-    const others = myNick
-      ? records.filter((r) => (r.log.meta?.nickname || "") !== myNick)
-      : records;
-    const pool = others.length > 0 ? others : records;
-    const top3 = pool.slice(0, 3).map((r, i) => ({
-      d: r.distance,
-      nick:
+    const bestByNick = new Map<string, { d: number; nick: string }>();
+    for (let i = 0; i < records.length; i++) {
+      const r = records[i]!;
+      const nick =
         r.log.meta?.nickname ||
-        deterministicNickname(Math.imul(i + 1, 0x9e3779b9)),
-    }));
+        deterministicNickname(Math.imul(i + 1, 0x9e3779b9));
+      const prev = bestByNick.get(nick);
+      if (!prev || r.distance > prev.d) {
+        bestByNick.set(nick, { d: r.distance, nick });
+      }
+    }
+    const top3 = [...bestByNick.values()]
+      .sort((a, b) => b.d - a.d)
+      .slice(0, 3);
     this.top3GhostDists = top3.map((x) => x.d);
     this.top3GhostNames = top3.map((x) => x.nick);
   }
@@ -1757,8 +1901,12 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // 재시도 판에서는 피버 튜토리얼을 건너뜀 (이미 게임 흐름을 아는 상태)
-    if (isRetry) this.needsFeverTutorial = false;
+    // 재시도 판에서도 피버 튜토리얼은 「오늘 숨김」이 아니면 세션 첫 피버에 1회.
+    // (이전엔 isRetry면 무조건 스킵 → 첫 판에 피버 못 보면 영영 안 뜸)
+    this.needsFeverTutorial = !isTutorialHiddenToday("fever");
+    if (this.feverTutorial) this.feverTutorial.setVisible(false);
+    if (this.howtoTutorial) this.howtoTutorial.setVisible(false);
+    this.howtoActive = false;
 
     this.gamePaused = false;
     // 코드 메테오 리셋 (재시작 시 이전 메테오 제거)
@@ -1884,19 +2032,41 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** 인트로 종료(Start) → 시작 안내 창 없이 바로 플레이. */
+  /** 인트로 종료(Start) → 조작 튜토리얼(오늘 숨김 아니면) → 플레이. */
   private endIntro(_fromStart: boolean): void {
     if (!this.introActive && !this.introOverlay?.visible) return;
     this.introActive = false;
     this.tweens.killTweensOf(this.introImage);
     if (this.introNextBtn) this.tweens.killTweensOf(this.introNextBtn);
     this.introOverlay.setVisible(false);
-    // 시작 오버레이("탭하여 점프…")는 건너뜀 — Start = 즉시 인게임
     if (this.startOverlay) this.startOverlay.setVisible(false);
-    try {
-      window.localStorage.setItem("ga:onboarded", "1");
-    } catch {
-      /* 무시 */
+    // 옵션 A: 인트로 Start → 조작 안내 → 플레이. 「오늘 다시 안보기」면 바로 플레이.
+    if (!isTutorialHiddenToday("howto") && this.howtoTutorial) {
+      this.howtoActive = true;
+      this.howtoTutorial.setVisible(true);
+      return;
+    }
+    this.howtoActive = false;
+  }
+
+  /** 조작 튜토리얼 닫기. hideToday면 day-key 저장. */
+  private dismissHowto(hideToday: boolean): void {
+    if (!this.howtoActive) return;
+    this.howtoActive = false;
+    if (this.howtoTutorial) this.howtoTutorial.setVisible(false);
+    if (hideToday) hideTutorialToday("howto");
+  }
+
+  /** 피버 튜토리얼 닫기 + 일시정지 해제. hideToday면 day-key 저장. */
+  private dismissFeverTutorial(hideToday: boolean): void {
+    if (!this.feverTutorial?.visible) return;
+    this.feverTutorial.setVisible(false);
+    this.needsFeverTutorial = false;
+    if (hideToday) hideTutorialToday("fever");
+    if (this.gamePaused) {
+      this.gamePaused = false;
+      this.timestep.reset();
+      setPauseButtonState(false, true);
     }
   }
 
@@ -1974,25 +2144,18 @@ export class GameScene extends Phaser.Scene {
     }
     // 인트로 중엔 Start만 진행 (화면 아무 곳 탭으로는 스킵 안 함)
     if (this.introActive) return;
+    // 조작 튜토리얼 — 버튼만 닫기 (배경 탭으로 점프/스킵 안 함)
+    if (this.howtoActive) return;
     // 시작 오버레이 표시 중: 닫기 + 이후 점프로 이어짐 (return 없음)
     if (this.startOverlay.visible) {
       this.startOverlay.setVisible(false);
-      try {
-        window.localStorage.setItem("ga:onboarded", "1");
-      } catch {
-        /* 무시 */
-      }
     }
     // 일시정지 중 탭 = 재개.
-    // 피버 튜토리얼로 멈춰있으면 먼저 닫고 togglePause로 이어진다.
+    // 피버 튜토리얼로 멈춰있으면 「계속」과 동일(오늘 숨김 X).
     if (this.gamePaused) {
       if (this.feverTutorial?.visible) {
-        this.feverTutorial.setVisible(false);
-        try {
-          window.localStorage.setItem("ga:fever-tutorial", "1");
-        } catch {
-          /* 무시 */
-        }
+        this.dismissFeverTutorial(false);
+        return;
       }
       this.togglePause();
       return;
@@ -2032,8 +2195,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tick(delta: number) {
-    // 인트로/시작 오버레이 표시 중: 시뮬·렌더 대기
-    if (this.introActive || this.startOverlay.visible) return;
+    // 인트로/조작 튜토리얼/시작 오버레이 표시 중: 시뮬·렌더 대기
+    if (this.introActive || this.howtoActive || this.startOverlay.visible) return;
     if (!this.gamePaused) {
       // 렌더 전용 시계 — 레이저·이펙트 연출에만 사용 (sim과 완전 분리)
       this.renderTimeMs += delta;
@@ -2547,9 +2710,16 @@ export class GameScene extends Phaser.Scene {
         }
         break;
       case "warn": {
-        // 우측 끝에서 연기 기운이 살짝 어른거림 + WARNING 뱃지 알람형 점멸(0.25↔1.0)
-        this.drawBlackoutOverlay(0.1 + 0.08 * Math.abs(Math.sin(now * 0.03)), 0.25);
-        this.warnBadge.setAlpha(0.25 + 0.75 * Math.abs(Math.sin(now * 0.022)));
+        // 피버 중이면 WARNING 숨김 — 같은 슬롯에 FEVER만 (상호배제)
+        if (s.feverFramesLeft > 0) {
+          this.warnBadge.setVisible(false);
+          this.drawBlackoutOverlay(0.1 + 0.08 * Math.abs(Math.sin(now * 0.03)), 0.25);
+        } else {
+          this.warnBadge.setVisible(true);
+          // 우측 끝 연기 + WARNING 호흡형 점멸(완만, 0.55↔1.0)
+          this.drawBlackoutOverlay(0.1 + 0.08 * Math.abs(Math.sin(now * 0.03)), 0.25);
+          this.warnBadge.setAlpha(0.55 + 0.45 * (0.5 + 0.5 * Math.sin(now * 0.006)));
+        }
         if (el >= BLACKOUT_WARN_MS) {
           this.blackoutPhase = "dark";
           this.blackoutPhaseStartMs = now;
@@ -3856,17 +4026,19 @@ export class GameScene extends Phaser.Scene {
     }
     this.prevCombo = s.combo;
 
-    // 피버 스파이크 뱃지 — 우측 하단. 피버 중 표시·점멸, 종료 시 숨김.
+    // 피버 스파이크 뱃지 — 우측 하단. 피버 중 표시·호흡 점멸, 종료 시 숨김.
+    // WARNING과 같은 슬롯 → 피버가 켜지면 warn은 강제 숨김(상호배제).
     {
       const showFever = s.feverFramesLeft > 0 && !s.gameOver;
       if (showFever) {
+        if (this.warnBadge.visible) this.warnBadge.setVisible(false);
         if (!this.feverBadgeVisible) {
           this.feverBadgeVisible = true;
           this.feverBadge.setVisible(true).setAlpha(1);
         }
-        // 알람형 점멸 (WARNING과 동일 리듬)
+        // 호흡형 점멸 — 느리게(0.006), 알파 폭 좁게(0.6↔1.0) → 덜 산만
         this.feverBadge.setAlpha(
-          0.35 + 0.65 * Math.abs(Math.sin(this.renderTimeMs * 0.02)),
+          0.6 + 0.4 * (0.5 + 0.5 * Math.sin(this.renderTimeMs * 0.006)),
         );
       } else if (this.feverBadgeVisible) {
         this.feverBadgeVisible = false;
@@ -3951,8 +4123,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 스파이크 뱃지 — warn-bubble 에셋과 동일 실루엣.
-   * 둥근 캡슐 본체 + 상하 각 2개·좌우 각 1개(총 6) 삼각 스파이크 + 네온 글로우.
+   * 스파이크 뱃지 — 샘플(docs/design/refs-warning-badge-sample.png) 실루엣.
+   * 둥근 캡슐 + 상하 각 2·좌우 각 1(총 6) 삼각 스파이크 + 바깥 네온 블룸.
    * Graphics 벡터라 축소 AA 자글거림 없음. origin = 우하단.
    */
   private makeSpikeBadge(
@@ -3964,21 +4136,19 @@ export class GameScene extends Phaser.Scene {
     // 로컬 좌표: 우하단(0,0) 기준, 뱃지는 왼쪽·위쪽(-w,-h)에 그림
     const x0 = -w;
     const y0 = -h;
-    const r = h * 0.48; // 캡슐 라운드
-    const spike = Math.round(h * 0.28); // 스파이크 돌출
+    const r = h * 0.5; // 캡슐 라운드 (샘플처럼 더 둥글게)
+    const spike = Math.round(h * 0.34); // 스파이크 돌출 (샘플처럼 더 길게)
 
-    // 외곽 경로: 캡슐 + 6스파이크 (시계방향, 좌상단 근처에서 시작)
-    // 상단 스파이크 x = 1/3, 2/3 / 하단 동일 / 좌·우 중앙
+    // 외곽 경로: 캡슐 + 6스파이크 (시계방향)
     const topY = y0;
     const botY = y0 + h;
     const leftX = x0;
     const rightX = x0 + w;
     const midY = y0 + h / 2;
-    const sx1 = x0 + w * 0.33;
-    const sx2 = x0 + w * 0.67;
+    const sx1 = x0 + w * 0.32;
+    const sx2 = x0 + w * 0.68;
 
     const buildPath = (g: Phaser.GameObjects.Graphics, pad: number) => {
-      // pad>0 이면 바깥으로 팽창(글로우 레이어용)
       const L = leftX - pad;
       const R = rightX + pad;
       const T = topY - pad;
@@ -3988,54 +4158,46 @@ export class GameScene extends Phaser.Scene {
       const mY = midY;
       const s1 = sx1;
       const s2 = sx2;
+      // 스파이크 밑변 폭 — 샘플처럼 좁고 뾰족
+      const base = sp * 0.42;
       g.beginPath();
-      // 좌상단 라운드 시작 → 상단 스파이크들 → 우상단 라운드 → 우측 스파이크
-      // → 우하단 라운드 → 하단 스파이크들 → 좌하단 라운드 → 좌측 스파이크 → 닫기
       g.moveTo(L + rr, T);
-      // 상단 스파이크 1
-      g.lineTo(s1 - sp * 0.55, T);
+      g.lineTo(s1 - base, T);
       g.lineTo(s1, T - sp);
-      g.lineTo(s1 + sp * 0.55, T);
-      // 상단 스파이크 2
-      g.lineTo(s2 - sp * 0.55, T);
+      g.lineTo(s1 + base, T);
+      g.lineTo(s2 - base, T);
       g.lineTo(s2, T - sp);
-      g.lineTo(s2 + sp * 0.55, T);
+      g.lineTo(s2 + base, T);
       g.lineTo(R - rr, T);
-      // 우상단 호
       g.arc(R - rr, T + rr, rr, -Math.PI / 2, 0, false);
-      // 우측 스파이크
-      g.lineTo(R, mY - sp * 0.55);
+      g.lineTo(R, mY - base);
       g.lineTo(R + sp, mY);
-      g.lineTo(R, mY + sp * 0.55);
+      g.lineTo(R, mY + base);
       g.lineTo(R, B - rr);
-      // 우하단 호
       g.arc(R - rr, B - rr, rr, 0, Math.PI / 2, false);
-      // 하단 스파이크 2 (우→좌)
-      g.lineTo(s2 + sp * 0.55, B);
+      g.lineTo(s2 + base, B);
       g.lineTo(s2, B + sp);
-      g.lineTo(s2 - sp * 0.55, B);
-      g.lineTo(s1 + sp * 0.55, B);
+      g.lineTo(s2 - base, B);
+      g.lineTo(s1 + base, B);
       g.lineTo(s1, B + sp);
-      g.lineTo(s1 - sp * 0.55, B);
+      g.lineTo(s1 - base, B);
       g.lineTo(L + rr, B);
-      // 좌하단 호
       g.arc(L + rr, B - rr, rr, Math.PI / 2, Math.PI, false);
-      // 좌측 스파이크
-      g.lineTo(L, mY + sp * 0.55);
+      g.lineTo(L, mY + base);
       g.lineTo(L - sp, mY);
-      g.lineTo(L, mY - sp * 0.55);
+      g.lineTo(L, mY - base);
       g.lineTo(L, T + rr);
-      // 좌상단 호
       g.arc(L + rr, T + rr, rr, Math.PI, (Math.PI * 3) / 2, false);
       g.closePath();
     };
 
-    // 네온 글로우 — 바깥→안 여러 겹 (Graphics는 blur 미지원)
+    // 네온 블룸 — 샘플처럼 바깥으로 넓게 번지게 (Graphics는 blur 미지원 → 다층)
     const glowLayers = [
-      { pad: 10, a: 0.06 },
-      { pad: 7, a: 0.1 },
-      { pad: 4, a: 0.16 },
-      { pad: 2, a: 0.28 },
+      { pad: 16, a: 0.04 },
+      { pad: 12, a: 0.07 },
+      { pad: 8, a: 0.12 },
+      { pad: 5, a: 0.2 },
+      { pad: 2.5, a: 0.35 },
     ];
     for (const gl of glowLayers) {
       gfx.fillStyle(neon, gl.a);
@@ -4043,20 +4205,21 @@ export class GameScene extends Phaser.Scene {
       gfx.fillPath();
     }
     // 본체 다크 필
-    gfx.fillStyle(fill, 0.94);
+    gfx.fillStyle(fill, 0.96);
     buildPath(gfx, 0);
     gfx.fillPath();
-    // 네온 스트로크 (두껍게 → 가독·에셋 톤)
-    gfx.lineStyle(3.5, neon, 0.95);
+    // 네온 스트로크
+    gfx.lineStyle(4, neon, 1);
     buildPath(gfx, 0);
     gfx.strokePath();
     // 안쪽 하이라이트 림
-    gfx.lineStyle(1.4, 0xffffff, 0.28);
+    gfx.lineStyle(1.5, 0xffffff, 0.22);
     buildPath(gfx, 0);
     gfx.strokePath();
 
     const hex = `#${text.toString(16).padStart(6, "0")}`;
-    const fontPx = label.length > 6 ? 22 : 26;
+    const neonHex = `#${neon.toString(16).padStart(6, "0")}`;
+    const fontPx = label.length > 6 ? 24 : 28;
     const txt = this.add
       .text(x0 + w / 2, y0 + h / 2, label, {
         fontSize: `${fontPx}px`,
@@ -4066,8 +4229,8 @@ export class GameScene extends Phaser.Scene {
         resolution: TXT_RES,
       })
       .setOrigin(0.5)
-      .setStroke("#0a0018", 5)
-      .setShadow(0, 0, `#${neon.toString(16).padStart(6, "0")}`, 8, true, true);
+      .setStroke("#0a0018", 6)
+      .setShadow(0, 0, neonHex, 12, true, true);
 
     return this.add.container(0, 0, [gfx, txt]).setDepth(36);
   }
@@ -4452,9 +4615,8 @@ export class GameScene extends Phaser.Scene {
     // 텍스트 갱신: 플레이어 실시간 거리
     this.rankPanelTexts[0]!.setText(`YOU  ${Math.floor(s.distance)}m`);
 
-    // 텍스트 갱신: 고스트 닉네임 + 최종거리 + 현재 슬롯(순위) 표시.
-    // 고스트는 전부 '경쟁자'(봇 or 타 유저) — 닉네임은 cacheTop3FromRecords에서 캐시
-    // (meta.nickname 우선). 슬롯0(실시간 플레이어)만 YOU.
+    // 텍스트 갱신: 고스트 닉네임 + 최종거리 + 현재 슬롯(순위).
+    // 본인 최고 기록도 닉 그대로 표시(닉별 최고 1건만 cacheTop3FromRecords에서 유지).
     // 칩 폭이 좁아 긴 닉은 잘라 "-55 4673"이 붙어 보이지 않게.
     for (let g = 0; g < n; g++) {
       const dist = Math.floor(this.top3GhostDists[g] ?? 0);
