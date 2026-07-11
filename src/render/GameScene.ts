@@ -1223,9 +1223,9 @@ export class GameScene extends Phaser.Scene {
           align: "center",
         })
         .setOrigin(0.5, 0.5);
-      // y=28: 「실시간」 라벨(y≈10) 아래 + 상단 여백(이전 y=20은 화면 상단에 너무 붙음)
+      // y=38: 「Today's Rank」라벨(y≈6, ~14px) 아래 간격 확보 (이전 y=28은 라벨과 겹침)
       const container = this.add
-        .container(-9999, 28, [matte, bg, rim, txt])
+        .container(-9999, 38, [matte, bg, rim, txt])
         .setDepth(22)
         .setVisible(false);
       this.rankPanels.push(container);
@@ -1234,7 +1234,7 @@ export class GameScene extends Phaser.Scene {
     }
     // 「👑 Today's Rank」 — 칩 열 왼쪽 위. x는 updateRankPanel에서 칩 startX에 맞춤.
     this.rankHudLabel = this.add
-      .text(0, 10, "👑 Today's Rank", {
+      .text(0, 6, "👑 Today's Rank", {
         fontSize: "14px",
         fontFamily: FONT_HUD,
         color: NEON_YELLOW_HEX,
@@ -1252,8 +1252,8 @@ export class GameScene extends Phaser.Scene {
       const ribbonW = 128;
       const ribbonH = 52;
       const restX = 0; // 화면 왼쪽 끝 밀착 (여백 없음)
-      // 칩(y=28,h=48) 아래 여백을 더 줘서 랭킹과 간격 확보
-      const restY = 28 + 48 + 18 + ribbonH / 2;
+      // 칩(y=38,h=48) 아래 여백을 더 줘서 랭킹과 간격 확보
+      const restY = 38 + 48 + 18 + ribbonH / 2;
       this.comboRibbonBg = this.add
         .rectangle(0, 0, ribbonW, ribbonH, 0x060010, 0.88)
         .setOrigin(0, 0.5);
@@ -1601,7 +1601,7 @@ export class GameScene extends Phaser.Scene {
         .setDisplaySize(dispW, dispH);
       const veil = this.add
         .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.22);
-      // 카피 위치는 기존(≈38%) 유지 — Start는 카피 바로 아래
+      // 카피 위치는 기존(≈38%) 유지 — Start는 우측 하단 고정(카피와 분리)
       const copyY = DESIGN_H * 0.38;
       const introNick = getNickname(window.localStorage);
       const copyStyle = {
@@ -1661,16 +1661,16 @@ export class GameScene extends Phaser.Scene {
         nickRow,
         copyBot,
       ]);
-      // 카피와 Start 사이 여유(≈36px) — 붙어 보이지 않게
+      // Start → 우측 하단 — 카피와 겹치지 않게 CTA를 코너에 고정
       this.introNextBtn = this.add
-        .text(DESIGN_W / 2, copyY + copyH + 36, "Start →", {
+        .text(DESIGN_W - 28, DESIGN_H - 20, "Start →", {
           fontSize: "44px",
           fontFamily: FONT_IMPACT,
           fontStyle: "bold",
           color: "#5efce8",
           resolution: TXT_RES,
         })
-        .setOrigin(0.5, 0)
+        .setOrigin(1, 1)
         .setStroke("#0a0018", 7)
         .setPadding(28, 16, 28, 16)
         .setInteractive({ useHandCursor: true });
