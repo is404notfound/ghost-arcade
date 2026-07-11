@@ -933,7 +933,7 @@ export class GameScene extends Phaser.Scene {
     // depth 25 — 연막(26)에 우측이 가려짐(시야 차단 의도). 랭킹 칩보다는 앞.
     this.playerNickLabel = this.add
       .text(0, 0, this.clipNickChars(getNickname(window.localStorage), 10), {
-        fontSize: "13px",
+        fontSize: "17px",
         fontFamily: FONT_KR,
         fontStyle: "bold",
         color: NEON_YELLOW_HEX,
@@ -1268,8 +1268,8 @@ export class GameScene extends Phaser.Scene {
       // 네온 림·노치 안쪽 인셋 — 가로가 넓어져 비율 인셋도 살짝 줄임
       const xL = -PW / 2 + Math.round(PW * 0.14);
       const xR = PW / 2 - Math.round(PW * 0.12);
-      // 이름 14px / 거리 17px — 거리 열("52,874m" @17px ≈ 95) + 간격
-      const RANK_ROW_FONT = 14;
+      // 이름 17px / 거리 17px — 거리 열("52,874m" @17px ≈ 95) + 간격
+      const RANK_ROW_FONT = 17;
       const RANK_DIST_FONT = 17;
       this.rankNameMaxPx = Math.max(72, xR - xL - 102);
 
@@ -1686,12 +1686,12 @@ export class GameScene extends Phaser.Scene {
       const FW = Math.min(DESIGN_W - 48, 960);
       const FH = Math.round((FW * htSrc.height) / htSrc.width);
       const cx = DESIGN_W / 2;
-      const labelH = 18;
+      const labelH = 22;
       const labelGap = 8;
       const playGap = 18;
-      const playH = 44;
+      const playH = 58;
       const hideGap = 10;
-      const hideH = 28;
+      const hideH = 30;
       const blockH = labelH + labelGap + FH + playGap + playH + hideGap + hideH;
       const blockTop = Math.max(8, (DESIGN_H - blockH) / 2);
       const imgY = blockTop + labelH + labelGap + FH / 2;
@@ -1703,7 +1703,7 @@ export class GameScene extends Phaser.Scene {
       // 라벨 = 이미지 왼쪽 시작점에 맞춤
       const htLabel = this.add
         .text(imgLeft, blockTop, "💡 How to play", {
-          fontSize: "13px",
+          fontSize: "16px",
           fontFamily: FONT_HUD,
           color: "#5efce8",
           resolution: TXT_RES,
@@ -1712,15 +1712,15 @@ export class GameScene extends Phaser.Scene {
         .setStroke("#0a0018", 3);
       const htPlay = this.add
         .text(cx, imgBottom + playGap, "Let's Play !", {
-          fontSize: "24px",
+          fontSize: "32px",
           fontFamily: FONT_IMPACT,
           fontStyle: "bold",
           color: "#5efce8",
           resolution: TXT_RES,
         })
         .setOrigin(0.5, 0)
-        .setStroke("#0a0018", 5)
-        .setPadding(20, 10, 20, 10)
+        .setStroke("#0a0018", 6)
+        .setPadding(28, 14, 28, 14)
         .setInteractive({ useHandCursor: true });
       this.howtoPlayBtn = htPlay;
       htPlay.on("pointerdown", (
@@ -1737,7 +1737,7 @@ export class GameScene extends Phaser.Scene {
       // 「오늘 다시 안보기」— Let's Play 바로 아래. 탭하면 Start/Play와 동일하게 화면 넘김.
       const htHide = this.add
         .text(cx, imgBottom + playGap + playH + hideGap, "오늘 다시 안보기", {
-          fontSize: "13px",
+          fontSize: "15px",
           fontFamily: FONT_KR,
           color: "#aaaaaa",
           resolution: TXT_RES,
@@ -1787,7 +1787,7 @@ export class GameScene extends Phaser.Scene {
       // 타이틀 칸(패널 상단 헤더 스트립)에 맞춤
       const ftTitle = this.add
         .text(cx, cy - FH / 2 + 22, "Fever Time", {
-          fontSize: "17px",
+          fontSize: "20px",
           fontFamily: FONT_IMPACT,
           color: NEON_YELLOW_HEX,
           fontStyle: "bold",
@@ -1801,11 +1801,11 @@ export class GameScene extends Phaser.Scene {
           cy - 8,
           "무한 점프를 할 수 있습니다\n점프 시, 체력이 회복됩니다",
           {
-            fontSize: "14px",
+            fontSize: "17px",
             fontFamily: FONT_KR,
             color: "#ffffff",
             align: "center",
-            lineSpacing: 8,
+            lineSpacing: 10,
             wordWrap: { width: FW - 48 },
             resolution: TXT_RES,
           },
@@ -1814,7 +1814,7 @@ export class GameScene extends Phaser.Scene {
         .setStroke("#1a1a2e", 3);
       const ftContinue = this.add
         .text(cx, cy + FH / 2 - 78, "이어하기", {
-          fontSize: "20px",
+          fontSize: "24px",
           // Black Han Sans는 웹 서브셋/합성 bold에서 일부 음절(어 등)이 깨질 수 있어
           // 셀프호스트 물마루로 CTA 고정
           fontFamily: FONT_KR,
@@ -1822,7 +1822,7 @@ export class GameScene extends Phaser.Scene {
           resolution: TXT_RES,
         })
         .setOrigin(0.5)
-        .setPadding(16, 10, 16, 10)
+        .setPadding(18, 12, 18, 12)
         .setInteractive({ useHandCursor: true });
       this.feverContinueBtn = ftContinue;
       ftContinue.on("pointerdown", (
@@ -1839,7 +1839,7 @@ export class GameScene extends Phaser.Scene {
       // 「오늘 다시 안보기」— 이어하기와 동일하게 닫고 재개. 히트영역만 넉넉히.
       const ftHide = this.add
         .text(cx, cy + FH / 2 - 24, "오늘 다시 안보기", {
-          fontSize: "13px",
+          fontSize: "15px",
           fontFamily: FONT_KR,
           color: "#aaaaaa",
           resolution: TXT_RES,
@@ -5167,10 +5167,10 @@ export class GameScene extends Phaser.Scene {
   /**
    * 결과 패널용 닉 자르기 — 거리 열과 겹치지 않을 길이로.
    * 한글≈fontSize, 영숫자≈0.62×fontSize 근사. 말줄임표 포함.
-   * (행 폰트와 같은 크기로 재야 14px 표시에서 겹침이 안 남)
+   * (행 폰트와 같은 크기로 재야 17px 표시에서 겹침이 안 남)
    */
   private clipNickForPanel(nick: string): string {
-    return this.clipNickToPx(nick, this.rankNameMaxPx, 14);
+    return this.clipNickToPx(nick, this.rankNameMaxPx, 17);
   }
 
   /** 상단 칩용 — 글자 수 기준 단순 컷. */
