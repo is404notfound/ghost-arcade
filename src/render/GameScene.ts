@@ -169,28 +169,59 @@ const FONT_KR = "'Mulmaru', 'Fredoka', 'Apple SD Gothic Neo', sans-serif";
 /** 한글 임팩트 — Black Han Sans(극굵). 제침·버스트 팝업. */
 const FONT_KR_IMPACT = "'Black Han Sans', 'Bangers', sans-serif";
 
-/** 「오늘 다시 안보기」용 날짜 키 — YYYYMMDD (로컬 타임존) */
-function tutorialDayKey(): string {
-  const d = new Date();
+/** 「오늘 다시 안보기」— 로컬 자정까지 숨김. 만료 ms를 저장해 날짜가 바뀌면 자동 해제. */
+function nextLocalMidnightMs(nowMs: number = Date.now()): number {
+  const d = new Date(nowMs);
+  d.setHours(24, 0, 0, 0); // 다음 로컬 자정
+  return d.getTime();
+}
+
+/** 레거시 day-key(YYYYMMDD) — 마이그레이션 읽기용 */
+function tutorialDayKey(nowMs: number = Date.now()): string {
+  const d = new Date(nowMs);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}${m}${day}`;
 }
 
-/** 오늘 해당 튜토리얼을 숨겼는지 (day-key) */
+/** 오늘 해당 튜토리얼을 숨겼는지 — hide-until 만료 전이면 true */
 function isTutorialHiddenToday(kind: "howto" | "fever"): boolean {
   try {
-    return window.localStorage.getItem(`ga:${kind}-hide:${tutorialDayKey()}`) === "1";
+    const untilRaw = window.localStorage.getItem(`ga:${kind}-hide-until`);
+    if (untilRaw != null) {
+      const until = Number(untilRaw);
+      if (Number.isFinite(until)) {
+        if (Date.now() < until) return true;
+        // 만료됨 — 키 정리 후 표시
+        window.localStorage.removeItem(`ga:${kind}-hide-until`);
+        return false;
+      }
+    }
+    // 레거시: ga:howto-hide:YYYYMMDD / ga:fever-hide:YYYYMMDD
+    const legacyKey = `ga:${kind}-hide:${tutorialDayKey()}`;
+    if (window.localStorage.getItem(legacyKey) === "1") return true;
+    // 아주 옛 영구 플래그(피버) — 날짜 만료가 없어 계속 안 보였음 → 삭제 후 다시 표시
+    if (kind === "fever" && window.localStorage.getItem("ga:fever-tutorial")) {
+      window.localStorage.removeItem("ga:fever-tutorial");
+      return false;
+    }
+    return false;
   } catch {
     return false;
   }
 }
 
-/** 「오늘 다시 안보기」 — 자정(로컬)까지 해당 튜토리얼 스킵 */
+/** 「오늘 다시 안보기」 — 다음 로컬 자정까지 해당 튜토리얼 스킵 */
 function hideTutorialToday(kind: "howto" | "fever"): void {
   try {
-    window.localStorage.setItem(`ga:${kind}-hide:${tutorialDayKey()}`, "1");
+    window.localStorage.setItem(
+      `ga:${kind}-hide-until`,
+      String(nextLocalMidnightMs()),
+    );
+    // 레거시 day-key·영구 플래그 정리 (잔존 키가 다음날에도 헷갈리지 않게)
+    window.localStorage.removeItem(`ga:${kind}-hide:${tutorialDayKey()}`);
+    if (kind === "fever") window.localStorage.removeItem("ga:fever-tutorial");
   } catch {
     /* 무시 */
   }
@@ -1574,11 +1605,11 @@ export class GameScene extends Phaser.Scene {
       const copyY = DESIGN_H * 0.38;
       const introNick = getNickname(window.localStorage);
       const copyStyle = {
-        fontSize: "17px",
+        fontSize: "21px",
         fontFamily: FONT_KR,
         color: "#e8e0ff",
         align: "center" as const,
-        lineSpacing: 6,
+        lineSpacing: 8,
         resolution: TXT_RES,
       };
       const copyTop = this.add
@@ -1633,15 +1664,15 @@ export class GameScene extends Phaser.Scene {
       // 카피와 Start 사이 여유(≈36px) — 붙어 보이지 않게
       this.introNextBtn = this.add
         .text(DESIGN_W / 2, copyY + copyH + 36, "Start →", {
-          fontSize: "36px",
+          fontSize: "44px",
           fontFamily: FONT_IMPACT,
           fontStyle: "bold",
           color: "#5efce8",
           resolution: TXT_RES,
         })
         .setOrigin(0.5, 0)
-        .setStroke("#0a0018", 6)
-        .setPadding(24, 14, 24, 14)
+        .setStroke("#0a0018", 7)
+        .setPadding(28, 16, 28, 16)
         .setInteractive({ useHandCursor: true });
       this.introNextBtn.on(
         "pointerdown",
@@ -1762,10 +1793,10 @@ export class GameScene extends Phaser.Scene {
         .setVisible(false);
     }
 
-    // 피버 튜토리얼 — 오늘 숨김이 아니면 세션당 첫 피버 시 1회.
-    // EV_FEVER_START 시 일시정지 + 패널. 「오늘 다시 안보기」또는 탭으로 닫기.
+    // 피버 튜토리얼 — UI는 항상 생성. 표시 여부만 day-hide/세션 플래그로 가드.
+    // (예전엔 숨김 상태면 UI 자체를 안 만들어, 탭을 안 새로고침하면 다음날에도 영영 안 뜸)
     this.needsFeverTutorial = !isTutorialHiddenToday("fever");
-    if (this.needsFeverTutorial) {
+    {
       const ftSrc = this.textures.get("panel-tutorial").getSourceImage();
       const FH = 300;
       const FW = Math.round((FH * ftSrc.width) / ftSrc.height);
