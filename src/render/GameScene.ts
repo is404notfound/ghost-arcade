@@ -779,18 +779,20 @@ export class GameScene extends Phaser.Scene {
     // 가장 먼저 add → 디스플레이 리스트 최하단 = 모든 게임 오브젝트 뒤에 렌더.
     this.createBackground();
 
-    // 정전 트랩 오버레이 — 월드(depth 0) 위, HUD 텍스트(10+)·순위 칩(22) 아래.
-    this.blackoutGfx = this.add.graphics().setDepth(6);
+    // 정전 연막 — 메테오(24)·캐릭터(25) 위, WARNING(36) 아래. 메테오를 가려야 시야 차단이 읽힘.
+    this.blackoutGfx = this.add.graphics().setDepth(26);
     // WARNING / FEVER — 아이콘 PNG. 같은 우측 하단 슬롯, 동시에 하나만(피버 우선).
-    const badgeDisp = 112;
+    // 표시 112→168(1.5배). 우·하단 여백 20→36 — 커진 뱃지가 화면 끝에 붙지 않게.
+    const badgeDisp = 168;
+    const badgeMargin = 36;
     this.warnBadge = this.add
-      .image(DESIGN_W - 20, DESIGN_H - 20, "icon-warning")
+      .image(DESIGN_W - badgeMargin, DESIGN_H - badgeMargin, "icon-warning")
       .setOrigin(1, 1)
       .setDisplaySize(badgeDisp, badgeDisp)
       .setDepth(36)
       .setVisible(false);
     this.feverBadge = this.add
-      .image(DESIGN_W - 20, DESIGN_H - 20, "icon-fever")
+      .image(DESIGN_W - badgeMargin, DESIGN_H - badgeMargin, "icon-fever")
       .setOrigin(1, 1)
       .setDisplaySize(badgeDisp, badgeDisp)
       .setDepth(36)
@@ -871,12 +873,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 고스트 풀: 발로 뛰는 헤일로 고스트(죽은 라이벌). 보라 틴트 + 반투명.
+    // depth 25 — Today's Rank 칩(22)보다 위. 점프 시 패널에 가리지 않게.
     for (let i = 0; i < GHOST_TOP_N; i++) {
       const g = this.add
         .sprite(toScreenX(C.PLAYER_X), GROUND_Y_PX, "ghost-run", 0)
         .setOrigin(0.5, 1)
         .setTint(COLOR_GHOST)
         .setAlpha(GHOST_SPRITE_ALPHA)
+        .setDepth(25)
         .setVisible(false);
       g.setDisplaySize((g.width / g.height) * GHOST_ART_H, GHOST_ART_H);
       // 시작 프레임·재생속도를 고스트마다 랜덤화 → 군집이 똑같이 안 뛰고 제각각 보임.
@@ -887,10 +891,10 @@ export class GameScene extends Phaser.Scene {
       this.ghostTumbleState.push("run");
     }
 
-    // 네온 트레일 — 플레이어보다 먼저 add → 플레이어 스프라이트 뒤에서 그려짐.
-    this.trailGfx = this.add.graphics();
+    // 네온 트레일 — 캐릭터(25) 바로 뒤.
+    this.trailGfx = this.add.graphics().setDepth(24);
 
-    // 고스트 순위 라벨 (#1 #2 #3) — 고스트 스프라이트보다 나중에 add → depth가 위에 올라옴.
+    // 고스트 순위 라벨 (#1 #2 #3) — 고스트와 동일 depth, add 순서로 스프라이트 위.
     // 1위=골드, 2·3위=연한 시안/화이트.
     // 무채색 계조 — 1등=밝은 회백, 3등으로 갈수록 어둡게. 눈에 덜 띄게.
     const RANK_COLORS = ["#ffe9a8", "#e8e8e8", "#c8c8c8"] as const;
@@ -909,20 +913,24 @@ export class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5, 1)
         .setAlpha(0.95)
+        .setDepth(25)
         .setVisible(false);
       this.ghostRankLabels.push(lbl);
     }
 
     // 플레이어: 네온 바이커 소녀. 아트는 히트박스보다 넓다(overhang).
+    // depth 25 — 랭킹 칩(22)·메테오(24) 위, 연막(26) 아래.
     this.playerRect = this.add
       .sprite(toScreenX(C.PLAYER_X), GROUND_Y_PX, "player-ride")
-      .setOrigin(PLAYER_ART_ORIGIN_X, PLAYER_ART_ORIGIN_Y);
+      .setOrigin(PLAYER_ART_ORIGIN_X, PLAYER_ART_ORIGIN_Y)
+      .setDepth(25);
     this.playerRect.setDisplaySize(
       (this.playerRect.width / this.playerRect.height) * PLAYER_ART_H,
       PLAYER_ART_H,
     );
     this.playerRect.play("player-ride-anim");
     // 주인공 머리 위 닉네임 — 고스트 등수 라벨과 대칭. syncVisuals에서 위치 추적.
+    // depth 25 — 연막(26)에 우측이 가려짐(시야 차단 의도). 랭킹 칩보다는 앞.
     this.playerNickLabel = this.add
       .text(0, 0, this.clipNickChars(getNickname(window.localStorage), 10), {
         fontSize: "13px",
@@ -935,7 +943,7 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 1)
       .setAlpha(0.95)
-      .setDepth(8)
+      .setDepth(25)
       .setVisible(false);
     // 바이크 시안 네온 글로우 — WebGL postFX, 비지원 기기는 무시 (렌더 전용, 결정론 무관)
     try {
@@ -1146,8 +1154,8 @@ export class GameScene extends Phaser.Scene {
     // ★ nineslice는 큰 프레임(952×183)을 218×42로 뭉개 톱니처럼 깨졌다. 칩 크기가 항상 고정이므로
     //   nineslice가 불필요 — 표시비율(218/42≈5.19)이 원본(952/183≈5.20)과 거의 같아 그냥 축소 Image면
     //   왜곡 0. 텍스트는 칩 중앙정렬해 프레임 밖으로 안 넘치게 한다.
-    const RP_H = 42,
-      RP_W = 218;
+    const RP_H = 48,
+      RP_W = 236;
     const rpLabels = ["YOU", "G1", "G2", "G3"];
     const rpIsPlayer = [true, false, false, false];
     for (let i = 0; i < 4; i++) {
@@ -1176,7 +1184,7 @@ export class GameScene extends Phaser.Scene {
       // y: 칩 세로 중앙 — 이전 +2는 너무 아래라 0으로 복귀(아주 살짝만 위)
       const txt = this.add
         .text(RP_W / 2, RP_H / 2, rpLabels[i]!, {
-          fontSize: isMe ? "15px" : "13px",
+          fontSize: isMe ? "18px" : "16px",
           color: isMe ? NEON_YELLOW_HEX : "#00e5ff",
           fontFamily: FONT_HUD,
           fontStyle: "bold",
@@ -1196,7 +1204,7 @@ export class GameScene extends Phaser.Scene {
     // 「👑 Today's Rank」 — 칩 열 왼쪽 위. x는 updateRankPanel에서 칩 startX에 맞춤.
     this.rankHudLabel = this.add
       .text(0, 10, "👑 Today's Rank", {
-        fontSize: "11px",
+        fontSize: "14px",
         fontFamily: FONT_HUD,
         color: NEON_YELLOW_HEX,
         resolution: TXT_RES,
@@ -1213,8 +1221,8 @@ export class GameScene extends Phaser.Scene {
       const ribbonW = 128;
       const ribbonH = 52;
       const restX = 0; // 화면 왼쪽 끝 밀착 (여백 없음)
-      // 칩(y=28,h=42) 아래 여백을 더 줘서 랭킹과 간격 확보
-      const restY = 28 + 42 + 18 + ribbonH / 2;
+      // 칩(y=28,h=48) 아래 여백을 더 줘서 랭킹과 간격 확보
+      const restY = 28 + 48 + 18 + ribbonH / 2;
       this.comboRibbonBg = this.add
         .rectangle(0, 0, ribbonW, ribbonH, 0x060010, 0.88)
         .setOrigin(0, 0.5);
@@ -1260,9 +1268,10 @@ export class GameScene extends Phaser.Scene {
       // 네온 림·노치 안쪽 인셋 — 가로가 넓어져 비율 인셋도 살짝 줄임
       const xL = -PW / 2 + Math.round(PW * 0.14);
       const xR = PW / 2 - Math.round(PW * 0.12);
-      // 거리 열("52,874m" @14px ≈ 78) + 간격 — 닉이 거리와 겹치지 않게
+      // 이름 14px / 거리 17px — 거리 열("52,874m" @17px ≈ 95) + 간격
       const RANK_ROW_FONT = 14;
-      this.rankNameMaxPx = Math.max(72, xR - xL - 86);
+      const RANK_DIST_FONT = 17;
+      this.rankNameMaxPx = Math.max(72, xR - xL - 102);
 
       const buildRankPanel = (
         texKey: string,
@@ -1343,7 +1352,7 @@ export class GameScene extends Phaser.Scene {
             .setOrigin(0, 0.5);
           const dist = this.add
             .text(xR, fy(rowFy[i]!, PH) + rowYPad, "", {
-              fontSize: `${RANK_ROW_FONT}px`,
+              fontSize: `${RANK_DIST_FONT}px`,
               fontFamily: FONT_HUD,
               color: "#e0e0e0",
               resolution: TXT_RES,
@@ -1364,7 +1373,7 @@ export class GameScene extends Phaser.Scene {
           .setOrigin(0, 0.5);
         const myDist = this.add
           .text(xR, fy(rowFy[4]!, PH) + rowYPad, "", {
-            fontSize: `${RANK_ROW_FONT}px`,
+            fontSize: `${RANK_DIST_FONT}px`,
             fontFamily: FONT_HUD,
             color: NEON_YELLOW_HEX,
             fontStyle: "bold",
@@ -1411,7 +1420,7 @@ export class GameScene extends Phaser.Scene {
       this.gameOverDistChipBg = this.add.graphics();
       this.gameOverDistText = this.add
         .text(0, 0, "", {
-          fontSize: "15px",
+          fontSize: "19px",
           color: "#ffffff",
           fontFamily: FONT_HUD,
           resolution: TXT_RES,
@@ -3075,6 +3084,7 @@ export class GameScene extends Phaser.Scene {
   /**
    * 일간(오늘 시드) 거리 순위 — 상단 칩/원격 일간과 같은 기록 풀.
    * 상위 4 + (밖이면) 내 순위. 봇 이름은 applyGhostField와 동일 공식.
+   * 닉네임(아이디)당 최고 거리 1건만 — 같은 유저가 여러 판을 쳐도 보드에 한 줄.
    */
   private refreshDailyPanel(myDist: number): void {
     const myNick = getNickname(window.localStorage);
@@ -3085,15 +3095,28 @@ export class GameScene extends Phaser.Scene {
     );
 
     type Row = { distance: number; nickname: string; isMe: boolean };
-    const rows: Row[] = merged.map((r, i) => {
+    // 닉당 최고 1건 — 인게임 칩(cacheTop3FromRecords)과 동일 정책.
+    // 이유: 일간은 판(run) 단위로 저장돼 같은 닉이 top-N을 독점하면 보드가 도배됨.
+    const bestByNick = new Map<string, Row>();
+    for (let i = 0; i < merged.length; i++) {
+      const r = merged[i]!;
       const nick =
         r.log.meta?.nickname ||
         deterministicNickname(Math.imul(i + 1, 0x9e3779b9));
       const isMe =
         Math.abs(r.distance - myDist) < 0.5 &&
         (r.log.meta?.nickname === myNick || r.log === this.log);
-      return { distance: r.distance, nickname: nick, isMe };
-    });
+      const prev = bestByNick.get(nick);
+      if (!prev || r.distance > prev.distance) {
+        bestByNick.set(nick, { distance: r.distance, nickname: nick, isMe });
+      } else if (isMe && !prev.isMe) {
+        // 같은 거리면 방금 판(나)을 우선 표시
+        bestByNick.set(nick, { ...prev, isMe: true });
+      }
+    }
+    const rows: Row[] = [...bestByNick.values()].sort(
+      (a, b) => b.distance - a.distance,
+    );
     // 방금 판이 merge에 빠졌을 때만 보강 (낙관적 주입 실패 대비)
     if (!rows.some((r) => r.isMe) && myDist > 0) {
       rows.push({ distance: myDist, nickname: myNick, isMe: true });
@@ -3601,7 +3624,7 @@ export class GameScene extends Phaser.Scene {
     this.laserGraphics = this.add.graphics();
 
     // 1b) 코드 드로우 메테오 Graphics — Today's Rank 칩(depth 22)·콤보 띠지(23) 위로 지나감.
-    //     게임오버/튜토리얼(40+)보다는 아래. (예전엔 depth 5라 칩 뒤로 깔렸음)
+    //     연막(26)·캐릭터(25)보다는 아래 → 연막이 메테오를 가림. 게임오버/튜토리얼(40+) 아래.
     this.meteorGfx = this.add.graphics().setDepth(24);
 
     // 2) 레트로웨이브 코드 태양 — syncVisuals에서 저주파로 일렁이며 재드로우.
@@ -4345,7 +4368,7 @@ export class GameScene extends Phaser.Scene {
     // 말풍선: 플레이어 머리 위를 매 프레임 추적 (x는 플레이어와 동일 고정)
     if (this.bubble) {
       // 머리 위 여유를 더 둬 캐릭터와 겹침·가독성 저하 완화 (이전 -42 → -58)
-      this.bubble.setY(toScreenY(s.player.y) - PLAYER_ART_H - 58);
+      this.bubble.setY(toScreenY(s.player.y) - PLAYER_ART_H - 72);
     }
     // 네온 트레일: 바이크 뒤로 수평으로 뻗는 속도선 (렌더 전용, Tier 1-3)
     // 플레이어 화면 Y를 넘겨 점프 시 트레일도 함께 따라 올라가게 한다.
@@ -4796,21 +4819,21 @@ export class GameScene extends Phaser.Scene {
     const msg = phrases[Math.floor(Math.random() * phrases.length)]!;
     const label = this.add
       .text(0, 0, msg, {
-        fontSize: "11px",
+        fontSize: "14px",
         fontFamily: FONT_KR,
         color: "#ffffff",
         align: "center",
         resolution: TXT_RES,
       })
       .setOrigin(0.5);
-    const padX = 8;
-    const padY = 5;
+    const padX = 10;
+    const padY = 6;
     const w = label.width + padX * 2;
     const h = label.height + padY * 2;
     const box = this.add.graphics();
     box.fillStyle(0x1a0030, 0.82);
     box.fillRoundedRect(-w / 2, -h / 2, w, h, 3);
-    box.fillTriangle(-5, h / 2 - 1, 5, h / 2 - 1, 0, h / 2 + 7);
+    box.fillTriangle(-6, h / 2 - 1, 6, h / 2 - 1, 0, h / 2 + 8);
     const c = this.add.container(x, y, [box, label]).setDepth(48).setAlpha(0);
     this.tweens.add({ targets: c, alpha: 1, duration: 150, ease: "Quad.out" });
     this.tweens.add({
@@ -4846,25 +4869,25 @@ export class GameScene extends Phaser.Scene {
 
     const label = this.add
       .text(0, 0, msg, {
-        fontSize: "13px",
+        fontSize: "16px",
         fontFamily: FONT_KR,
         color: "#ffffff",
         align: "center",
-        lineSpacing: 4,
+        lineSpacing: 5,
         // devicePixelRatio 해상도로 텍스처 렌더 → 레티나에서 흐릿함 방지
         resolution: TXT_RES,
       })
       .setOrigin(0.5);
-    const padX = 9;
-    const padY = 6;
+    const padX = 12;
+    const padY = 8;
     const w = label.width + padX * 2;
     const h = label.height + padY * 2;
     const box = this.add.graphics();
     // 외곽선 없이 검은 배경만
     box.fillStyle(0x000000, 0.78);
-    box.fillRoundedRect(-w / 2, -h / 2, w, h, 3);
+    box.fillRoundedRect(-w / 2, -h / 2, w, h, 4);
     // 꼬리(아래 중앙)
-    box.fillTriangle(-6, h / 2 - 1, 6, h / 2 - 1, 0, h / 2 + 8);
+    box.fillTriangle(-7, h / 2 - 1, 7, h / 2 - 1, 0, h / 2 + 10);
 
     // 초기 위치는 syncVisuals에서 매 프레임 갱신하므로 0,0으로 시작
     const c = this.add
@@ -5064,7 +5087,9 @@ export class GameScene extends Phaser.Scene {
   // 렌더 전용 — sim 읽기만, 결정론 무관.
   private updateRankPanel(): void {
     const s = this.sim.state;
-    const n = Math.min(3, this.ghosts.length); // 활성 고스트 패널 수 (0~3)
+    // top3 캐시(닉별 최고) 길이를 쓴다 — ghosts.length(판 단위)를 쓰면
+    // 같은 닉이 필드를 채운 뒤 top3 슬롯이 비어 "3rd G3  0m" 같은 유령 칩이 뜬다.
+    const n = Math.min(3, this.top3GhostDists.length); // 활성 고스트 패널 수 (0~3)
     const total = n + 1; // 전체 패널 수 (고스트 + 플레이어)
 
     // 고스트 없거나 게임오버: 패널 숨김 (게임오버 시 주간 패널을 덮지 않게)
