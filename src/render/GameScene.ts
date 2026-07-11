@@ -1655,7 +1655,6 @@ export class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5, 0)
         .setStroke("#0a0018", 5);
-      const copyH = copyBot.y + copyBot.height;
       const copy = this.add.container(DESIGN_W / 2, copyY, [
         copyTop,
         nickRow,
