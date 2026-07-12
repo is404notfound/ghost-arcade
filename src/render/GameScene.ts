@@ -51,6 +51,7 @@ import {
   setMuteButtonState,
 } from "../controls";
 import { loadUserSettings, saveUserSettings } from "../data/UserSettings";
+import { dismissBootLoading, setBootLoadingStatus } from "../bootLoading";
 import { track } from "../analytics";
 
 // 게임 에셋(전처리본 assets/game/*) — Vite가 해시 URL로 번들. scripts/prep-assets.py 산출물.
@@ -732,6 +733,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload() {
+    // 로드 진행률을 DOM 로딩 문구에 반영 — 저사양에서 멈춘 것처럼 보이지 않게
+    this.load.on("progress", (value: number) => {
+      const pct = Math.min(100, Math.round(value * 100));
+      setBootLoadingStatus(`에셋 불러오는 중… ${pct}%`);
+    });
     // 전처리된 게임 텍스처 로드 (Vite 해시 URL). 결정론과 무관한 렌더 자원.
     // player-ride: 6프레임 스프라이트시트(전처리본 2082×300 → 각 347×300). 배경 투명·하단 정렬 완료.
     this.load.spritesheet("player-ride", playerRideUrl, {
@@ -1942,6 +1948,9 @@ export class GameScene extends Phaser.Scene {
     // 모든 정적 텍스트에 고해상도 적용 — 컨테이너(랭킹/게임오버/일시정지/시작/피버) 내부까지
     // 재귀적으로 순회. 개별 .text() 호출마다 resolution을 지정하는 누락을 방지(작은 화면 자글거림).
     this.applyTextResolution(this.children.list);
+
+    // preload+create 끝난 뒤에만 로딩 오버레이 제거 — 저사양에서 빈 화면/버튼만 보이던 UX 방지
+    dismissBootLoading();
   }
 
   /** 표시 리스트를 재귀 순회하며 모든 Text의 렌더 해상도를 TXT_RES로 올린다. */

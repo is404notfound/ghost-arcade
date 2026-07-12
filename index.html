@@ -12,8 +12,62 @@
       href="https://fonts.googleapis.com/css2?family=Bangers&family=Black+Han+Sans&family=Fredoka:wght@500;600;700&display=swap"
       rel="stylesheet"
     />
+    <!-- 부트 로딩: JS/CSS 도착 전에도 보이도록 인라인. 저사양에서 Phaser 부트 10초+ 대비. -->
+    <style>
+      #boot-loading {
+        position: fixed;
+        inset: 0;
+        z-index: 2000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #1a1a2e;
+        color: #e8e0ff;
+        font-family: system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
+        transition: opacity 0.25s ease;
+      }
+      #boot-loading.boot-loading--hide {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .boot-loading-inner {
+        text-align: center;
+        padding: 24px;
+      }
+      .boot-loading-spinner {
+        width: 36px;
+        height: 36px;
+        margin: 0 auto 18px;
+        border: 3px solid rgba(94, 252, 232, 0.2);
+        border-top-color: #5efce8;
+        border-radius: 50%;
+        animation: boot-spin 0.75s linear infinite;
+      }
+      .boot-loading-title {
+        margin: 0 0 8px;
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: #f0f838;
+      }
+      .boot-loading-status {
+        margin: 0;
+        font-size: 14px;
+        opacity: 0.85;
+      }
+      @keyframes boot-spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
   </head>
   <body>
+    <div id="boot-loading" aria-live="polite" aria-busy="true">
+      <div class="boot-loading-inner">
+        <div class="boot-loading-spinner" aria-hidden="true"></div>
+        <p class="boot-loading-title">Ghost Arcade</p>
+        <p class="boot-loading-status" id="boot-loading-status">로딩 중…</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

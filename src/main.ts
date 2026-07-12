@@ -11,6 +11,7 @@ import { initGameControls } from './controls';
 import { initAnalytics } from './analytics';
 import { runTestError } from './testErrors';
 import { maybeTriggerBug } from './experiment/bug-trigger';
+import { setBootLoadingStatus } from './bootLoading';
 
 // 검증용 의도적 에러 — Sentry/Seer 테스트. (검증 후 제거 가능)
 //   ?error=<type>  하나만 (type/range/reference/syntax/uri/custom/promise/async/manual/generic)
@@ -54,8 +55,10 @@ initGameControls();
 // Google Fonts + 물마루가 실제로 로드된 뒤에만 Phaser 시작.
 // fonts.ready만으로는 @font-face(물마루)처럼 "아직 DOM에서 안 쓴" 폰트를
 // 안 기다릴 수 있고, Phaser Text는 생성 순간 캔버스에 구워버려 fallback이 고정된다.
+// 부트 로딩 오버레이(index.html)는 GameScene.create 완료 시 dismissBootLoading().
 void (async () => {
   try {
+    setBootLoadingStatus('폰트 준비 중…');
     // 한글 샘플을 넘겨 서브셋 폰트(Black Han Sans)가 실제 음절을 받도록 함.
     // 인자 없이 load하면 라틴만 받아 '어' 같은 글자가 시스템 폰트로 떨어질 수 있음.
     const krSample = "가나다라마바사아자차카타파하이어하기제침고스트계속";
@@ -72,6 +75,7 @@ void (async () => {
   }
 
 try {
+  setBootLoadingStatus('게임 엔진 시작…');
   new Phaser.Game({
     type: Phaser.AUTO,
     // 레티나(DPR≥2) 대응: 백킹 캔버스를 물리 픽셀 크기로 확보하고, GameScene의
@@ -92,9 +96,11 @@ try {
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
   });
+  setBootLoadingStatus('에셋 불러오는 중…');
 } catch (e) {
   // WebGL/Canvas 컨텍스트 생성 실패 등 부트 크래시 — 치명적이라 보고 후 그대로 노출
   Sentry.captureException(e);
+  setBootLoadingStatus('시작에 실패했습니다. 새로고침 해 주세요.');
   throw e;
 }
 
