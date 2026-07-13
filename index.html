@@ -3,9 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-    <title>Ghost Battle Arcade</title>
+    <title>Ghost Runner</title>
     <!-- 폰트: Fredoka(영문 HUD) + Bangers(영문 임팩트) + Black Han Sans(한글 임팩트) -->
-    <!-- 한글 본문 물마루는 style.css @font-face (../assets/fonts/Mulmaru.woff2) -->
+    <!-- 한글 본문 물마루는 style.css @font-face (../assets/fonts/Mulmaru.woff2) — 부트 CSS도 동일 스택 -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -13,6 +13,7 @@
       rel="stylesheet"
     />
     <!-- 부트 로딩: JS/CSS 도착 전에도 보이도록 인라인. 저사양에서 Phaser 부트 10초+ 대비. -->
+    <!-- 폰트 스택은 GameScene FONT_IMPACT / FONT_KR 과 동일 — 로딩↔인게임 이질감 방지. -->
     <style>
       #boot-loading {
         position: fixed;
@@ -23,7 +24,7 @@
         justify-content: center;
         background: #1a1a2e;
         color: #e8e0ff;
-        font-family: system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
+        font-family: "Mulmaru", "Fredoka", "Apple SD Gothic Neo", sans-serif;
         transition: opacity 0.25s ease;
       }
       #boot-loading.boot-loading--hide {
@@ -45,13 +46,15 @@
       }
       .boot-loading-title {
         margin: 0 0 8px;
-        font-size: 18px;
-        font-weight: 700;
-        letter-spacing: 0.04em;
+        font-family: "Bangers", "Black Han Sans", cursive;
+        font-size: 28px;
+        font-weight: 400;
+        letter-spacing: 0.06em;
         color: #f0f838;
       }
       .boot-loading-status {
         margin: 0;
+        font-family: "Mulmaru", "Fredoka", "Apple SD Gothic Neo", sans-serif;
         font-size: 14px;
         opacity: 0.85;
       }
@@ -64,7 +67,7 @@
     <div id="boot-loading" aria-live="polite" aria-busy="true">
       <div class="boot-loading-inner">
         <div class="boot-loading-spinner" aria-hidden="true"></div>
-        <p class="boot-loading-title">Ghost Arcade</p>
+        <p class="boot-loading-title">Ghost Runner</p>
         <p class="boot-loading-status" id="boot-loading-status">로딩 중…</p>
       </div>
     </div>
