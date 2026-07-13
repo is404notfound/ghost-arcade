@@ -1,4 +1,4 @@
-# Ghost Arcade — 에셋 & 비주얼 마스터 가이드 (통합본)
+# Ghost Dash — 에셋 & 비주얼 마스터 가이드 (통합본)
 
 > **이 문서가 단일 소스(Single Source of Truth)다.** 이전의 `neon-asset-spec.md` /
 > `asset-prompts-gptimage.md` / `rework-2026-visual.md` 3종을 하나로 통합·최신화했다.

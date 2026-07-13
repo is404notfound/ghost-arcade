@@ -1,9 +1,9 @@
-# 게임물내용설명서 — Ghost Arcade
+# 게임물내용설명서 — Ghost Dash (고스트대시)
 
 작성일: 2026-07-13  
 용도: 게임물관리위원회(GRAC) 등급분류 신청용  
-앱 식별: `ghost-runner` (앱인토스 appName)  
-표시명: Ghost Arcade (콘솔 표시명과 다르면 콘솔 값으로 통일)
+앱 식별: `ghost-runner` (앱인토스 appName — 콘솔 기술 ID, 제명과 별개)  
+표시명(제명): Ghost Dash / 고스트대시 (콘솔·게임 UI·영상과 통일)
 
 ---
 

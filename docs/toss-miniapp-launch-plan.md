@@ -1,7 +1,7 @@
-# 앱인토스(토스 미니앱) 출시 계획 — Ghost Arcade
+# 앱인토스(토스 미니앱) 출시 계획 — Ghost Dash
 
 작성일: 2026-07-12  
-대상: Ghost Battle Arcade (Phaser + Vite 웹 게임)  
+대상: Ghost Dash / 고스트대시 (Phaser + Vite 웹 게임)  
 근거: [앱인토스 개발자센터](https://developers-apps-in-toss.toss.im/) 공식 문서 (온보딩·배포·FAQ·WebView 튜토리얼)
 
 > 정책·콘솔 UI는 수시로 바뀝니다. 실행 직전에 개발자센터 최신 가이드를 다시 확인하세요.
@@ -10,7 +10,7 @@
 
 ## 1. 한줄 요약
 
-Ghost Arcade는 **이미 Vite 웹으로 동작**하므로, 앱인토스에는 **WebView SDK(`@apps-in-toss/web-framework`)로 래핑**하는 경로가 가장 맞습니다.  
+Ghost Dash는 **이미 Vite 웹으로 동작**하므로, 앱인토스에는 **WebView SDK(`@apps-in-toss/web-framework`)로 래핑**하는 경로가 가장 맞습니다.  
 게임 카테고리로 출시하려면 **게임 등급분류(심의)** + **출시 검수(영업일 3~5일)** 가 필수이고, 공식 FAQ 기준 **게임 서비스는 대략 2~4주**를 잡습니다.
 
 ---
@@ -55,7 +55,7 @@ webViewProps: { type: 'game' }
 
 ---
 
-## 4. 게이트·필수 조건 (Ghost Arcade 관점)
+## 4. 게이트·필수 조건 (Ghost Dash 관점)
 
 ### 4.1 게임 등급분류 (블로커)
 
@@ -66,7 +66,7 @@ webViewProps: { type: 'game' }
 
 | 경로 | 상태 |
 |------|------|
-| 1. **게관위 심의 → 등급분류증명서** | ✅ **완료** (2026-07-13) |
+| 1. **게관위 심의 → 등급분류증명서** | 🔄 **재신청 필요** — 2026-07-13 보완: 제명 `Ghost Runner` 중복 → **Ghost Dash(고스트대시)** 로 취하·재신청 |
 | 2. 스토어 링크(자체등급분류) | 보류 (추후 스토어 출시 시 재검토) |
 
 참고: [게임 등급분류 안내](https://toss.im/apps-in-toss/blog/game_rating_classification) · 심의 약 10~15일 · 개발과 **병렬** 진행
@@ -103,7 +103,7 @@ webViewProps: { type: 'game' }
 ### 4.4 가로(랜드스케이프) 게임
 
 샌드박스 FAQ상 **「가로 버전 게임」테스트 불가** 항목이 있습니다.  
-Ghost Arcade는 **1040×480 가로**이므로:
+Ghost Dash는 **1040×480 가로**이므로:
 
 - 샌드박스만으로 QA가 불완전할 수 있음  
 - **토스앱 QR 실기기 테스트**를 검수 전 필수 게이트로 둘 것  
@@ -111,7 +111,7 @@ Ghost Arcade는 **1040×480 가로**이므로:
 
 ---
 
-## 5. Ghost Arcade 작업 계획 (실행 체크리스트)
+## 5. Ghost Dash 작업 계획 (실행 체크리스트)
 
 ### Phase A — 조사·계정 (1~3일)
 
@@ -130,7 +130,7 @@ Ghost Arcade는 **1040×480 가로**이므로:
   - `npx ait init`은 대화형이라 스킵 → `granite.config.ts` 수동 작성  
 - [x] `granite.config.ts`  
   - `appName`: **`ghost-runner`** (콘솔과 동일)  
-  - `brand.displayName`: `Ghost Arcade` — 콘솔 표시명과 다르면 맞출 것  
+  - `brand.displayName`: `Ghost Dash` — 콘솔 표시명과 다르면 맞출 것 (한글: 고스트대시)  
   - `brand.icon`: ✅ 콘솔 업로드 URL 반영 (2026-07-13)  
   - `web.commands`: `vite --host` / `tsc --noEmit && vite build`  
   - `webViewProps.type: 'game'`  
@@ -182,7 +182,7 @@ Ghost Arcade는 **1040×480 가로**이므로:
 
 ---
 
-## 6. Ghost Arcade 리스크·대응
+## 6. Ghost Dash 리스크·대응
 
 | 리스크 | 영향 | 대응 |
 |--------|------|------|
@@ -225,7 +225,7 @@ import { defineConfig } from '@apps-in-toss/web-framework/config';
 export default defineConfig({
   appName: 'ghost-arcade', // 콘솔 appName과 동일
   brand: {
-    displayName: 'Ghost Arcade',
+    displayName: 'Ghost Dash',
     primaryColor: '#36f9f6',
     icon: '', // 콘솔 업로드 이미지 URL
   },
@@ -267,7 +267,7 @@ export default defineConfig({
 2. **실기기 QA:** §11-B 토스앱 QR (가로·오디오·랭킹) — 가로라 샌드박스만으론 부족  
 3. **검토 요청:** `.ait` 업로드 → 출시 검수 (영업일 3~5일)  
 4. (여유 시) PostHog 검수 허용 여부 채널톡 확인 / 애매하면 키 off  
-5. 콘솔 표시명 ↔ `brand.displayName`(`Ghost Runner`) 불일치만 한번 더 확인
+5. 콘솔 표시명 ↔ `brand.displayName`(`Ghost Dash` / 고스트대시) 불일치만 한번 더 확인
 
 ---
 
@@ -315,7 +315,7 @@ npm run ait:deploy         # 또는 콘솔에 .ait 수동 업로드
 | 필드 | 현재 | 비고 |
 |------|------|------|
 | `appName` | `ghost-runner` | OK |
-| `brand.displayName` | `Ghost Runner` | 콘솔 표시명과 동일해야 함 (한글 권장 여부는 콘솔 정책 따름) |
+| `brand.displayName` | `Ghost Dash` | 콘솔 표시명과 동일해야 함 (한글 고스트대시 가능 여부는 콘솔 정책 따름) |
 | `brand.primaryColor` | `#36f9f6` | OK |
 | `brand.icon` | 콘솔 static URL | ✅ 반영됨 |
 | `webViewProps.type` | `game` | OK |

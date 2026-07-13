@@ -39,7 +39,7 @@ Status: **✅ 적용** — `milestone-cheer.png` prep + `GameScene` 로드.
 
 ```
 PROMPT (milestone-cheer — 상반신 + 굿 제스처):
-Upper-body portrait of the same neon cyan-hooded cyberpunk bike-girl hero from Ghost Arcade,
+Upper-body portrait of the same neon cyan-hooded cyberpunk bike-girl hero from Ghost Dash,
 waist-up crop, one hand raised in a clear thumbs-up (good) gesture toward the camera,
 confident cheerful expression, matching existing character design (cyan hoodie, dark hair,
 synthwave neon outline accents), front-facing to 3/4 view, clean flat vector game illustration,

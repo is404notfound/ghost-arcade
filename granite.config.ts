@@ -10,7 +10,7 @@ import { defineConfig } from '@apps-in-toss/web-framework/config';
 export default defineConfig({
   appName: 'ghost-runner',
   brand: {
-    displayName: 'Ghost Runner', // 콘솔 표시 이름과 다르면 콘솔 값으로 맞출 것
+    displayName: 'Ghost Dash', // 콘솔 표시 이름과 다르면 콘솔 값으로 맞출 것 (한글: 고스트대시)
     primaryColor: '#36f9f6',
     icon: 'https://static.toss.im/appsintoss/59479/efc5594d-5313-4045-a6a2-f56f8ec2cc4b.png',
   },
