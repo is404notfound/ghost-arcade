@@ -128,3 +128,115 @@ export function createNearMissTracker(threshold: number = NEAR_MISS_THRESHOLD_PX
 
   return { onStep, count };
 }
+
+// ── prev-run 스냅샷 / lifetime 카운터 / retry_latency (T4,T5,T6,T7) ─────────
+// storage를 명시 인자로 받는다 — 기존 loadTopRuns(storage, seed) 컨벤션과 동일하게,
+// GameScene(Phaser 씬) 안에 인라인하지 않고 여기 순수함수로 뽑아야 단위테스트가 가능하다
+// (design doc Issue 5 — 렌더 씬에 인라인된 로직은 테스트 불가).
+
+const PREV_RUN_SNAPSHOT_KEY = 'ga:prev-run-snapshot';
+const PREV_RUN_SNAPSHOT_MAX_AGE_MS = 60 * 60 * 1000; // 1시간
+const RETRY_LATENCY_MAX_MS = 60 * 1000;
+const LIFETIME_RUNS_KEY = 'ga:lifetime-runs';
+
+export type RestartReason = 'first' | 'death' | 'pause';
+
+export interface PrevRunSnapshot {
+  prev_run_overtakes: number | null;
+  prev_run_had_fever: boolean | null;
+  prev_run_near_record: boolean | null;
+  prev_run_death_cause: DeathCause | null;
+  savedAtMs: number | null; // retry_latency_ms 계산용 — game_over 시각(Date.now) 재사용
+}
+
+export const EMPTY_PREV_RUN_SNAPSHOT: PrevRunSnapshot = {
+  prev_run_overtakes: null,
+  prev_run_had_fever: null,
+  prev_run_near_record: null,
+  prev_run_death_cause: null,
+  savedAtMs: null,
+};
+
+/**
+ * 직전 판 스냅샷을 읽고 즉시 소비(삭제)한다 (T4). 파손 JSON·QuotaExceeded 등 어떤 실패도
+ * throw하지 않는다 — 실패 시 전 필드 null로 폴백한다("계측 실패 ≠ 게임 크래시" 원칙,
+ * 기존 analytics/index.ts 래퍼와 동일한 불변식을 여기서도 지킨다).
+ */
+export function readAndConsumePrevRunSnapshot(storage: Storage, nowMs: number): PrevRunSnapshot {
+  try {
+    const raw = storage.getItem(PREV_RUN_SNAPSHOT_KEY);
+    if (!raw) return EMPTY_PREV_RUN_SNAPSHOT;
+    storage.removeItem(PREV_RUN_SNAPSHOT_KEY); // consume-once — 유효성과 무관하게 항상 삭제
+    const snap = JSON.parse(raw) as Partial<{
+      savedAtMs: number;
+      overtakes: number;
+      hadFever: boolean;
+      nearRecord: boolean;
+      deathCause: DeathCause;
+    }>;
+    if (typeof snap.savedAtMs !== 'number') return EMPTY_PREV_RUN_SNAPSHOT;
+    if (nowMs - snap.savedAtMs > PREV_RUN_SNAPSHOT_MAX_AGE_MS) return EMPTY_PREV_RUN_SNAPSHOT;
+    return {
+      prev_run_overtakes: typeof snap.overtakes === 'number' ? snap.overtakes : null,
+      prev_run_had_fever: typeof snap.hadFever === 'boolean' ? snap.hadFever : null,
+      prev_run_near_record: typeof snap.nearRecord === 'boolean' ? snap.nearRecord : null,
+      prev_run_death_cause: typeof snap.deathCause === 'string' ? snap.deathCause : null,
+      savedAtMs: snap.savedAtMs,
+    };
+  } catch {
+    return EMPTY_PREV_RUN_SNAPSHOT; // 파손 JSON 등 — null 폴백, throw 금지
+  }
+}
+
+/** 이번 판 결과를 다음 game_start가 소비할 스냅샷으로 저장한다 (game_over에서 호출). */
+export function writePrevRunSnapshot(
+  storage: Storage,
+  nowMs: number,
+  overtakes: number,
+  hadFever: boolean,
+  nearRecord: boolean | null,
+  deathCause: DeathCause,
+): void {
+  try {
+    storage.setItem(
+      PREV_RUN_SNAPSHOT_KEY,
+      JSON.stringify({ savedAtMs: nowMs, overtakes, hadFever, nearRecord, deathCause }),
+    );
+  } catch {
+    // localStorage 실패 — 다음 판 prev_run_*이 null이 될 뿐, 게임엔 영향 없음
+  }
+}
+
+/**
+ * 생애 누적 판 인덱스를 pre-increment(T7) — game_start/game_over가 같은 값을 공유한다.
+ * `fallbackCurrent`는 localStorage 실패 시 호출자가 들고 있는 마지막 인메모리 값(없으면 0) —
+ * 완전히 크래시시키는 대신 세션 내에서만이라도 카운터가 이어지게 한다.
+ */
+export function nextLifetimeRunIndex(storage: Storage, fallbackCurrent = 0): number {
+  try {
+    const current = parseInt(storage.getItem(LIFETIME_RUNS_KEY) ?? '0', 10);
+    const next = Number.isFinite(current) && current > 0 ? current + 1 : 1;
+    storage.setItem(LIFETIME_RUNS_KEY, String(next));
+    return next;
+  } catch {
+    return fallbackCurrent + 1;
+  }
+}
+
+/**
+ * retry_latency_ms 계산 (T6). death-retry일 때만 유효 — pause-restart/첫 판은 null.
+ * 스냅샷의 Date.now 타임스탬프를 그대로 재사용한다(성능 시계는 리로드 시 리셋되어 부적합).
+ */
+export function computeRetryLatencyMs(
+  restartReason: RestartReason,
+  snapshotAtMs: number | null,
+  nowMs: number,
+  wentBackgroundSinceLastGameOver: boolean,
+): number | null {
+  if (restartReason !== 'death') return null;
+  if (snapshotAtMs === null) return null;
+  if (wentBackgroundSinceLastGameOver) return null; // best-effort — 안 터지면 60초 상한이 backstop
+  const elapsed = nowMs - snapshotAtMs;
+  if (elapsed < 0 || elapsed > RETRY_LATENCY_MAX_MS) return null;
+  return elapsed;
+}

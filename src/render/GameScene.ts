@@ -52,7 +52,17 @@ import {
 } from "../controls";
 import { loadUserSettings, saveUserSettings } from "../data/UserSettings";
 import { dismissBootLoading, setBootLoadingStatus } from "../bootLoading";
-import { track } from "../analytics";
+import { track, setPerson, setPersonOnce, detectPlatform } from "../analytics";
+import {
+  deriveDeathCause,
+  createNearMissTracker,
+  readAndConsumePrevRunSnapshot,
+  writePrevRunSnapshot,
+  nextLifetimeRunIndex,
+  computeRetryLatencyMs,
+  type NearMissTracker,
+  type RestartReason,
+} from "../analytics/derive";
 
 // 게임 에셋(전처리본 assets/game/*) — Vite가 해시 URL로 번들. scripts/prep-assets.py 산출물.
 import playerRideUrl from "../../assets/game/player-ride.png";
@@ -561,6 +571,20 @@ export class GameScene extends Phaser.Scene {
   private prevCombo = 0; // 이전 프레임 combo 값 — 증가 감지용
   private prevRank = 0; // 이전 프레임 등수 — 상승 감지용
   private feverCount = 0; // 이번 판 피버 발동 횟수 — game_over 이벤트용
+
+  // ── 계측(telemetry) — 이번 판 누적 카운터, startRun()에서 리셋 ──────────────
+  private hitsTaken = 0; // 피격 횟수
+  private jumpsCount = 0; // 점프 횟수(단일+더블 합산)
+  private doubleJumpsCount = 0; // 더블 점프 횟수
+  private potionsCollected = 0; // 포션 수집 횟수
+  private maxComboThisRun = 0; // 최고 콤보 — timestep.update 콜백에서 매 스텝 갱신
+  private nearMissTracker: NearMissTracker = createNearMissTracker(); // startRun마다 재생성
+  private bestDistAtRunStart = 0; // 판 시작 시점의 생애 최고기록(ga:best-dist) — is_personal_best/near_record 기준
+  private runIndexSinceLoad = 0; // 페이지 로드 후 몇 번째 판 — 메모리 카운터, 새로고침 시 리셋
+  private lifetimeRunIndexThisRun = 0; // 이번 판의 생애 누적 인덱스 — game_start/game_over 공유
+  // 마지막 game_over 이후 탭이 백그라운드로 간 적 있는지(best-effort) — retry_latency_ms null 조건
+  private wentBackgroundSinceLastGameOver = false;
+
   // 결과 패널 딜레이 타이머 — 재시작 시 반드시 취소해야 새 게임 중에 패널이 안 뜸
   private resultPanelTimer: Phaser.Time.TimerEvent | null = null;
   // 플레이어 사망 페이드아웃 — 트윈을 한 번만 시작하기 위한 플래그 (렌더 전용)
@@ -809,6 +833,16 @@ export class GameScene extends Phaser.Scene {
     // 레티나 렌더링: 백킹 캔버스는 논리 크기 × RENDER_DPR (main.ts) — 카메라 줌으로
     // 논리 좌표계(1040×480)를 복원한다. 모든 씬 코드는 논리 좌표 그대로 사용.
     this.cameras.main.setZoom(RENDER_DPR).centerOn(DESIGN_W / 2, DESIGN_H / 2);
+
+    // retry_latency_ms용 best-effort 백그라운드 감지 (T6). 씬 생애주기 동안 1회만 등록 —
+    // 안 터지는 환경(토스 WebView 미검증, Open Q4)에서도 60초 상한이 backstop이 되므로 안전.
+    try {
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) this.wentBackgroundSinceLastGameOver = true;
+      });
+    } catch {
+      // 계측 실패 ≠ 게임 크래시 — 리스너 등록 실패해도 게임은 정상 진행
+    }
 
     this.startRun();
 
@@ -1501,7 +1535,7 @@ export class GameScene extends Phaser.Scene {
         if (!this.gameOverRoot.visible) return;
         this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
         this.ignoreNextWindowTap = true;
-        this.startRun(true);
+        this.startRun("death"); // 사망 후 Replay — retry_latency_ms/prev_run_* 유효
       });
       this.replayBtn = this.add.container(0, 8, [
         this.replayBg,
@@ -1918,7 +1952,7 @@ export class GameScene extends Phaser.Scene {
       this.gamePaused = false;
       setRestartButtonVisible(false);
       this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
-      this.startRun(true);
+      this.startRun("pause"); // 생존 중 재시작 — game_over 없었으므로 death-retry와 분리(F2)
     });
     registerMuteToggle(() => this.toggleMute());
     this.applyMute(loadUserSettings().audio.muted);
@@ -2025,7 +2059,7 @@ export class GameScene extends Phaser.Scene {
 
   /** 새 판 시작 — 데일리 시드(오늘의 코스) + 저장된 최고 기록 유령 로드.
    *  isRetry=true면 게임오버 후 자발적 재시작(첫 진입과 구분). */
-  private startRun(isRetry = false) {
+  private startRun(restartReason: RestartReason = "first") {
     // 이전 판의 결과 패널 딜레이 타이머가 남아있으면 즉시 취소.
     // 게임오버 후 900ms 이내에 재시작하면 새 판에서 패널이 튀어나오는 버그 방지.
     if (this.resultPanelTimer) {
@@ -2054,15 +2088,58 @@ export class GameScene extends Phaser.Scene {
     this.spectating = false;
     this.prevCombo = 0;
     this.feverCount = 0;
+    // 계측 카운터 전부 리셋 — 이번 판 동안만 누적
+    this.hitsTaken = 0;
+    this.jumpsCount = 0;
+    this.doubleJumpsCount = 0;
+    this.potionsCollected = 0;
+    this.maxComboThisRun = 0;
+    this.nearMissTracker = createNearMissTracker();
+    try {
+      this.bestDistAtRunStart =
+        parseInt(window.localStorage.getItem("ga:best-dist") ?? "0", 10) || 0;
+    } catch {
+      this.bestDistAtRunStart = 0; // localStorage 차단 환경 — 항상 "신기록" 취급되지만 크래시보다 낫다
+    }
     console.log(
       `[ghost-arcade] 시드 ${this.seed}, 유령 ${this.ghosts.length}기 로드 (원격 ${this.remoteRuns.length}기)`,
     );
+
+    const isRetry = restartReason !== "first";
+    const now = Date.now();
+    const prevRun = readAndConsumePrevRunSnapshot(window.localStorage, now);
+    const retryLatencyMs = computeRetryLatencyMs(
+      restartReason,
+      prevRun.savedAtMs,
+      now,
+      this.wentBackgroundSinceLastGameOver,
+    );
+    this.wentBackgroundSinceLastGameOver = false; // 이 판 시작 시점부터 새로 추적
+    this.runIndexSinceLoad += 1;
+    this.lifetimeRunIndexThisRun = nextLifetimeRunIndex(
+      window.localStorage,
+      this.lifetimeRunIndexThisRun,
+    );
+
+    setPerson({ platform: detectPlatform() });
+    setPersonOnce({ first_played_at: new Date().toISOString() });
+
     // is_retry로 첫 시작/재시작 구분 → 자발적 재시도율 = is_retry=true 비율.
-    // 별도 retry 이벤트는 제거(game_start와 중복이었음).
+    // restart_reason이 death/pause를 구분해 헤드라인 지표가 pause-재시작으로
+    // 오염되지 않게 한다(design doc 크로스모델 F2). 별도 retry 이벤트는 제거
+    // (game_start와 중복이었음).
     track("game_start", {
       seed: this.seed,
       ghost_count: this.ghosts.length,
       is_retry: isRetry,
+      restart_reason: restartReason,
+      retry_latency_ms: retryLatencyMs,
+      run_index_since_load: this.runIndexSinceLoad,
+      lifetime_run_index: this.lifetimeRunIndexThisRun,
+      prev_run_overtakes: prevRun.prev_run_overtakes,
+      prev_run_had_fever: prevRun.prev_run_had_fever,
+      prev_run_near_record: prevRun.prev_run_near_record,
+      prev_run_death_cause: prevRun.prev_run_death_cause,
     });
 
     // 다음 판을 위해 원격 데이터를 백그라운드로 갱신
@@ -2837,6 +2914,12 @@ export class GameScene extends Phaser.Scene {
       // 렌더 fps가 어떻든 시뮬은 DT 단위로만 전진 (결정론 경계)
       this.timestep.update(delta, () => {
         this.sim.step();
+        // 니어미스 판정은 반드시 고정 sim 스텝당 1회 — 렌더 프레임(가변 fps)에서 판정하면
+        // 저사양 기기에서 프레임이 건너뛰어 카운트가 기기마다 달라진다(design doc Issue 2).
+        this.nearMissTracker.onStep(this.sim.state);
+        if (this.sim.state.combo > this.maxComboThisRun) {
+          this.maxComboThisRun = this.sim.state.combo;
+        }
         // 유령들은 라이브와 lockstep. 내가 죽으면 게임이 즉시 끝나므로 그 뒤엔 멈춘다.
         if (!this.sim.state.gameOver) {
           for (const g of this.ghosts) {
@@ -2862,6 +2945,8 @@ export class GameScene extends Phaser.Scene {
       // 모바일 햅틱 — Android Chrome/Firefox 지원, iOS Safari 미지원(조용히 무시).
       // 2단 점프는 조금 더 강하게(40ms). Vibration API 없는 환경은 에러 없이 스킵.
       const isDoubleJump = this.sim.state.player.jumpsUsed >= 2;
+      this.jumpsCount++;
+      if (isDoubleJump) this.doubleJumpsCount++;
       navigator.vibrate?.(isDoubleJump ? 40 : 22);
       this.playSfx("sfx-jump", {
         volume: SFX_VOL_JUMP,
@@ -2869,6 +2954,7 @@ export class GameScene extends Phaser.Scene {
       });
     }
     if (ev & C.EV_HIT) {
+      this.hitsTaken++;
       this.cameras.main.flash(140, 255, 70, 70);
       this.punchZoom(1.07, 90); // 짧고 약하게 — 기존 쉐이크와 중첩
       // 피격 진동 — 점프보다 길고 강하게(타격감).
@@ -2881,6 +2967,7 @@ export class GameScene extends Phaser.Scene {
       this.popup("BREAK", "#ff4757");
     }
     if (ev & C.EV_POTION) {
+      this.potionsCollected++;
       this.showHpPlusToast();
       this.playSfx("sfx-potion", { volume: SFX_VOL_POTION });
     }
@@ -2925,13 +3012,58 @@ export class GameScene extends Phaser.Scene {
       setPauseButtonState(false, false); // 게임오버 → 일시정지 버튼 숨김
       setRestartButtonVisible(false); // 게임오버 → 다시하기 버튼도 숨김
       const myDist = this.sim.state.distance;
-      track("game_over", {
-        distance: Math.floor(myDist),
-        rank: this.ghosts.length - this.overtakenLive + 1,
-        ghost_count: this.ghosts.length,
-        duration_frames: this.sim.state.frame,
-        fever_count: this.feverCount,
+      const { death_cause, death_obstacle_height, speed_at_death } = deriveDeathCause(
+        this.sim.state,
+        ev,
+      );
+      const runDurationMs = Math.round(this.sim.state.frame * C.DT * 1000);
+      // "판 시작 시점의 생애 최고기록"(this.bestDistAtRunStart) 기준 — 판 도중 값이 아니라
+      // startRun()에서 캡처해둔 스냅샷을 쓴다(near_record와 동일 축, design doc 명시).
+      const isPersonalBest = Math.floor(myDist) > this.bestDistAtRunStart;
+      const nearRecord: boolean | null =
+        this.bestDistAtRunStart === 0
+          ? null // 생애 첫 판 — 판 시작 시점에 기록이 없었으므로 판정 불가
+          : Math.floor(myDist) >= this.bestDistAtRunStart * 0.9;
+
+      setPerson({
+        lifetime_max_distance: Math.max(this.bestDistAtRunStart, Math.floor(myDist)),
       });
+
+      track(
+        "game_over",
+        {
+          distance: Math.floor(myDist),
+          rank: this.ghosts.length - this.overtakenLive + 1,
+          ghost_count: this.ghosts.length,
+          run_duration_ms: runDurationMs,
+          lifetime_run_index: this.lifetimeRunIndexThisRun,
+          death_cause,
+          death_obstacle_height,
+          speed_at_death,
+          hits_taken: this.hitsTaken,
+          jumps: this.jumpsCount,
+          double_jumps: this.doubleJumpsCount,
+          potions_collected: this.potionsCollected,
+          fever_count: this.feverCount,
+          overtakes: this.overtakenLive,
+          near_miss_count: this.nearMissTracker.count(),
+          max_combo: this.maxComboThisRun,
+          is_personal_best: isPersonalBest,
+        },
+        { instant: true }, // WebView가 직후 죽어도 유실 안 되게 sendBeacon (design doc Issue 6)
+      );
+
+      // 다음 game_start가 소비할 스냅샷 저장 + 다음 판까지의 백그라운드 추적 리셋
+      writePrevRunSnapshot(
+        window.localStorage,
+        Date.now(),
+        this.overtakenLive,
+        this.feverCount > 0,
+        nearRecord,
+        death_cause,
+      );
+      this.wentBackgroundSinceLastGameOver = false;
+
       // 비교 먼저 (판 시작 시점 기록 기준) → 저장은 그 다음
       const cmp = compareGhosts(myDist, this.ghostDistances);
       // 로컬 기록에도 내 닉을 심는다 — 원격 제출과 동일 닉. 주간 폴백/일간에서
