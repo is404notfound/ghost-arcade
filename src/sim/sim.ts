@@ -24,7 +24,7 @@ export interface ObstacleState {
   x: number; // 중심 x
   h: number; // 높이 (바닥에서 윗면까지)
   w: number; // 폭 (per-obstacle — 패턴마다 다를 수 있음)
-  scored: boolean; // 니어미스 평가 완료 여부
+  scored: boolean; // 콤보/피버 통과-스코어링 판정 완료 여부 (1.5.0에서 니어미스 판정 제거된 흔적 — 니어미스와 무관, T10)
 }
 
 /** 패턴 내 장애물 스펙 */
@@ -87,6 +87,24 @@ export function intervalMsAtSec(t: number): number {
 
 function intervalFramesAtSec(t: number): number {
   return Math.max(1, Math.round((intervalMsAtSec(t) / 1000) * C.SIM_FPS));
+}
+
+/**
+ * 플레이어와 장애물의 x축 겹침 여부 — sim 충돌 루프의 오버랩 지오메트리를 단일 정의로 통일한다 (T1).
+ * sim의 충돌 판정, telemetry의 death_cause 재적용, 니어미스 판정이 전부 이 술어를 공유해야
+ * 세 곳이 각자 복사한 공식이 서로 드리프트하는 것을 막을 수 있다.
+ */
+export function overlapsPlayerX(playerX: number, obstacle: Pick<ObstacleState, 'x' | 'w'>): boolean {
+  return Math.abs(obstacle.x - playerX) < (C.PLAYER_W + obstacle.w) / 2;
+}
+
+/** 플레이어-장애물 실제 충돌(x 겹침 + 장애물보다 낮은 높이) 판정 — sim 충돌 루프와 동일 공식 (T1) */
+export function collidesPlayer(
+  playerX: number,
+  playerY: number,
+  obstacle: Pick<ObstacleState, 'x' | 'w' | 'h'>,
+): boolean {
+  return overlapsPlayerX(playerX, obstacle) && playerY < obstacle.h;
 }
 
 export class GameSim {
@@ -253,8 +271,7 @@ export class GameSim {
       for (let i = 0; i < C.MAX_OBSTACLES; i++) {
         const o = s.obstacles[i]!;
         if (!o.active) continue;
-        const overlapX = Math.abs(o.x - C.PLAYER_X) < (C.PLAYER_W + o.w) / 2;
-        if (overlapX && s.player.y < o.h) {
+        if (collidesPlayer(C.PLAYER_X, s.player.y, o)) {
           s.hp -= C.HIT_DAMAGE;
           s.invincibleFrames = Math.round((C.INVINCIBLE_MS / 1000) * C.SIM_FPS);
           s.events |= C.EV_HIT;
