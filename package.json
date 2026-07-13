@@ -11,7 +11,11 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "gen:sfx": "node scripts/gen-sfx.mjs"
+    "gen:sfx": "node scripts/gen-sfx.mjs",
+    "ait:dev": "vite --host",
+    "ait:sandbox": "bash scripts/ait-sandbox-dev.sh",
+    "ait:build": "ait build",
+    "ait:deploy": "ait deploy"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
@@ -24,6 +28,7 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
+    "@apps-in-toss/web-framework": "^2.10.5",
     "@sentry/browser": "^10.58.0",
     "@supabase/supabase-js": "^2.108.2",
     "phaser": "^3.90.0",

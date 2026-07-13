@@ -9,3 +9,6 @@ dist/
 
 # AI 에이전트 실험용 — 버그 레지스트리·정답지는 커밋 금지
 docs/experiment/
+
+.granite
+*.ait

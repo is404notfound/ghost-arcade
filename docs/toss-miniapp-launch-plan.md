@@ -61,12 +61,15 @@ webViewProps: { type: 'game' }
 
 게임 미니앱은 **등급 심의 없이 런칭 불가**합니다. ([온보딩](https://developers-apps-in-toss.toss.im/intro/onboarding-process.html))
 
-둘 중 하나:
+**결정 (2026-07-13): 경로 A — 게임물관리위원회(GRAC) 직접 심의**  
+이유: 1차는 앱인토스 단독 출시. 플레이스토어 등 스토어 배포는 미계획 → 스토어 URL 기반 자체등급분류(B)는 불필요한 출시 공수를 만듦.
 
-1. **게임물관리위원회** 심의 → 등급분류증명서 첨부  
-2. **자체등급분류사업자** 경로 — 앱스토어 / 플레이스토어 / 원스토어 / Microsoft Store에 올린 뒤 **스토어 링크** 첨부
+| 경로 | 상태 |
+|------|------|
+| 1. **게관위 심의 → 등급분류증명서** | ✅ **완료** (2026-07-13) |
+| 2. 스토어 링크(자체등급분류) | 보류 (추후 스토어 출시 시 재검토) |
 
-**계획 함의:** 스토어에 이미(또는 곧) 올리는 빌드가 있으면 2번이 빠를 수 있음. 토스만 단독이면 1번(게관위) 일정을 별도 트랙으로 잡아야 함.
+참고: [게임 등급분류 안내](https://toss.im/apps-in-toss/blog/game_rating_classification) · 심의 약 10~15일 · 개발과 **병렬** 진행
 
 ### 4.2 사업자 등록 (선택 → 수익화 시 필수)
 
@@ -77,7 +80,18 @@ webViewProps: { type: 'game' }
 
 참고: [사업자 등록하기](https://developers-apps-in-toss.toss.im/prepare/register-business.html)
 
-**Ghost Arcade MVP 제안:** 1차는 사업자 없이 **무료 플레이 + 기존 Supabase 랭킹**으로 출시 가능 여부 확인 → 수익화는 2차.
+**결정 (2026-07-13):**  
+- 1차 출시 = **비사업자** (무료 플레이 + Supabase 랭킹)  
+- **보상형 광고** = 출시 후 약 **2주** 관찰 뒤 실험 (이어하기 1곳 후보)  
+- 그때 **개인사업자 등록 → 앱인토스 사업자 정보 → 광고 연동**
+
+### 4.2.1 게관위 회원 유형
+
+사업자 없으면 게관위는 **개인회원**으로 가입·신청하면 됩니다. ([게관위 이용안내](https://www.grac.or.kr/using_guide_08.html))  
+나중에 개인사업자를 내면 그때는 **업체회원**으로 가야 합니다. ([앱인토스 등급 안내](https://toss.im/apps-in-toss/blog/game_rating_classification): 개인사업자 → 업체회원)  
+※ **일반회원**은 등급분류 신청 불가. 반드시 개인회원(또는 업체회원).
+
+사업자일 때만 보통 요구되는 **게임물제작업/배급업 등록증**은, 지금 비사업자 경로에서는 해당 없을 가능성이 큼(신청 화면 구비서류로 최종 확인).
 
 ### 4.3 SDK·번들
 
@@ -103,33 +117,53 @@ Ghost Arcade는 **1040×480 가로**이므로:
 
 - [ ] [앱인토스 콘솔](https://developers-apps-in-toss.toss.im/) 회원가입·워크스페이스 생성  
 - [ ] 앱 정보 초안: `appName`, 표시 이름, 아이콘, 카테고리(게임), 고객문의 이메일, 검색 키워드  
-- [ ] 게임 등급 경로 결정 (게관위 vs 스토어 링크)  
-- [ ] 수익화 여부 결정 → 사업자 등록 여부  
+- [x] 게임 등급 경로 결정 → **A 게관위** (스토어 B는 보류)  
+- [x] 게관위: **개인회원** 가입 + 모의 수수료 확인  
+- [x] 게관위 제출물 3종: 심의 영상 · 내용설명 · 실행 가능한 빌드  
+- [x] 게관위 신청 완료 → 증명서 수령 (**완료**) → 콘솔 첨부 남음  
+- [x] 수익화: **출시 후 ~2주** 보상형 실험 → 그때 개인사업자  
 - [ ] 게임/비게임 [검수 체크리스트](https://developers-apps-in-toss.toss.im/intro/onboarding-process.html) 인쇄·갭 분석  
 
 ### Phase B — 기술 연동 (3~7일)
 
-- [ ] `npm install @apps-in-toss/web-framework` + `npx ait init`  
-- [ ] `granite.config.ts`  
-  - `appName` / `brand` = 콘솔과 동일  
-  - `web.commands`: 기존 `vite` / `vite build`  
+- [x] `npm install @apps-in-toss/web-framework@^2` (현재 **2.10.5**)  
+  - `npx ait init`은 대화형이라 스킵 → `granite.config.ts` 수동 작성  
+- [x] `granite.config.ts`  
+  - `appName`: **`ghost-runner`** (콘솔과 동일)  
+  - `brand.displayName`: `Ghost Arcade` — 콘솔 표시명과 다르면 맞출 것  
+  - `brand.icon`: ✅ 콘솔 업로드 URL 반영 (2026-07-13)  
+  - `web.commands`: `vite --host` / `tsc --noEmit && vite build`  
   - `webViewProps.type: 'game'`  
-  - `outdir` = 현재 Vite `dist`와 정합  
-- [ ] CORS / Origin:  
+  - `outdir: 'dist'`  
+- [x] npm scripts: `ait:dev` / `ait:build` / `ait:deploy` (기존 `dev`/`build`는 Vite 유지)  
+- [x] `npm run build` + `npm run ait:build` 스모크 → `ghost-runner.ait` 생성 OK  
+- [~] CORS / Origin (코드 점검 2026-07-13):  
   - 라이브 `https://*.apps.tossmini.com`  
   - QR 테스트 `https://*.private-apps.tossmini.com`  
-  - Supabase·Sentry·폰트 CDN 허용 목록 점검  
-- [ ] 번들 용량: `dist` + 에셋 unzip ≤ 100MB, 초과 시 CDN 분리  
-- [ ] 부트 로딩 UX 유지 (저사양 WebView에서 10초+ 가능)  
-- [ ] 쿠키 의존 제거 확인 (iOS 서드파티 쿠키 차단 → 토큰/localStorage 유지)  
+  - Supabase JS(anon)+RLS 경로: **브라우저 Origin 화이트리스트 불필요**(기본 REST는 Origin 열어두고 RLS로 보호)  
+  - PostHog/Sentry: 키 있을 때만 송신, Origin 제한 없음  
+  - 커스텀 Edge Function/자기 서버를 붙이면 그때 tossmini Origin 허용 필요  
+- [x] 번들 용량 (2026-07-13 측정): `dist` **~24.5MB** / `ghost-runner.ait` **~27MB** ≪ 100MB  
+  - 참고: `intro-slide` PNG만 ~8MB — 지금은 여유, 에셋 늘면 CDN 분리 후보 1순위  
+- [x] 쿠키 의존: `document.cookie` 미사용. 신원·랭킹·튜토리얼·PostHog persistence 모두 **localStorage**  
+- [x] 부트 로딩 UX: `index.html` 인라인 부트 스크린 유지 (실기기 체감은 §11)
+- [ ] 샌드박스: `npm run ait:dev` 후 `intoss://ghost-runner` (§11-A)
+- [ ] 실기기 토스앱 QR (가로·오디오) — §11-B, 검수 전 필수
 
 ### Phase C — QA (3~5일)
 
-- [ ] 샌드박스 앱 설치 (`intoss://{appName}`)  
-- [ ] **실기기 토스앱 QR**로 가로·오디오·터치·랭킹·일시정지 검증  
-- [ ] 네트워크 실패 시 localStorage 폴백  
-- [ ] 메모리/프레임 (저사양 안드로이드)  
-- [ ] 허용 로깅: Sentry 등 공식 허용 도구만 사용  
+- [ ] 샌드박스 앱 설치 → `intoss://ghost-runner` (개발 서버 연결 스모크)
+  - ⚠️ 공식 표: **가로 버전 게임 = 샌드박스 불가** → 플레이 QA는 토스앱 QR 필수
+  - 샌드박스에서 불가: 분석·공유 리워드·인앱광고·가로 게임·내비 공유
+- [ ] **실기기 토스앱 QR**로 가로·오디오·터치·랭킹·일시정지 검증 (아래 §11 런북)
+- [x] 네트워크 실패 시 localStorage 폴백 — 코드 확인 (2026-07-13)
+  - `remoteStore`: 예외 밖으로 안 던짐, 5s abort, 실패 시 `[]` → 호출부가 local 폴백
+  - Supabase 미설정 시 클라이언트 `null` → 동일 폴백
+- [ ] 메모리/프레임 (저사양 안드로이드) — 실기기
+- [~] 허용 로깅 (2026-07-13):
+  - **Sentry**: 공식 가이드 있음 → 유지 OK (`@sentry/browser`, WebView JS만)
+  - **PostHog**: 커뮤니티상 GA/Amplitude 등은 웹뷰 허용 언급, PostHog는 **명시 목록 아님** → 채널톡/검수 전 재확인 권장
+  - 앱인토스 자체 Analytics는 출시 후 콘솔에서 집계 (샌드박스 데이터 없음)
 
 ### Phase D — 심의·검수·출시 (1~2주, 병렬 가능)
 
@@ -141,9 +175,10 @@ Ghost Arcade는 **1040×480 가로**이므로:
 
 ### Phase E — 출시 후 (지속)
 
+- [ ] 출시 약 2주 후: 리텐션·플레이 수 보고 **보상형(이어하기) 실험** 여부 결정  
+- [ ] 수익화 확정 시: 개인사업자 → 앱인토스 사업자 등록 → 광고 연동  
 - [ ] 버전 업데이트 = 새 `.ait` → 재검수 → 출시  
 - [ ] 롤백 절차 숙지  
-- [ ] 수익화 시 사업자·약관·결제 연동 별도 스프린트  
 
 ---
 
@@ -228,8 +263,59 @@ export default defineConfig({
 
 ## 10. 다음 액션 (우선순위)
 
-1. **등급 경로 결정** (게관위 vs 스토어) — 일정 상 최우선 블로커  
-2. **콘솔 앱 등록** + 아이콘/메타  
-3. **WebView SDK spike** (반나절): `ait init` → 샌드박스에서 인트로까지  
-4. **용량·CORS 측정** 후 Phase B 본작업  
-5. 수익화 필요 시에만 사업자 등록
+1. **콘솔:** 등급분류증명서 등록 (아이콘은 반영됨)  
+2. **실기기 QA:** §11-B 토스앱 QR (가로·오디오·랭킹) — 가로라 샌드박스만으론 부족  
+3. **검토 요청:** `.ait` 업로드 → 출시 검수 (영업일 3~5일)  
+4. (여유 시) PostHog 검수 허용 여부 채널톡 확인 / 애매하면 키 off  
+5. 콘솔 표시명 ↔ `brand.displayName`(`Ghost Runner`) 불일치만 한번 더 확인
+
+---
+
+## 11. 실기기 QA 런북 (ghost-runner)
+
+### A. 개발 서버 ↔ 샌드박스 (스모크만)
+
+가로 플레이는 여기서 검증 불가. **부팅·연결**만 본다.
+
+```sh
+# Mac LAN IP
+ipconfig getifaddr en0
+
+# granite.config.ts 의 web.host 를 그 IP로 맞춘 뒤
+npm run ait:dev
+```
+
+1. [샌드박스 앱](https://developers-apps-in-toss.toss.im/development/test/sandbox.html) 설치 (iOS 실기기 / Android APK)
+2. 콘솔과 같은 계정으로 로그인 → 앱 `ghost-runner` 선택
+3. Android USB면: `adb reverse tcp:5173 tcp:5173` (및 필요 시 8081)
+4. iOS 실기기: 같은 Wi‑Fi + 로컬 네트워크 권한 허용 + 서버 IP 저장
+5. 스킴: `intoss://ghost-runner`
+6. 통과 기준: 부트 로딩 → 인트로/타이틀까지 뜨는지 (가로 레이아웃은 깨져도 OK)
+
+### B. 토스앱 QR (진짜 QA)
+
+```sh
+# icon 채운 뒤
+npm run ait:build          # → ghost-runner.ait (~27MB)
+npm run ait:deploy         # 또는 콘솔에 .ait 수동 업로드
+```
+
+1. 콘솔에서 번들 업로드 → **테스트하기** QR
+2. 토스앱으로 스캔 (`intoss-private://…?_deploymentId=…`)
+3. 체크리스트:
+   - [ ] 가로(1040×480) 레터박스/크롭 없이 보이는가
+   - [ ] 첫 탭 후 BGM/SFX
+   - [ ] 점프·일시정지·재개
+   - [ ] 게임오버 → 랭킹(온라인 또는 로컬 폴백)
+   - [ ] 앱 전환 후 복귀 시 오디오/입력 이상 없는지
+   - [ ] 저사양 안드: 로딩 시간·프레임 체감
+
+### C. 배포 전 granite 필수 값
+
+| 필드 | 현재 | 비고 |
+|------|------|------|
+| `appName` | `ghost-runner` | OK |
+| `brand.displayName` | `Ghost Runner` | 콘솔 표시명과 동일해야 함 (한글 권장 여부는 콘솔 정책 따름) |
+| `brand.primaryColor` | `#36f9f6` | OK |
+| `brand.icon` | 콘솔 static URL | ✅ 반영됨 |
+| `webViewProps.type` | `game` | OK |
