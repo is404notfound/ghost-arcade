@@ -12,6 +12,7 @@ import { initAnalytics } from './analytics';
 import { runTestError } from './testErrors';
 import { maybeTriggerBug } from './experiment/bug-trigger';
 import { setBootLoadingStatus } from './bootLoading';
+import { lockLandscapeIfPossible } from './aitHost';
 
 // 검증용 의도적 에러 — Sentry/Seer 테스트. (검증 후 제거 가능)
 //   ?error=<type>  하나만 (type/range/reference/syntax/uri/custom/promise/async/manual/generic)
@@ -57,6 +58,10 @@ initGameControls();
 // 안 기다릴 수 있고, Phaser Text는 생성 순간 캔버스에 구워버려 fallback이 고정된다.
 // 부트 로딩 오버레이(index.html)는 GameScene.create 완료 시 dismissBootLoading().
 void (async () => {
+  // 앱인토스: 폰트보다 먼저 가로 잠금 — 첫 레이아웃이 세로로 잡히면 FIT 레터박스가 꼬임.
+  setBootLoadingStatus('화면 준비 중…');
+  await lockLandscapeIfPossible();
+
   try {
     setBootLoadingStatus('폰트 준비 중…');
     // 한글 샘플을 넘겨 서브셋 폰트(Black Han Sans)가 실제 음절을 받도록 함.

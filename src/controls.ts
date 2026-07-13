@@ -3,6 +3,10 @@
 //  - pointerdown/click stopPropagation으로 게임 점프(window pointerdown)와 분리
 //  - 일시정지 콜백은 GameScene.create()에서 registerPauseToggle로 등록
 //  - 다시하기 버튼은 일시정지 중에만 노출, 클릭 시 startRun(true) 트리거
+//  - 전체화면: 앱인토스 WebView / Fullscreen API 미지원 환경에선 숨김
+//    (토스에선 orientationLock + setDeviceOrientation이 "가로 풀플레이" 역할)
+
+import { isAppsInTossHost } from './aitHost';
 
 let _onPauseToggle: (() => void) | null = null;
 let _onRestart: (() => void) | null = null;
@@ -52,30 +56,38 @@ export function initGameControls(): void {
   document.body.appendChild(wrap);
 
   // ─── 전체화면 버튼 ───────────────────────────────────────────
-  const fsBtn = document.createElement('button');
-  fsBtn.id = 'fs-btn';
-  fsBtn.setAttribute('aria-label', '전체화면 토글');
-  wrap.appendChild(fsBtn);
+  // 토스 WebView는 HTML Fullscreen API를 막아 두는 경우가 많아 버튼만 죽은 UI가 됨.
+  // 앱인토스에서는 가로 잠금이 실질적인 "풀플레이"이므로 버튼을 숨긴다.
+  const canUseHtmlFullscreen =
+    !isAppsInTossHost() &&
+    typeof document.documentElement.requestFullscreen === 'function';
 
-  function updateFsIcon(): void {
-    fsBtn.textContent = document.fullscreenElement ? '⊠' : '⛶';
+  if (canUseHtmlFullscreen) {
+    const fsBtn = document.createElement('button');
+    fsBtn.id = 'fs-btn';
+    fsBtn.setAttribute('aria-label', '전체화면 토글');
+    wrap.appendChild(fsBtn);
+
+    function updateFsIcon(): void {
+      fsBtn.textContent = document.fullscreenElement ? '⊠' : '⛶';
+    }
+    updateFsIcon();
+
+    fsBtn.addEventListener('pointerdown', (e: PointerEvent) => { e.stopPropagation(); });
+    fsBtn.addEventListener('click', (e: MouseEvent) => {
+      e.stopPropagation();
+      void (async () => {
+        try {
+          if (document.fullscreenElement) {
+            await document.exitFullscreen();
+          } else {
+            await document.documentElement.requestFullscreen();
+          }
+        } catch { /* 미지원 또는 권한 거부 — 무시 */ }
+      })();
+    });
+    document.addEventListener('fullscreenchange', updateFsIcon);
   }
-  updateFsIcon();
-
-  fsBtn.addEventListener('pointerdown', (e: PointerEvent) => { e.stopPropagation(); });
-  fsBtn.addEventListener('click', (e: MouseEvent) => {
-    e.stopPropagation();
-    void (async () => {
-      try {
-        if (document.fullscreenElement) {
-          await document.exitFullscreen();
-        } else {
-          await document.documentElement.requestFullscreen();
-        }
-      } catch { /* 미지원 또는 권한 거부 — 무시 */ }
-    })();
-  });
-  document.addEventListener('fullscreenchange', updateFsIcon);
 
   // ─── 음소거 버튼 ─────────────────────────────────────────────
   const muteBtn = document.createElement('button');

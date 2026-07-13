@@ -5,6 +5,7 @@ import { defineConfig } from '@apps-in-toss/web-framework/config';
  * - appName / brand 값은 콘솔 등록 정보와 반드시 동일해야 함
  * - icon: 콘솔 앱 정보 업로드 URL (반영됨)
  * - webViewProps.type: 'game' → 게임 내비게이션/크롬
+ * - webViewProps.orientationLock: 'landscape' → 가로 고정 (런타임 setDeviceOrientation과 병행)
  */
 export default defineConfig({
   appName: 'ghost-runner',
@@ -25,5 +26,12 @@ export default defineConfig({
   },
   permissions: [],
   outdir: 'dist',
-  webViewProps: { type: 'game' },
+  // type: game → 게임 내비(닫기/더보기).
+  // orientationLock: SDK 2.10.5 공식 타입엔 없지만, 호스트가 읽으면 선제 가로 잠금.
+  // 실질 보증은 main 부트의 setDeviceOrientation(landscape) — 옵션 C.
+  webViewProps: {
+    type: 'game',
+    // @ts-expect-error SDK webViewProps 타입에 orientationLock 미정의 (커뮤니티/호스트 관례)
+    orientationLock: 'landscape',
+  },
 });
