@@ -27,14 +27,14 @@ canvas {
   display: block; /* inline 기본값이 만드는 하단 여백 제거 */
 }
 
-/* 전체화면 + 방향 전환 DOM 버튼 — 우상단 고정 오버레이 */
+/* 전체화면 + 음소거/일시정지 등 DOM 버튼 — 우상단 고정 오버레이 (가로 나열) */
 #game-controls {
   position: fixed;
   top: 8px;
   right: 8px;
   z-index: 1000;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 6px;
 }
 
