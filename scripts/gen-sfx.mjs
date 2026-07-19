@@ -68,7 +68,7 @@ function softClip(x) {
 }
 
 /** 점프 — 고회전 엔진 버스트 + 배기 팝 */
-function genJump() {
+export function genJump() {
   const out = alloc(0.42);
   let phase = 0;
   let phase2 = 0;
@@ -90,7 +90,7 @@ function genJump() {
 }
 
 /** 피격 — 전기 스파크 + 금속 스크래치 */
-function genHit() {
+export function genHit() {
   const out = alloc(0.2);
   let metalPhase = 0;
   for (let i = 0; i < out.length; i++) {
@@ -107,7 +107,7 @@ function genHit() {
 }
 
 /** 연료 — 짧은 액체 주입 + 클렁 */
-function genPotion() {
+export function genPotion() {
   const out = alloc(0.3);
   let phase = 0;
   for (let i = 0; i < out.length; i++) {

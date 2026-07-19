@@ -29,6 +29,24 @@ CREATE INDEX IF NOT EXISTS idx_ghost_runs_leaderboard
 CREATE INDEX IF NOT EXISTS idx_ghost_runs_weekly
   ON ghost_runs (created_at) WHERE is_bot = FALSE;
 
+-- 원격 킬스위치 (migrations/003) — 재검수 없이 조정하는 기능 플래그. 클라는 읽기만.
+CREATE TABLE IF NOT EXISTS remote_config (
+  key        TEXT        PRIMARY KEY,
+  value      JSONB       NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- PostHog 이중화 미러 (migrations/003) — game_start·abnormal_exit 최소 이벤트.
+CREATE TABLE IF NOT EXISTS event_mirror (
+  id         BIGINT      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  event      TEXT        NOT NULL,
+  user_id    TEXT,
+  props      JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_event_mirror_event_time
+  ON event_mirror (event, created_at);
+
 -- 주간 누적 랭킹 뷰 (migrations/002) — 지난 7일 누적 거리, 봇 제외, 버전 무관(플레이 총량 지표).
 -- 닉네임은 가장 최근 판의 meta->>'nickname'.
 CREATE OR REPLACE VIEW ghost_weekly_rankings AS

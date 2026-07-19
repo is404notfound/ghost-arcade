@@ -32,6 +32,8 @@ import {
   type WeeklyRank,
 } from "../remoteStore";
 import { getUserId, getNickname, deterministicNickname } from "../identity";
+import { mirrorEvent } from "../eventMirror";
+import { remoteConfig } from "../remoteConfig";
 import { RENDER_DPR } from "./dpr";
 import { compareGhosts, type GhostComparison } from "./ghostCompare";
 import {
@@ -300,8 +302,11 @@ const BLACKOUT_DARK_MS = 3000; // 차단 유지(스윕인 포함)
 const BLACKOUT_FADE_OUT_MS = 900; // 스윕아웃(왼쪽부터 걷힘 → 우측으로 밀려남)
 const BLACKOUT_MAX_ALPHA = 1; // 완전 차단 — 실루엣도 안 보이게 (플레이 피드백)
 const BLACKOUT_COLOR = 0x1a1a20; // 더 짙은 연기 회색 (검정보다 살짝 밝은 톤만 유지)
-// 0.45→0.7: 절반 차단은 너무 어렵다는 플레이 피드백 — 우측 30%만 차단
-const BLACKOUT_EDGE0 = DESIGN_W * 0.7; // 스윕 완료 시 솔리드 차단 시작 (여기부터 우측 끝까지)
+// 0.45→0.7: 절반 차단은 너무 어렵다는 플레이 피드백 — 우측 30%만 차단.
+// 실제 비율은 원격 config(blackout_edge_ratio)가 우선 — 재검수 없이 난이도 조정 가능.
+function blackoutEdge0(): number {
+  return DESIGN_W * remoteConfig("blackout_edge_ratio");
+}
 const BLACKOUT_GRAD_W = DESIGN_W * 0.1; // 경계 그라데이션 폭
 type BlackoutPhase = "idle" | "warn" | "dark" | "recover";
 const SKYLINE_PARALLAX = 0.2; // 먼 스카이라인 스크롤 배수(월드속도 대비)
@@ -1728,7 +1733,7 @@ export class GameScene extends Phaser.Scene {
           // stopImmediatePropagation은 AudioContext unlock 리스너까지 막을 수 있어 쓰지 않음.
           this.unlockAudio();
           this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
-          this.endIntro(true);
+          this.endIntro();
         },
       );
       // 호버 알파 핸들러 없음 — 점멸 트윈과 충돌하므로 스케일만 살짝 키움
@@ -2140,6 +2145,12 @@ export class GameScene extends Phaser.Scene {
       prev_run_had_fever: prevRun.prev_run_had_fever,
       prev_run_near_record: prevRun.prev_run_near_record,
       prev_run_death_cause: prevRun.prev_run_death_cause,
+    });
+    // PostHog 이중화 — 키 off 출시 대비 최소 미러 (플레이북 §0). 최소 속성만.
+    mirrorEvent("game_start", getUserId(window.localStorage), {
+      seed: this.seed,
+      is_retry: isRetry,
+      ghost_count: this.ghosts.length,
     });
 
     // 다음 판을 위해 원격 데이터를 백그라운드로 갱신
@@ -2691,7 +2702,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** 인트로 종료(Start) → 조작 튜토리얼(오늘 숨김 아니면) → 플레이. */
-  private endIntro(_fromStart: boolean): void {
+  private endIntro(): void {
     if (!this.introActive && !this.introOverlay?.visible) return;
     this.introActive = false;
     this.tweens.killTweensOf(this.introImage);
@@ -2805,7 +2816,8 @@ export class GameScene extends Phaser.Scene {
 
     // 원격 시딩은 원격이 비었을 때만 — 실제 유저가 있는 보드에 봇을 섞지 않는다.
     // 봇에 합성 정체성 부여: bot:tier:i (티어 고정) → 주간 랭킹 뷰에서 7일 누적으로 쌓임.
-    if (allowRemoteUpload) {
+    // 원격 게이트: 봇이 프로덕션 보드를 오염시키는 사고 시 서버에서 차단 가능
+    if (allowRemoteUpload && remoteConfig("bot_upload_enabled")) {
       for (let i = 0; i < botRuns.length; i++) {
         const { log, distance } = botRuns[i]!;
         const botUserId = `bot:tier:${i}`;
@@ -3484,6 +3496,7 @@ export class GameScene extends Phaser.Scene {
         if (s.distance >= this.blackoutNextAtM) {
           // 다음 발동 거리는 지금 확정 — 스킵 여부와 무관하게 수열은 전진 (결정론)
           this.blackoutNextAtM += BLACKOUT_GAP_MIN_M + this.blackoutRoll(BLACKOUT_GAP_JITTER_M);
+          if (!remoteConfig("blackout_enabled")) break; // 원격 킬스위치 (재검수 없는 1차 대응)
           if (s.feverFramesLeft > 0) break; // 피버 중엔 스킵 — 무적이라 무의미
           // 마일스톤과 슬롯 공유 — 마일스톤이 떠 있으면 먼저 내림
           this.dismissMilestoneToast();
@@ -3553,7 +3566,7 @@ export class GameScene extends Phaser.Scene {
     g.clear();
     if (alpha <= 0.002 || sweep <= 0.002) return;
     // 덮개 왼쪽 경계 — sweep 0→1 동안 화면 우측 끝에서 EDGE0까지 전진
-    const edge = DESIGN_W - (DESIGN_W - BLACKOUT_EDGE0) * sweep;
+    const edge = DESIGN_W - (DESIGN_W - blackoutEdge0()) * sweep;
     const bands = 8;
     const bandH = DESIGN_H / bands;
     const steps = 6;
@@ -4598,7 +4611,7 @@ export class GameScene extends Phaser.Scene {
     }
     // 점프 컷은 각도가 아트에 구워짐 → 공중에서 targetAngle = 0 고정(기울기 로직 무력화).
     // 착지·피격·사망 시에도 0° 복귀.
-    let targetAngle = 0;
+    const targetAngle = 0;
     if (this.playerRect.angle !== targetAngle) {
       const a = Phaser.Math.Linear(this.playerRect.angle, targetAngle, 0.2);
       this.playerRect.setAngle(

@@ -1,0 +1,24 @@
+# 봇 시드 커버리지 감시 — 매일 KST 22:00 (UTC 13:00), 플레이북 §7 자동 알림.
+# 실패 시 GitHub이 저장소 소유자에게 워크플로 실패 메일을 보낸다 (별도 알림 채널 불필요).
+# repo secrets 필요: SUPABASE_URL, SUPABASE_ANON_KEY
+name: bot-seed-watch
+
+on:
+  schedule:
+    - cron: "0 13 * * *" # UTC 13:00 = KST 22:00 — 하루 트래픽이 쌓인 뒤 점검
+  workflow_dispatch: # 수동 실행 (배포 직후 확인용)
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 오늘 시드 경쟁 필드 확인
+        run: node scripts/check-bot-seed.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}

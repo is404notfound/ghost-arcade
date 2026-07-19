@@ -16,6 +16,13 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // Node 실행 스크립트 (GitHub Actions 등) — 브라우저가 아닌 Node 전역 사용
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly', fetch: 'readonly', Buffer: 'readonly' },
+    },
+  },
+  {
     files: ['src/sim/**/*.ts'],
     rules: {
       'no-restricted-properties': [

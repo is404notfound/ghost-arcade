@@ -9,6 +9,8 @@ import { RENDER_DPR } from './render/dpr';
 import { dailySeed } from './dailySeed';
 import { initGameControls } from './controls';
 import { initAnalytics } from './analytics';
+import { initHeartbeat } from './heartbeat';
+import { loadRemoteConfig } from './remoteConfig';
 import { runTestError } from './testErrors';
 import { maybeTriggerBug } from './experiment/bug-trigger';
 import { setBootLoadingStatus } from './bootLoading';
@@ -51,6 +53,10 @@ if (import.meta.env.DEV) {
 }
 
 initAnalytics();
+// 비정상 종료 탐지 — initAnalytics 직후여야 직전 세션의 abnormal_exit을 놓치지 않는다
+initHeartbeat();
+// 원격 킬스위치 — 비차단 로드, 실패 시 코드 기본값 (플레이북 §0)
+void loadRemoteConfig();
 initGameControls();
 
 // Google Fonts + 물마루가 실제로 로드된 뒤에만 Phaser 시작.
