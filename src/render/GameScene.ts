@@ -1294,8 +1294,8 @@ export class GameScene extends Phaser.Scene {
           align: "center",
         })
         .setOrigin(0.5, 0.5);
-      // 「Today's Rank」라벨 아래 간격 — 기본 패드 + Safe Area top
-      const chipY = HUD_TOP_PAD + safe0.top + 28;
+      // 「Today's Rank」라벨 아래 간격 — 상단은 기본 패드만 (safe.top 미적용)
+      const chipY = HUD_TOP_PAD + 28;
       const container = this.add
         .container(-9999, chipY, [matte, bg, rim, txt])
         .setDepth(22)
@@ -1306,7 +1306,7 @@ export class GameScene extends Phaser.Scene {
     }
     // 「👑 Today's Rank」 — 칩 열 왼쪽 위. x는 updateRankPanel에서 칩 startX에 맞춤.
     this.rankHudLabel = this.add
-      .text(0, HUD_TOP_PAD + safe0.top, "👑 Today's Rank", {
+      .text(0, HUD_TOP_PAD, "👑 Today's Rank", {
         fontSize: "14px",
         fontFamily: FONT_HUD,
         color: NEON_YELLOW_HEX,
@@ -1325,7 +1325,7 @@ export class GameScene extends Phaser.Scene {
       const ribbonH = 52;
       const restX = 0; // 화면 왼쪽 끝 밀착 (여백 없음)
       // 칩 아래 여백 — 좌하단 DOM 컨트롤과도 간격 확보
-      const chipY = HUD_TOP_PAD + safe0.top + 28;
+      const chipY = HUD_TOP_PAD + 28;
       const restY = chipY + 48 + 18 + ribbonH / 2;
       this.comboRibbonBg = this.add
         .rectangle(0, 0, ribbonW, ribbonH, 0x060010, 0.88)
@@ -5412,12 +5412,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Safe Area(top/right/bottom) → Phaser HUD 재배치.
-   * CSS 변수는 initSafeArea가 갱신. 여기선 캔버스 겹침분만 논리 좌표로 가산.
+   * Safe Area(right/bottom) → Phaser HUD 재배치.
+   * top은 랭킹이 과도히 내려가 적용하지 않음 — 기본 HUD_TOP_PAD만 사용.
+   * CSS 변수(--safe-*)는 initSafeArea가 계속 갱신.
    */
   private layoutHudForSafeArea(): void {
     const safe = getDesignSafePads(this.game.canvas);
-    const top = HUD_TOP_PAD + safe.top;
+    const top = HUD_TOP_PAD;
     const bottom = HUD_BOTTOM_PAD + safe.bottom;
     const chipY = top + 28;
 

@@ -98,6 +98,7 @@ export function cssPxToDesignX(
 /**
  * 뷰포트 Safe Area가 캔버스와 겹치는 분량을 DESIGN_W×DESIGN_H 패드로 환산.
  * 레터박스 밖 inset은 0 — 이미 캔버스 밖에 있으므로 HUD를 더 밀 필요 없음.
+ * top은 반환하되 HUD 랭킹에는 쓰지 않음(과도한 하향). right/bottom만 레이아웃에 사용.
  */
 export function getDesignSafePads(
   canvas: HTMLCanvasElement | null | undefined,
