@@ -92,37 +92,55 @@ export function initGameControls(): void {
   _pauseBtn = pauseBtn;
   bindTap(pauseBtn, () => _onPauseToggle?.());
 
-  // 전체화면: 토스 WebView에선 숨김 — 일시정지 열에만 노출
+  // 전체화면: AIT(토스 WebView)에선 숨김. 웹(Vercel 등)에선 일시정지와 같이 항상 노출.
+  const docEl = document.documentElement as HTMLElement & {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+  };
   const canUseHtmlFullscreen =
     !isAppsInTossHost() &&
-    typeof document.documentElement.requestFullscreen === 'function';
+    (typeof docEl.requestFullscreen === 'function' ||
+      typeof docEl.webkitRequestFullscreen === 'function');
 
   if (canUseHtmlFullscreen) {
     const fsBtn = document.createElement('button');
     fsBtn.id = 'fs-btn';
     fsBtn.setAttribute('aria-label', '전체화면 토글');
-    fsBtn.style.display = 'none';
     fsBtn.innerHTML = ICON_FS;
     dock.appendChild(fsBtn);
-    _pausedExtras.push(fsBtn);
+
+    const isFs = (): boolean =>
+      !!(document.fullscreenElement ||
+        (document as Document & { webkitFullscreenElement?: Element })
+          .webkitFullscreenElement);
 
     const updateFsIcon = (): void => {
-      fsBtn.innerHTML = document.fullscreenElement ? ICON_FS_EXIT : ICON_FS;
+      fsBtn.innerHTML = isFs() ? ICON_FS_EXIT : ICON_FS;
+      fsBtn.setAttribute('aria-label', isFs() ? '전체화면 종료' : '전체화면');
     };
     updateFsIcon();
 
     bindTap(fsBtn, () => {
       void (async () => {
         try {
-          if (document.fullscreenElement) {
-            await document.exitFullscreen();
+          if (isFs()) {
+            const doc = document as Document & {
+              webkitExitFullscreen?: () => Promise<void> | void;
+            };
+            if (typeof document.exitFullscreen === 'function') {
+              await document.exitFullscreen();
+            } else {
+              await doc.webkitExitFullscreen?.();
+            }
+          } else if (typeof docEl.requestFullscreen === 'function') {
+            await docEl.requestFullscreen();
           } else {
-            await document.documentElement.requestFullscreen();
+            await docEl.webkitRequestFullscreen?.();
           }
         } catch { /* 미지원 또는 권한 거부 */ }
       })();
     });
     document.addEventListener('fullscreenchange', updateFsIcon);
+    document.addEventListener('webkitfullscreenchange', updateFsIcon);
   }
 
   const muteBtn = document.createElement('button');
