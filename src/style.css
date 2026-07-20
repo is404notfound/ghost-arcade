@@ -45,18 +45,19 @@ body {
 }
 
 /*
- * 우상단 세로 컨트롤 — 앱인토스 게임 내비(⋯·X) 바로 아래.
- * top: safe-area + 내비 알약 높이(~44) + 여유
+ * 우측 세로 컨트롤 — 가로는 우측정렬 유지, 세로는 그룹 전체 화면 중앙.
+ * (버튼 1개·3개 모두 translateY(-50%)로 덩어리 중심이 세로 중앙에 옴)
  */
 #game-controls {
   position: fixed;
-  top: max(56px, calc(env(safe-area-inset-top, 0px) + 48px));
+  top: 50%;
   right: max(10px, calc(env(safe-area-inset-right, 0px) + 6px));
   z-index: 1000;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  transform: translateY(-50%);
   pointer-events: auto;
 }
 
