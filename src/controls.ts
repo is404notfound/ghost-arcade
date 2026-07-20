@@ -1,8 +1,8 @@
 // 게임 컨트롤 DOM — 우측 고정 + 세로 화면 중앙 정렬
 //
-//  - 일시정지: 항상 (플레이 중)
-//  - 음소거·다시하기: 일시정지 중에만 같은 열에 이어서 표시
-//  - 1개/3개 모두 그룹 중심이 세로 중앙 (CSS top:50% + translateY(-50%))
+//  - 일시정지: 항상
+//  - 전체화면: 웹(Vercel 등)에서만 항상 — 일시정지와 같은 primary 열 (AIT에선 미생성)
+//  - 음소거·다시하기: 일시정지 중에만 primary 아래 extras로 표시 (중앙 정렬을 밀지 않음)
 //  - 아이콘은 단색 SVG (토스 크롬·중앙 || 오버레이와 톤 맞춤)
 //  - pointerdown/click stopPropagation으로 게임 점프와 분리
 
@@ -14,6 +14,7 @@ let _onMuteToggle: (() => void) | null = null;
 let _pauseBtn: HTMLButtonElement | null = null;
 let _muteBtn: HTMLButtonElement | null = null;
 let _pausedExtras: HTMLElement[] = [];
+let _extrasCol: HTMLDivElement | null = null;
 let _dock: HTMLDivElement | null = null;
 
 const ICON_PAUSE = `<svg class="ctrl-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>`;
@@ -48,9 +49,13 @@ export function setPauseButtonState(paused: boolean, visible: boolean): void {
 }
 
 /**
- * 일시정지 전용 버튼(음소거·다시하기) — 우상단 세로 열에서 pause 아래에만 노출.
+ * 일시정지 전용 버튼(음소거·다시하기) — primary(일시정지·전체화면) 아래에만 노출.
+ * primary 열의 세로 중앙은 유지한다.
  */
 export function setPausedMenuVisible(visible: boolean): void {
+  if (_extrasCol) {
+    _extrasCol.style.display = visible ? 'flex' : 'none';
+  }
   for (const el of _pausedExtras) {
     el.style.display = visible ? 'flex' : 'none';
   }
@@ -84,15 +89,20 @@ export function initGameControls(): void {
   _dock = dock;
   _pausedExtras = [];
 
+  // primary: 항상 보이는 열 — 세로 중앙 기준. extras는 아래에 absolute로 붙여 중앙을 밀지 않음.
+  const primary = document.createElement('div');
+  primary.id = 'game-controls-primary';
+  dock.appendChild(primary);
+
   const pauseBtn = document.createElement('button');
   pauseBtn.id = 'pause-btn';
   pauseBtn.setAttribute('aria-label', '일시정지');
   pauseBtn.innerHTML = ICON_PAUSE;
-  dock.appendChild(pauseBtn);
+  primary.appendChild(pauseBtn);
   _pauseBtn = pauseBtn;
   bindTap(pauseBtn, () => _onPauseToggle?.());
 
-  // 전체화면: AIT(토스 WebView)에선 숨김. 웹(Vercel 등)에선 일시정지와 같이 항상 노출.
+  // 전체화면: AIT에선 숨김. 웹에선 일시정지와 같은 primary 열에 항상 노출.
   const docEl = document.documentElement as HTMLElement & {
     webkitRequestFullscreen?: () => Promise<void> | void;
   };
@@ -104,9 +114,9 @@ export function initGameControls(): void {
   if (canUseHtmlFullscreen) {
     const fsBtn = document.createElement('button');
     fsBtn.id = 'fs-btn';
-    fsBtn.setAttribute('aria-label', '전체화면 토글');
+    fsBtn.setAttribute('aria-label', '전체화면');
     fsBtn.innerHTML = ICON_FS;
-    dock.appendChild(fsBtn);
+    primary.appendChild(fsBtn);
 
     const isFs = (): boolean =>
       !!(document.fullscreenElement ||
@@ -143,12 +153,18 @@ export function initGameControls(): void {
     document.addEventListener('webkitfullscreenchange', updateFsIcon);
   }
 
+  const extras = document.createElement('div');
+  extras.id = 'game-controls-extras';
+  extras.style.display = 'none';
+  dock.appendChild(extras);
+  _extrasCol = extras;
+
   const muteBtn = document.createElement('button');
   muteBtn.id = 'mute-btn';
   muteBtn.setAttribute('aria-label', '음소거');
   muteBtn.style.display = 'none';
   muteBtn.innerHTML = ICON_VOLUME;
-  dock.appendChild(muteBtn);
+  extras.appendChild(muteBtn);
   _muteBtn = muteBtn;
   _pausedExtras.push(muteBtn);
   bindTap(muteBtn, () => _onMuteToggle?.());
@@ -158,7 +174,7 @@ export function initGameControls(): void {
   restartBtn.setAttribute('aria-label', '처음부터 다시하기');
   restartBtn.style.display = 'none';
   restartBtn.innerHTML = ICON_RESTART;
-  dock.appendChild(restartBtn);
+  extras.appendChild(restartBtn);
   _pausedExtras.push(restartBtn);
   bindTap(restartBtn, () => _onRestart?.());
 }
