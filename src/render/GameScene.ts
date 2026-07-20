@@ -40,8 +40,6 @@ import {
   DESIGN_W,
   DESIGN_H,
   GROUND_Y_PX,
-  HUD_RIGHT_CLEAR,
-  HUD_LEFT_PAD,
   HUD_TOP_PAD,
   HUD_BOTTOM_PAD,
   toScreenX,
@@ -5407,16 +5405,12 @@ export class GameScene extends Phaser.Scene {
       slotOfPanel[panelIdx] = slot;
     });
 
-    // 패널 가로 배치 — 우측은 토스 내비(X·더보기)+게임 컨트롤 열 예약, 넘치면 칩 스케일 다운.
-    const BASE_PW = 236;
-    const BASE_PG = 8;
-    const availW = DESIGN_W - HUD_LEFT_PAD - HUD_RIGHT_CLEAR;
-    const naturalW = panelCount * BASE_PW + (panelCount - 1) * BASE_PG;
-    const layoutScale = Math.min(1, availW / Math.max(1, naturalW));
-    const PW = BASE_PW * layoutScale;
-    const PG = BASE_PG * layoutScale;
+    // 패널 가로 배치 — DESIGN_W 기준 중앙 정렬로 좌우를 거의 채움 (4칩≈984/1040).
+    // 우측 컨트롤은 세로 중앙이라 칩 폭을 줄일 필요 없음.
+    const PW = 240,
+      PG = 8;
     const totalW = panelCount * PW + (panelCount - 1) * PG;
-    const startX = HUD_LEFT_PAD + (availW - totalW) / 2;
+    const startX = (DESIGN_W - totalW) / 2;
     // 라벨만 칩 열 왼쪽 여백에 맞춤 (콤보 띠지는 화면 왼쪽 끝 고정)
     this.rankHudLabel.setX(startX);
     // 표시 위치: 순위 슬롯을 좌우 반전 → 좌측이 하위(나), 우측이 1등
@@ -5429,7 +5423,7 @@ export class GameScene extends Phaser.Scene {
       panel.setVisible(active);
       if (!active) continue;
 
-      panel.setScale(layoutScale);
+      panel.setScale(1);
       const displaySlot = panelCount - 1 - slot!;
       const targetX = slotX(displaySlot);
       const dx = Math.abs(panel.x - targetX);
