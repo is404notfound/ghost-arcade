@@ -89,6 +89,7 @@ try {
   setBootLoadingStatus('게임 엔진 시작…');
   new Phaser.Game({
     type: Phaser.AUTO,
+    parent: 'game-root',
     // 레티나(DPR≥2) 대응: 백킹 캔버스를 물리 픽셀 크기로 확보하고, GameScene의
     // 메인 카메라 zoom = RENDER_DPR로 논리 좌표(1040×480)를 유지한다 (render/dpr.ts).
     // 과거 scale.zoom 방식은 CSS 크기만 바꿔 실제로는 저해상도 업스케일이었음.
@@ -103,10 +104,10 @@ try {
     roundPixels: false,
     // Phaser 물리는 안 쓴다 — 충돌/중력은 전부 src/sim/ 안 (D1)
     scale: {
-      // ENVELOP(cover): 화면을 빈틈없이 채움. FIT의 레터박스/필러박스는
-      // 앱인토스 풀스크린 기준(여백·검은 띠 금지)에 위배되어 사용하지 않음.
-      // 논리 해상도(1040×480)는 유지하고, 기기 비율 차는 가장자리 크롭으로 흡수.
-      mode: Phaser.Scale.ENVELOP,
+      // FIT: 논리 해상도 전체를 보여 Today's Rank·HP바·랭킹이 잘리지 않게 함.
+      // ENVELOP(cover)는 상·하를 잘라 인게임 HUD가 사라졌음.
+      // 남는 여백은 #game-root 하늘 톤 배경으로 채워 검은 레터박스를 피함.
+      mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
   });

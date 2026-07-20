@@ -40,6 +40,10 @@ import {
   DESIGN_W,
   DESIGN_H,
   GROUND_Y_PX,
+  HUD_RIGHT_CLEAR,
+  HUD_LEFT_PAD,
+  HUD_TOP_PAD,
+  HUD_BOTTOM_PAD,
   toScreenX,
   toScreenY,
   boxCenterScreenY,
@@ -1123,7 +1127,8 @@ export class GameScene extends Phaser.Scene {
     // 프레임 종횡비(hp-frame.png = 780×126 ≈ 6.19:1, 글로우 보존 prep)에 맞춰 barH 산출 → 왜곡 없음.
     const barW = 260;
     const barH = Math.round(barW * (126 / 780)); // ≈ 42
-    const barY = DESIGN_H - 24;
+    // 하단 inset — FIT에서도 홈 인디케이터·가장자리 클리핑에 HP가 안 먹히게
+    const barY = DESIGN_H - HUD_BOTTOM_PAD - Math.round(barH / 2);
     // 내부(투명 구멍) pad 측정값(780×126): 게이지 캐비티 ≈0.04~0.88 / 하트 구획 ≈0.90+.
     // fill은 하트 직전(구획선)까지만 — 하트 안은 비우고 아이콘만 보이게.
     // fill(depth 20) 위에 하트 포함 프레임(depth 21)이 겹쳐 자연스럽게 가려진다.
@@ -1285,9 +1290,10 @@ export class GameScene extends Phaser.Scene {
           align: "center",
         })
         .setOrigin(0.5, 0.5);
-      // y=38: 「Today's Rank」라벨(y≈6, ~14px) 아래 간격 확보 (이전 y=28은 라벨과 겹침)
+      // 「Today's Rank」라벨 아래 간격 — HUD_TOP_PAD로 상단 클리핑 방지
+      const chipY = HUD_TOP_PAD + 28;
       const container = this.add
-        .container(-9999, 38, [matte, bg, rim, txt])
+        .container(-9999, chipY, [matte, bg, rim, txt])
         .setDepth(22)
         .setVisible(false);
       this.rankPanels.push(container);
@@ -1296,7 +1302,7 @@ export class GameScene extends Phaser.Scene {
     }
     // 「👑 Today's Rank」 — 칩 열 왼쪽 위. x는 updateRankPanel에서 칩 startX에 맞춤.
     this.rankHudLabel = this.add
-      .text(0, 6, "👑 Today's Rank", {
+      .text(0, HUD_TOP_PAD, "👑 Today's Rank", {
         fontSize: "14px",
         fontFamily: FONT_HUD,
         color: NEON_YELLOW_HEX,
@@ -1314,8 +1320,9 @@ export class GameScene extends Phaser.Scene {
       const ribbonW = 128;
       const ribbonH = 52;
       const restX = 0; // 화면 왼쪽 끝 밀착 (여백 없음)
-      // 칩(y=38,h=48) 아래 여백을 더 줘서 랭킹과 간격 확보
-      const restY = 38 + 48 + 18 + ribbonH / 2;
+      // 칩 아래 여백 — 좌하단 DOM 컨트롤과도 간격 확보
+      const chipY = HUD_TOP_PAD + 28;
+      const restY = chipY + 48 + 18 + ribbonH / 2;
       this.comboRibbonBg = this.add
         .rectangle(0, 0, ribbonW, ribbonH, 0x060010, 0.88)
         .setOrigin(0, 0.5);
@@ -5396,11 +5403,17 @@ export class GameScene extends Phaser.Scene {
       slotOfPanel[panelIdx] = slot;
     });
 
-    // 패널 가로 배치 상수 (매 프레임 재계산 — total 변화 대응)
-    const PW = 240,
-      PG = 8;
+    // 패널 가로 배치 — 우측은 토스 내비(X·더보기) 예약폭을 비우고, 넘치면 칩 스케일 다운.
+    // (이전엔 DESIGN_W 중앙 정렬이라 1등 칩이 토스 버튼에 가려짐)
+    const BASE_PW = 236;
+    const BASE_PG = 8;
+    const availW = DESIGN_W - HUD_LEFT_PAD - HUD_RIGHT_CLEAR;
+    const naturalW = panelCount * BASE_PW + (panelCount - 1) * BASE_PG;
+    const layoutScale = Math.min(1, availW / Math.max(1, naturalW));
+    const PW = BASE_PW * layoutScale;
+    const PG = BASE_PG * layoutScale;
     const totalW = panelCount * PW + (panelCount - 1) * PG;
-    const startX = (DESIGN_W - totalW) / 2;
+    const startX = HUD_LEFT_PAD + (availW - totalW) / 2;
     // 라벨만 칩 열 왼쪽 여백에 맞춤 (콤보 띠지는 화면 왼쪽 끝 고정)
     this.rankHudLabel.setX(startX);
     // 표시 위치: 순위 슬롯을 좌우 반전 → 좌측이 하위(나), 우측이 1등
@@ -5413,6 +5426,7 @@ export class GameScene extends Phaser.Scene {
       panel.setVisible(active);
       if (!active) continue;
 
+      panel.setScale(layoutScale);
       const displaySlot = panelCount - 1 - slot!;
       const targetX = slotX(displaySlot);
       const dx = Math.abs(panel.x - targetX);
@@ -5423,6 +5437,8 @@ export class GameScene extends Phaser.Scene {
           duration: dx > 400 ? 350 : 650, // 초기 플라이인=빠름, 순위변경=느림
           ease: dx > 400 ? "Cubic.out" : "Back.out",
         });
+      } else if (dx <= 2) {
+        panel.x = targetX;
       }
     }
 

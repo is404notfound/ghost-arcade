@@ -1,7 +1,7 @@
 // 렌더 백킹 해상도 배율 (레티나 대응) — main.ts(게임 크기)와 GameScene(카메라 줌)이
 // 반드시 같은 값을 써야 해서 단일 모듈로 분리한다.
 //
-// 배경: Phaser Scale(FIT/ENVELOP)의 zoom 설정은 CSS 표시 크기만 바꾸고 캔버스 백킹
+// 배경: Phaser Scale.FIT의 zoom 설정은 CSS 표시 크기만 바꾸고 캔버스 백킹
 // 픽셀은 그대로다("the canvas pixel size remains untouched" — ScaleManager 소스).
 // 즉 zoom: DPR 방식은 효과가 없었고, 게임 전체가 1040×480으로 렌더된 뒤
 // 폰에서 2~3배 확대되어 텍스트가 뭉개졌다.

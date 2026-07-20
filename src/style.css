@@ -15,6 +15,7 @@ body {
   height: 100%;
   min-height: 100dvh;
   overflow: hidden;
+  /* 인게임 하늘과 같은 톤 — FIT 여백이 검은 레터박스로 읽히지 않게 */
   background: #1a1a2e;
   /* 터치 스크롤·줌·풀-투-리프레시 전부 차단 */
   touch-action: none;
@@ -25,17 +26,29 @@ body {
   -webkit-user-select: none;
 }
 
-canvas {
+/* Phaser 캔버스 부모 — 뷰포트 풀필 + 노을 그라데이션으로 여백 마감 */
+#game-root {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 100dvh;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 80% at 50% -10%, #3a1848 0%, transparent 55%),
+    linear-gradient(180deg, #2a1038 0%, #1a1a2e 42%, #120818 100%);
+}
+
+#game-root canvas {
   touch-action: none;
   display: block; /* inline 기본값이 만드는 하단 여백 제거 */
 }
 
-/* 전체화면 + 음소거/일시정지 등 DOM 버튼 — 우상단 고정 오버레이 (가로 나열) */
-/* Safe Area: 노치·Dynamic Island·게임 내비 X버튼과 겹치지 않게 inset 반영 */
+/* 음소거/일시정지 — 좌하단 (우상단 토스 X·더보기와 겹치지 않게) */
 #game-controls {
   position: fixed;
-  top: max(8px, env(safe-area-inset-top, 0px));
-  right: max(8px, env(safe-area-inset-right, 0px));
+  left: max(10px, env(safe-area-inset-left, 0px));
+  bottom: max(12px, env(safe-area-inset-bottom, 0px));
   z-index: 1000;
   display: flex;
   flex-direction: row;
