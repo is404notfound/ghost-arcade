@@ -15,6 +15,7 @@ import { runTestError } from './testErrors';
 import { maybeTriggerBug } from './experiment/bug-trigger';
 import { setBootLoadingStatus } from './bootLoading';
 import { lockLandscapeIfPossible } from './aitHost';
+import { initSafeArea } from './safeArea';
 
 // 검증용 의도적 에러 — Sentry/Seer 테스트. (검증 후 제거 가능)
 //   ?error=<type>  하나만 (type/range/reference/syntax/uri/custom/promise/async/manual/generic)
@@ -67,6 +68,8 @@ void (async () => {
   // 앱인토스: 폰트보다 먼저 가로 잠금 — 첫 레이아웃이 세로로 잡히면 FIT 레터박스가 꼬임.
   setBootLoadingStatus('화면 준비 중…');
   await lockLandscapeIfPossible();
+  // landscape 확정 뒤 Safe Area 구독 — CSS --safe-* + Phaser HUD 패드에 반영
+  await initSafeArea();
 
   try {
     setBootLoadingStatus('폰트 준비 중…');

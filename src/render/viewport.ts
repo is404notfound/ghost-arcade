@@ -17,9 +17,7 @@ export const DESIGN_W = WORLD_WIDTH; // 시뮬 월드 폭과 1:1 → x 변환은
 export const DESIGN_H = 480;
 export const GROUND_Y_PX = 432; // 지면 선의 화면 y (아래 48px는 바닥 띠)
 
-/** 토스 게임 내비(더보기·닫기 X)가 덮는 우측 예약 폭 (논리 px) */
-export const HUD_RIGHT_CLEAR = 128;
-/** HUD 좌·상·하 안쪽 여백 (논리 px) — 가장자리 클리핑·홈 인디케이터 대비 */
+/** HUD 좌·상·하 기본 여백 (논리 px). Safe Area 겹침분은 safeArea.getDesignSafePads로 가산 */
 export const HUD_LEFT_PAD = 12;
 export const HUD_TOP_PAD = 8;
 export const HUD_BOTTOM_PAD = 10;

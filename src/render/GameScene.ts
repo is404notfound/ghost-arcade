@@ -40,12 +40,14 @@ import {
   DESIGN_W,
   DESIGN_H,
   GROUND_Y_PX,
+  HUD_LEFT_PAD,
   HUD_TOP_PAD,
   HUD_BOTTOM_PAD,
   toScreenX,
   toScreenY,
   boxCenterScreenY,
 } from "./viewport";
+import { getDesignSafePads, onSafeInsetsChange } from "../safeArea";
 import {
   registerPauseToggle,
   setPauseButtonState,
@@ -730,6 +732,13 @@ export class GameScene extends Phaser.Scene {
   /** HP바 좌상단 — 포션 "HP+" 토스트 앵커 */
   private hpBarLeftX = 0;
   private hpBarTopY = 0;
+  private hpBarW = 260;
+  private hpBarH = 42;
+  private hpLFrac = 0.01;
+  private hpRFrac = 0.88;
+  private hpMaskGfx: Phaser.GameObjects.Graphics | null = null;
+  private _unsubSafeArea: (() => void) | null = null;
+  private _onScaleResize: (() => void) | null = null;
   // #11 가로형 랭킹 패널 — 상단, 3위 고스트(최종거리 고정) + 플레이어(실시간)
   // panel[0]=플레이어, panel[1]=G1, panel[2]=G2, panel[3]=G3 (컨테이너)
   private rankPanels: Phaser.GameObjects.Container[] = [];
@@ -1125,17 +1134,23 @@ export class GameScene extends Phaser.Scene {
     // 프레임 종횡비(hp-frame.png = 780×126 ≈ 6.19:1, 글로우 보존 prep)에 맞춰 barH 산출 → 왜곡 없음.
     const barW = 260;
     const barH = Math.round(barW * (126 / 780)); // ≈ 42
-    // 하단 inset — FIT에서도 홈 인디케이터·가장자리 클리핑에 HP가 안 먹히게
-    const barY = DESIGN_H - HUD_BOTTOM_PAD - Math.round(barH / 2);
+    this.hpBarW = barW;
+    this.hpBarH = barH;
+    this.hpLFrac = 0.01;
+    this.hpRFrac = 0.88;
+    // 하단 inset — 기본 패드 + Safe Area(캔버스 겹침분). layoutHudForSafeArea가 재배치.
+    const safe0 = getDesignSafePads(this.game.canvas);
+    const barY =
+      DESIGN_H - HUD_BOTTOM_PAD - safe0.bottom - Math.round(barH / 2);
     // 내부(투명 구멍) pad 측정값(780×126): 게이지 캐비티 ≈0.04~0.88 / 하트 구획 ≈0.90+.
     // fill은 하트 직전(구획선)까지만 — 하트 안은 비우고 아이콘만 보이게.
     // fill(depth 20) 위에 하트 포함 프레임(depth 21)이 겹쳐 자연스럽게 가려진다.
     // fill 시작을 마스크 좌측과 일치 → 좌측에 track(검정)이 새는 빈틈 없음.
     // 좌측 라운드 곡면까지 fill이 차게 — 0.04면 마스크가 직선으로 잘려 검정 틈이 남음.
     // 프레임(depth 21)이 시안 림을 덮으므로 fill이 림 밑으로 살짝 들어가도 안전.
-    const HP_L_FRAC = 0.01;
+    const HP_L_FRAC = this.hpLFrac;
     // 하트 구획(~0.90) 직전 — 만땅도 하트 밑까지 안 침범
-    const HP_R_FRAC = 0.88;
+    const HP_R_FRAC = this.hpRFrac;
     const HP_FILL_W = Math.round((HP_R_FRAC - HP_L_FRAC) * barW);
     const fillX = DESIGN_W / 2 - barW / 2 + Math.round(HP_L_FRAC * barW);
     // ★ 이전엔 16px 폭 텍스처를 ~14배 X-스트레치 → 늘어나며 대각선 밴딩 + 하단이 너무
@@ -1224,18 +1239,9 @@ export class GameScene extends Phaser.Scene {
     // ★ fill/track을 '깔끔한 라운드 사각형' geometry 마스크로 클립.
     //   마스크 세로를 barH×0.92로 키워 캐비티를 거의 채움(0.78이면 위·아래 어두운 띠 → 듬성듬성).
     //   가로도 테두리 안쪽까지. 넘침은 네온 프레임(depth 21)이 가림.
-    {
-      const mLeft = DESIGN_W / 2 - barW / 2 + barW * HP_L_FRAC;
-      const mRight = DESIGN_W / 2 - barW / 2 + barW * HP_R_FRAC;
-      const mW = mRight - mLeft;
-      const mH = Math.round(barH * 0.92);
-      const maskG = this.add.graphics().setVisible(false);
-      maskG.fillStyle(0xffffff, 1);
-      maskG.fillRoundedRect(mLeft, barY - mH / 2, mW, mH, Math.round(mH * 0.35));
-      const hpMask = maskG.createGeometryMask();
-      this.hpFill.setMask(hpMask);
-      this.hpTrack.setMask(hpMask);
-    }
+    //   Safe Area로 barY가 바뀌면 layoutHudForSafeArea가 마스크를 다시 그림.
+    this.hpMaskGfx = this.add.graphics().setVisible(false);
+    this.redrawHpMask(barY);
 
     // ── paceText/overtakeHudText: 랭킹 패널로 대체 → 투명으로 유지 ──
     this.paceText = this.add
@@ -1288,8 +1294,8 @@ export class GameScene extends Phaser.Scene {
           align: "center",
         })
         .setOrigin(0.5, 0.5);
-      // 「Today's Rank」라벨 아래 간격 — HUD_TOP_PAD로 상단 클리핑 방지
-      const chipY = HUD_TOP_PAD + 28;
+      // 「Today's Rank」라벨 아래 간격 — 기본 패드 + Safe Area top
+      const chipY = HUD_TOP_PAD + safe0.top + 28;
       const container = this.add
         .container(-9999, chipY, [matte, bg, rim, txt])
         .setDepth(22)
@@ -1300,7 +1306,7 @@ export class GameScene extends Phaser.Scene {
     }
     // 「👑 Today's Rank」 — 칩 열 왼쪽 위. x는 updateRankPanel에서 칩 startX에 맞춤.
     this.rankHudLabel = this.add
-      .text(0, HUD_TOP_PAD, "👑 Today's Rank", {
+      .text(0, HUD_TOP_PAD + safe0.top, "👑 Today's Rank", {
         fontSize: "14px",
         fontFamily: FONT_HUD,
         color: NEON_YELLOW_HEX,
@@ -1319,7 +1325,7 @@ export class GameScene extends Phaser.Scene {
       const ribbonH = 52;
       const restX = 0; // 화면 왼쪽 끝 밀착 (여백 없음)
       // 칩 아래 여백 — 좌하단 DOM 컨트롤과도 간격 확보
-      const chipY = HUD_TOP_PAD + 28;
+      const chipY = HUD_TOP_PAD + safe0.top + 28;
       const restY = chipY + 48 + 18 + ribbonH / 2;
       this.comboRibbonBg = this.add
         .rectangle(0, 0, ribbonW, ribbonH, 0x060010, 0.88)
@@ -1994,6 +2000,12 @@ export class GameScene extends Phaser.Scene {
     window.addEventListener("pointerdown", this._windowTapHandler, {
       passive: true,
     });
+    // Safe Area → HUD(top/right/bottom) 재배치. 구독·리사이즈 모두 동일 경로.
+    this.layoutHudForSafeArea();
+    this._unsubSafeArea = onSafeInsetsChange(() => this.layoutHudForSafeArea());
+    this._onScaleResize = () => this.layoutHudForSafeArea();
+    this.scale.on("resize", this._onScaleResize);
+
     this.events.once("shutdown", () => {
       window.removeEventListener("pointerdown", this._windowTapHandler);
       if (this._visibilityHandler) {
@@ -2003,6 +2015,14 @@ export class GameScene extends Phaser.Scene {
       if (this._pagehideHandler) {
         window.removeEventListener("pagehide", this._pagehideHandler);
         this._pagehideHandler = null;
+      }
+      if (this._unsubSafeArea) {
+        this._unsubSafeArea();
+        this._unsubSafeArea = null;
+      }
+      if (this._onScaleResize) {
+        this.scale.off("resize", this._onScaleResize);
+        this._onScaleResize = null;
       }
       this.stopAllBgm();
     });
@@ -5368,6 +5388,60 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** HP fill/track geometry 마스크를 barY에 맞춰 다시 그림 */
+  private redrawHpMask(barY: number): void {
+    if (!this.hpMaskGfx || !this.hpFill || !this.hpTrack) return;
+    const barW = this.hpBarW;
+    const barH = this.hpBarH;
+    const mLeft = DESIGN_W / 2 - barW / 2 + barW * this.hpLFrac;
+    const mRight = DESIGN_W / 2 - barW / 2 + barW * this.hpRFrac;
+    const mW = mRight - mLeft;
+    const mH = Math.round(barH * 0.92);
+    this.hpMaskGfx.clear();
+    this.hpMaskGfx.fillStyle(0xffffff, 1);
+    this.hpMaskGfx.fillRoundedRect(
+      mLeft,
+      barY - mH / 2,
+      mW,
+      mH,
+      Math.round(mH * 0.35),
+    );
+    const hpMask = this.hpMaskGfx.createGeometryMask();
+    this.hpFill.setMask(hpMask);
+    this.hpTrack.setMask(hpMask);
+  }
+
+  /**
+   * Safe Area(top/right/bottom) → Phaser HUD 재배치.
+   * CSS 변수는 initSafeArea가 갱신. 여기선 캔버스 겹침분만 논리 좌표로 가산.
+   */
+  private layoutHudForSafeArea(): void {
+    const safe = getDesignSafePads(this.game.canvas);
+    const top = HUD_TOP_PAD + safe.top;
+    const bottom = HUD_BOTTOM_PAD + safe.bottom;
+    const chipY = top + 28;
+
+    if (this.rankHudLabel) this.rankHudLabel.setY(top);
+    for (const p of this.rankPanels) p.setY(chipY);
+    if (this.comboRibbon) {
+      const ribbonH = 52;
+      this.comboRibbon.setY(chipY + 48 + 18 + ribbonH / 2);
+    }
+
+    if (this.hpFrame && this.hpFill && this.hpTrack && this.hpGlow) {
+      const barY = DESIGN_H - bottom - Math.round(this.hpBarH / 2);
+      this.hpTrack.setY(barY);
+      this.hpFill.setY(barY);
+      this.hpGlow.setY(barY);
+      this.hpFrame.setY(barY);
+      this.hpBarTopY = barY - this.hpBarH / 2;
+      this.redrawHpMask(barY);
+    }
+
+    // 우측 패드 반영 — 칩 X 재계산 (sim 준비 전 create 초반 호출 대비)
+    if (this.sim) this.updateRankPanel();
+  }
+
   // ─── #11 가로형 랭킹 패널 ────────────────────────────────────────────────────
   // panel[0]=플레이어, panel[1..3]=상위3고스트.
   // 순위 슬롯 0=1등 … 끝=꼴찌. 화면 배치는 역순(좌=나/하위 … 우=1등).
@@ -5405,12 +5479,18 @@ export class GameScene extends Phaser.Scene {
       slotOfPanel[panelIdx] = slot;
     });
 
-    // 패널 가로 배치 — DESIGN_W 기준 중앙 정렬로 좌우를 거의 채움 (4칩≈984/1040).
-    // 우측 컨트롤은 세로 중앙이라 칩 폭을 줄일 필요 없음.
-    const PW = 240,
-      PG = 8;
+    // 패널 가로 배치 — 가용 폭(좌 기본 패드 + 우측 Safe Area/X갭) 안 중앙.
+    // 넘치면 칩 스케일 다운. 우측은 문서상 X 좌표(safe.right+10) 겹침 방지.
+    const safe = getDesignSafePads(this.game.canvas);
+    const availW = Math.max(1, DESIGN_W - HUD_LEFT_PAD - safe.right);
+    const BASE_PW = 240;
+    const BASE_PG = 8;
+    const naturalW = panelCount * BASE_PW + (panelCount - 1) * BASE_PG;
+    const layoutScale = Math.min(1, availW / Math.max(1, naturalW));
+    const PW = BASE_PW * layoutScale;
+    const PG = BASE_PG * layoutScale;
     const totalW = panelCount * PW + (panelCount - 1) * PG;
-    const startX = (DESIGN_W - totalW) / 2;
+    const startX = HUD_LEFT_PAD + (availW - totalW) / 2;
     // 라벨만 칩 열 왼쪽 여백에 맞춤 (콤보 띠지는 화면 왼쪽 끝 고정)
     this.rankHudLabel.setX(startX);
     // 표시 위치: 순위 슬롯을 좌우 반전 → 좌측이 하위(나), 우측이 1등
@@ -5423,7 +5503,7 @@ export class GameScene extends Phaser.Scene {
       panel.setVisible(active);
       if (!active) continue;
 
-      panel.setScale(1);
+      panel.setScale(layoutScale);
       const displaySlot = panelCount - 1 - slot!;
       const targetX = slotX(displaySlot);
       const dx = Math.abs(panel.x - targetX);

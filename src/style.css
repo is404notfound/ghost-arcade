@@ -7,6 +7,14 @@
   font-display: swap;
 }
 
+:root {
+  /* initSafeArea()가 SafeAreaInsets / env 폴백으로 갱신 */
+  --safe-top: 0px;
+  --safe-right: 0px;
+  --safe-bottom: 0px;
+  --safe-left: 0px;
+}
+
 html,
 body {
   margin: 0;
@@ -51,7 +59,8 @@ body {
 #game-controls {
   position: fixed;
   top: 50%;
-  right: max(10px, calc(env(safe-area-inset-right, 0px) + 6px));
+  /* 문서: X 버튼 가로 = safe.right + 10 — 동일 우측 여백으로 겹침 방지 */
+  right: max(10px, calc(var(--safe-right, 0px) + 10px));
   z-index: 1000;
   display: flex;
   flex-direction: column;
