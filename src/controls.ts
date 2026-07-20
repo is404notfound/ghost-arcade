@@ -1,9 +1,9 @@
-// 일시정지 / 음소거 / 다시하기 DOM 버튼
+// 게임 컨트롤 DOM — 우상단, 앱인토스 UX(⋯·X) 바로 아래 세로 배치
 //
-//  - 일시정지(#pause-dock): 일일 랭킹 칩 열 우측에 붙임 — GameScene이 캔버스 좌표로 위치 동기화
-//  - 음소거·다시하기(#pause-menu): 일시정지 중에만, 중앙 || 아이콘 아래
-//  - pointerdown/click stopPropagation으로 게임 점프(window pointerdown)와 분리
-//  - 전체화면: 앱인토스 WebView / Fullscreen API 미지원 환경에선 숨김
+//  - 일시정지: 항상 (플레이 중)
+//  - 음소거·다시하기: 일시정지 중에만 같은 열에 이어서 표시
+//  - 아이콘은 이모지 대신 단색 SVG (토스 크롬·중앙 || 오버레이와 톤 맞춤)
+//  - pointerdown/click stopPropagation으로 게임 점프와 분리
 
 import { isAppsInTossHost } from './aitHost';
 
@@ -12,10 +12,16 @@ let _onRestart: (() => void) | null = null;
 let _onMuteToggle: (() => void) | null = null;
 let _pauseBtn: HTMLButtonElement | null = null;
 let _muteBtn: HTMLButtonElement | null = null;
-let _pauseDock: HTMLDivElement | null = null;
-let _pauseMenu: HTMLDivElement | null = null;
+let _pausedExtras: HTMLElement[] = [];
+let _dock: HTMLDivElement | null = null;
 
-const PAUSE_BTN_CSS = 40; // #pause-btn 한 변(px) — 도크 위치 계산과 공유
+const ICON_PAUSE = `<svg class="ctrl-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>`;
+const ICON_PLAY = `<svg class="ctrl-ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8 5.5v13l11-6.5L8 5.5z"/></svg>`;
+const ICON_VOLUME = `<svg class="ctrl-ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg>`;
+const ICON_VOLUME_OFF = `<svg class="ctrl-ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.5 12c0-1.8-1-3.3-2.5-4v2.2l2.5 2.5V12zm2.5 0c0 .9-.2 1.8-.5 2.6l1.5 1.5c.6-1.2 1-2.6 1-4.1 0-3.7-2.2-6.6-5.5-7.7v2.1c2.1 1 3.5 3.1 3.5 5.6zM4.3 3L3 4.3 7.7 9H3v6h4l5 5v-6.7l4.3 4.3 1.3-1.3L4.3 3zM12 4l-1.9 1.9L12 7.8V4z"/></svg>`;
+const ICON_RESTART = `<svg class="ctrl-ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 5V2L7.5 6.5 12 11V8c2.8 0 5 2.2 5 5a5 5 0 1 1-9.9-1H5a7 7 0 1 0 7-7z"/></svg>`;
+const ICON_FS = `<svg class="ctrl-ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9V4h5v2H6v3H4zm10-5h5v5h-2V6h-3V4zM4 15h2v3h3v2H4v-5zm16 5h-5v-2h3v-3h2v5z"/></svg>`;
+const ICON_FS_EXIT = `<svg class="ctrl-ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 4H4v5h2V6h3V4zm6 0v2h3v3h2V4h-5zM6 15H4v5h5v-2H6v-3zm14 0h-2v3h-3v2h5v-5z"/></svg>`;
 
 /** GameScene.create() 시 등록 — 일시정지 토글 핸들러 */
 export function registerPauseToggle(cb: () => void): void {
@@ -34,22 +40,22 @@ export function registerMuteToggle(cb: () => void): void {
 
 /** 일시정지 버튼 상태 갱신 (GameScene에서 호출) */
 export function setPauseButtonState(paused: boolean, visible: boolean): void {
-  if (!_pauseBtn || !_pauseDock) return;
-  _pauseBtn.textContent = paused ? '▶' : '⏸';
+  if (!_pauseBtn || !_dock) return;
+  _pauseBtn.innerHTML = paused ? ICON_PLAY : ICON_PAUSE;
   _pauseBtn.setAttribute('aria-label', paused ? '계속하기' : '일시정지');
-  _pauseDock.style.display = visible ? 'flex' : 'none';
+  _dock.style.display = visible ? 'flex' : 'none';
 }
 
 /**
- * 일시정지 전용 메뉴(음소거·다시하기) 표시.
- * 플레이 중에는 숨기고, 일시정지 오버레이(||) 아래에서만 노출한다.
+ * 일시정지 전용 버튼(음소거·다시하기) — 우상단 세로 열에서 pause 아래에만 노출.
  */
 export function setPausedMenuVisible(visible: boolean): void {
-  if (!_pauseMenu) return;
-  _pauseMenu.style.display = visible ? 'flex' : 'none';
+  for (const el of _pausedExtras) {
+    el.style.display = visible ? 'flex' : 'none';
+  }
 }
 
-/** @deprecated setPausedMenuVisible 사용 — 호환 래퍼 */
+/** @deprecated setPausedMenuVisible 호환 래퍼 */
 export function setRestartButtonVisible(visible: boolean): void {
   setPausedMenuVisible(visible);
 }
@@ -57,53 +63,35 @@ export function setRestartButtonVisible(visible: boolean): void {
 /** 음소거 버튼 아이콘 갱신 */
 export function setMuteButtonState(muted: boolean): void {
   if (!_muteBtn) return;
-  _muteBtn.textContent = muted ? '🔇' : '🔊';
+  _muteBtn.innerHTML = muted ? ICON_VOLUME_OFF : ICON_VOLUME;
   _muteBtn.setAttribute('aria-label', muted ? '소리 켜기' : '음소거');
 }
 
-/**
- * 일시정지 도크를 화면 CSS 좌표(버튼 중심)에 둔다.
- * GameScene이 랭킹 칩 우측 논리 좌표 → 캔버스 bounds로 변환해 호출.
- */
-export function setPauseDockScreenPos(cssCenterX: number, cssCenterY: number): void {
-  if (!_pauseDock) return;
-  _pauseDock.style.left = `${Math.round(cssCenterX)}px`;
-  _pauseDock.style.top = `${Math.round(cssCenterY)}px`;
-}
-
-export function getPauseButtonCssSize(): number {
-  return PAUSE_BTN_CSS;
+function bindTap(btn: HTMLButtonElement, onClick: () => void): void {
+  btn.addEventListener('pointerdown', (e: PointerEvent) => { e.stopPropagation(); });
+  btn.addEventListener('click', (e: MouseEvent) => {
+    e.stopPropagation();
+    onClick();
+  });
 }
 
 export function initGameControls(): void {
-  // ─── 랭킹 우측 일시정지 도크 ─────────────────────────────────
   const dock = document.createElement('div');
-  dock.id = 'pause-dock';
+  dock.id = 'game-controls';
   dock.style.display = 'flex';
   document.body.appendChild(dock);
-  _pauseDock = dock;
+  _dock = dock;
+  _pausedExtras = [];
 
   const pauseBtn = document.createElement('button');
   pauseBtn.id = 'pause-btn';
   pauseBtn.setAttribute('aria-label', '일시정지');
-  pauseBtn.textContent = '⏸';
+  pauseBtn.innerHTML = ICON_PAUSE;
   dock.appendChild(pauseBtn);
   _pauseBtn = pauseBtn;
+  bindTap(pauseBtn, () => _onPauseToggle?.());
 
-  pauseBtn.addEventListener('pointerdown', (e: PointerEvent) => { e.stopPropagation(); });
-  pauseBtn.addEventListener('click', (e: MouseEvent) => {
-    e.stopPropagation();
-    _onPauseToggle?.();
-  });
-
-  // ─── 일시정지 메뉴: 중앙 || 아이콘 아래 (음소거·다시하기[+전체화면]) ───
-  const menu = document.createElement('div');
-  menu.id = 'pause-menu';
-  menu.style.display = 'none';
-  document.body.appendChild(menu);
-  _pauseMenu = menu;
-
-  // 전체화면: 토스 WebView에선 숨김
+  // 전체화면: 토스 WebView에선 숨김 — 일시정지 열에만 노출
   const canUseHtmlFullscreen =
     !isAppsInTossHost() &&
     typeof document.documentElement.requestFullscreen === 'function';
@@ -112,16 +100,17 @@ export function initGameControls(): void {
     const fsBtn = document.createElement('button');
     fsBtn.id = 'fs-btn';
     fsBtn.setAttribute('aria-label', '전체화면 토글');
-    menu.appendChild(fsBtn);
+    fsBtn.style.display = 'none';
+    fsBtn.innerHTML = ICON_FS;
+    dock.appendChild(fsBtn);
+    _pausedExtras.push(fsBtn);
 
-    function updateFsIcon(): void {
-      fsBtn.textContent = document.fullscreenElement ? '⊠' : '⛶';
-    }
+    const updateFsIcon = (): void => {
+      fsBtn.innerHTML = document.fullscreenElement ? ICON_FS_EXIT : ICON_FS;
+    };
     updateFsIcon();
 
-    fsBtn.addEventListener('pointerdown', (e: PointerEvent) => { e.stopPropagation(); });
-    fsBtn.addEventListener('click', (e: MouseEvent) => {
-      e.stopPropagation();
+    bindTap(fsBtn, () => {
       void (async () => {
         try {
           if (document.fullscreenElement) {
@@ -129,7 +118,7 @@ export function initGameControls(): void {
           } else {
             await document.documentElement.requestFullscreen();
           }
-        } catch { /* 미지원 또는 권한 거부 — 무시 */ }
+        } catch { /* 미지원 또는 권한 거부 */ }
       })();
     });
     document.addEventListener('fullscreenchange', updateFsIcon);
@@ -138,25 +127,19 @@ export function initGameControls(): void {
   const muteBtn = document.createElement('button');
   muteBtn.id = 'mute-btn';
   muteBtn.setAttribute('aria-label', '음소거');
-  muteBtn.textContent = '🔊';
-  menu.appendChild(muteBtn);
+  muteBtn.style.display = 'none';
+  muteBtn.innerHTML = ICON_VOLUME;
+  dock.appendChild(muteBtn);
   _muteBtn = muteBtn;
-
-  muteBtn.addEventListener('pointerdown', (e: PointerEvent) => { e.stopPropagation(); });
-  muteBtn.addEventListener('click', (e: MouseEvent) => {
-    e.stopPropagation();
-    _onMuteToggle?.();
-  });
+  _pausedExtras.push(muteBtn);
+  bindTap(muteBtn, () => _onMuteToggle?.());
 
   const restartBtn = document.createElement('button');
   restartBtn.id = 'restart-btn';
   restartBtn.setAttribute('aria-label', '처음부터 다시하기');
-  restartBtn.textContent = '↺';
-  menu.appendChild(restartBtn);
-
-  restartBtn.addEventListener('pointerdown', (e: PointerEvent) => { e.stopPropagation(); });
-  restartBtn.addEventListener('click', (e: MouseEvent) => {
-    e.stopPropagation();
-    _onRestart?.();
-  });
+  restartBtn.style.display = 'none';
+  restartBtn.innerHTML = ICON_RESTART;
+  dock.appendChild(restartBtn);
+  _pausedExtras.push(restartBtn);
+  bindTap(restartBtn, () => _onRestart?.());
 }
