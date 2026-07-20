@@ -103,7 +103,10 @@ try {
     roundPixels: false,
     // Phaser 물리는 안 쓴다 — 충돌/중력은 전부 src/sim/ 안 (D1)
     scale: {
-      mode: Phaser.Scale.FIT, // CSS 표시는 FIT이 화면에 맞춤 (레터박스)
+      // ENVELOP(cover): 화면을 빈틈없이 채움. FIT의 레터박스/필러박스는
+      // 앱인토스 풀스크린 기준(여백·검은 띠 금지)에 위배되어 사용하지 않음.
+      // 논리 해상도(1040×480)는 유지하고, 기기 비율 차는 가장자리 크롭으로 흡수.
+      mode: Phaser.Scale.ENVELOP,
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
   });

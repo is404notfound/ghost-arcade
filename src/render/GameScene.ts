@@ -589,6 +589,10 @@ export class GameScene extends Phaser.Scene {
   private lifetimeRunIndexThisRun = 0; // 이번 판의 생애 누적 인덱스 — game_start/game_over 공유
   // 마지막 game_over 이후 탭이 백그라운드로 간 적 있는지(best-effort) — retry_latency_ms null 조건
   private wentBackgroundSinceLastGameOver = false;
+  /** visibility hidden으로 사운드를 강제 정지한 상태 — 복귀 시 선택적 resume */
+  private audioSuspendedByVisibility = false;
+  private _visibilityHandler: (() => void) | null = null;
+  private _pagehideHandler: (() => void) | null = null;
 
   // 결과 패널 딜레이 타이머 — 재시작 시 반드시 취소해야 새 게임 중에 패널이 안 뜸
   private resultPanelTimer: Phaser.Time.TimerEvent | null = null;
@@ -839,14 +843,27 @@ export class GameScene extends Phaser.Scene {
     // 논리 좌표계(1040×480)를 복원한다. 모든 씬 코드는 논리 좌표 그대로 사용.
     this.cameras.main.setZoom(RENDER_DPR).centerOn(DESIGN_W / 2, DESIGN_H / 2);
 
-    // retry_latency_ms용 best-effort 백그라운드 감지 (T6). 씬 생애주기 동안 1회만 등록 —
-    // 안 터지는 환경(토스 WebView 미검증, Open Q4)에서도 60초 상한이 backstop이 되므로 안전.
+    // 앱인토스: 백그라운드 전환 시 사운드 즉시 정지, 복귀 시 재생 재개.
+    // visibilitychange는 토스 WebView에서도 막히지 않음(커뮤니티 확인). pagehide는 보조.
+    // 동시에 retry_latency_ms용 wentBackground 플래그(T6)도 갱신.
     try {
-      document.addEventListener("visibilitychange", () => {
-        if (document.hidden) this.wentBackgroundSinceLastGameOver = true;
-      });
+      this._visibilityHandler = () => {
+        if (document.hidden) {
+          this.wentBackgroundSinceLastGameOver = true;
+          this.suspendAudioForBackground();
+        } else {
+          this.resumeAudioFromBackground();
+        }
+      };
+      this._pagehideHandler = () => {
+        // pagehide는 복귀 신호가 아님 — 정지 전용 (visibility보다 먼저 오는 WebView 대비)
+        this.wentBackgroundSinceLastGameOver = true;
+        this.suspendAudioForBackground();
+      };
+      document.addEventListener("visibilitychange", this._visibilityHandler);
+      window.addEventListener("pagehide", this._pagehideHandler);
     } catch {
-      // 계측 실패 ≠ 게임 크래시 — 리스너 등록 실패해도 게임은 정상 진행
+      // 계측/오디오 정책 실패 ≠ 게임 크래시
     }
 
     this.startRun();
@@ -1962,7 +1979,7 @@ export class GameScene extends Phaser.Scene {
     registerMuteToggle(() => this.toggleMute());
     this.applyMute(loadUserSettings().audio.muted);
 
-    // 화면 어디를 탭해도 점프 — 캔버스 밖 빈 공간(좌우 기둥)도 포함
+    // 화면 어디를 탭해도 점프 — ENVELOP 크롭 밖 DOM 영역 탭도 포함
     // #fs-btn은 pointerdown에서 stopPropagation → 이 핸들러까지 버블되지 않음
     this._windowTapHandler = () => {
       this.onTap();
@@ -1972,6 +1989,14 @@ export class GameScene extends Phaser.Scene {
     });
     this.events.once("shutdown", () => {
       window.removeEventListener("pointerdown", this._windowTapHandler);
+      if (this._visibilityHandler) {
+        document.removeEventListener("visibilitychange", this._visibilityHandler);
+        this._visibilityHandler = null;
+      }
+      if (this._pagehideHandler) {
+        window.removeEventListener("pagehide", this._pagehideHandler);
+        this._pagehideHandler = null;
+      }
       this.stopAllBgm();
     });
 
@@ -2650,6 +2675,75 @@ export class GameScene extends Phaser.Scene {
       this.bgmFever.volume = BGM_VOL_FEVER;
       this.bgmFever.resume();
     }
+  }
+
+  /**
+   * 미니앱 백그라운드 진입 — 사운드 즉시 정지.
+   * 페이드 트윈을 끊고 pauseAll로 BGM/SFX를 한꺼번에 멈춘다.
+   * (mute만 켜면 클럭이 돌아가 심사 기준 "즉시 종료"에 미달할 수 있음)
+   */
+  private suspendAudioForBackground(): void {
+    if (this.audioSuspendedByVisibility) return;
+    this.audioSuspendedByVisibility = true;
+    this.bgmFadeEpoch++; // 진행 중 페이드 onComplete가 다시 play하지 못하게
+    const tracks: Array<Phaser.Sound.BaseSound | null> = [
+      this.bgmMain,
+      this.bgmIntro,
+      this.bgmFever,
+      this.bgmGameover,
+      this.warnSiren,
+    ];
+    for (const snd of tracks) {
+      if (!snd) continue;
+      this.tweens.killTweensOf(snd);
+      if (snd.isPlaying) snd.pause();
+    }
+    try {
+      this.sound.pauseAll();
+    } catch {
+      /* SoundManager 미준비 — 개별 pause로 충분 */
+    }
+    // WebAudio가 백그라운드에서 계속 돌지 않도록 컨텍스트도 정지
+    const ctx = (this.sound as unknown as { context?: AudioContext }).context;
+    if (ctx && ctx.state === "running") {
+      void ctx.suspend().catch(() => {});
+    }
+  }
+
+  /**
+   * 포그라운드 복귀 — 유저 음소거/수동 일시정지가 아니면 사운드 재개.
+   * gamePaused면 플레이 BGM은 그대로 두고, 인트로·결과 BGM만 살린다.
+   */
+  private resumeAudioFromBackground(): void {
+    if (!this.audioSuspendedByVisibility) return;
+    this.audioSuspendedByVisibility = false;
+
+    const ctx = (this.sound as unknown as { context?: AudioContext }).context;
+    if (ctx && ctx.state === "suspended") {
+      void ctx.resume().catch(() => {});
+    }
+
+    // 유저가 음소거한 상태면 아무 소리도 내지 않음
+    if (this.sound.mute) return;
+
+    const resumeIfPaused = (snd: BgmSound | null, vol: number): void => {
+      if (!snd?.isPaused) return;
+      this.tweens.killTweensOf(snd);
+      snd.volume = vol;
+      snd.resume();
+    };
+
+    // 수동 일시정지·피버 튜토리얼: 플레이 BGM은 재개하지 않음
+    if (this.gamePaused) {
+      resumeIfPaused(this.bgmIntro, BGM_VOL_INTRO);
+      resumeIfPaused(this.bgmGameover, BGM_VOL_GAMEOVER);
+      return;
+    }
+
+    resumeIfPaused(this.bgmIntro, BGM_VOL_INTRO);
+    resumeIfPaused(this.bgmGameover, BGM_VOL_GAMEOVER);
+    if (this.warnSiren?.isPaused) this.warnSiren.resume();
+    this.resumePlayBgm();
   }
 
   private stopMainBgm(): void {

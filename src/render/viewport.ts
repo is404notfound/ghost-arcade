@@ -7,7 +7,7 @@
 //   ─────┴─────── y=0 (지면)            │ ──────────── y=GROUND_Y_PX
 //                                       ▼ y
 //
-// Phaser Scale.FIT가 물리 해상도를 알아서 맞추므로, 논리 좌표계는 항상
+// Phaser Scale.ENVELOP가 물리 해상도에 맞게 cover 스케일하므로, 논리 좌표계는 항상
 // DESIGN_W × DESIGN_H 고정 — 변환은 순수 함수로 충분하다.
 import { WORLD_WIDTH } from '../sim/constants';
 
