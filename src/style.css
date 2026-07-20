@@ -44,15 +44,30 @@ body {
   display: block; /* inline 기본값이 만드는 하단 여백 제거 */
 }
 
-/* 음소거/일시정지 — 좌하단 (우상단 토스 X·더보기와 겹치지 않게) */
-#game-controls {
+/* 일일 랭킹 칩 열 우측 — JS가 left/top(중심)을 캔버스 좌표로 맞춤 */
+#pause-dock {
   position: fixed;
-  left: max(10px, env(safe-area-inset-left, 0px));
-  bottom: max(12px, env(safe-area-inset-bottom, 0px));
   z-index: 1000;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+/* 일시정지 중만: 중앙 || 아이콘 아래 (음소거·다시하기) */
+#pause-menu {
+  position: fixed;
+  left: 50%;
+  top: 58%;
+  z-index: 1001;
+  display: none;
   flex-direction: row;
-  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
 }
 
 #fs-btn,
@@ -61,8 +76,8 @@ body {
 #restart-btn {
   width: 40px;
   height: 40px;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 7px;
   color: #ffffff;
   font-size: 20px;
@@ -75,6 +90,16 @@ body {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
   user-select: none;
+}
+
+#pause-menu #mute-btn,
+#pause-menu #restart-btn,
+#pause-menu #fs-btn {
+  width: 48px;
+  height: 48px;
+  font-size: 22px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.62);
 }
 
 /* 다시하기 버튼: 시안 네온 테두리로 구분 */

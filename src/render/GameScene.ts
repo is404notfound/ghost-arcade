@@ -52,9 +52,11 @@ import {
   registerPauseToggle,
   setPauseButtonState,
   registerRestart,
-  setRestartButtonVisible,
+  setPausedMenuVisible,
   registerMuteToggle,
   setMuteButtonState,
+  setPauseDockScreenPos,
+  getPauseButtonCssSize,
 } from "../controls";
 import { loadUserSettings, saveUserSettings } from "../data/UserSettings";
 import { dismissBootLoading, setBootLoadingStatus } from "../bootLoading";
@@ -632,6 +634,14 @@ export class GameScene extends Phaser.Scene {
   /** stale 페이드 onComplete 무시용 — 트랙 전환 시 증가 */
   private bgmFadeEpoch = 0;
   private pauseOverlay!: Phaser.GameObjects.Container;
+  /** 랭킹 칩 레이아웃 — 일시정지 도크를 칩 우측에 붙이기 위한 캐시 */
+  private rankDockLayout: {
+    startX: number;
+    totalW: number;
+    chipY: number;
+    layoutScale: number;
+    chipsVisible: boolean;
+  } | null = null;
   private _windowTapHandler!: () => void;
   private feverOverlay!: Phaser.GameObjects.Rectangle; // 피버 중 warm tint 레이어
   private infiniteJumpText!: Phaser.GameObjects.Text; // 피버 중 "클릭시 무한 회복!" 안내
@@ -1975,16 +1985,20 @@ export class GameScene extends Phaser.Scene {
     registerPauseToggle(() => {
       this.togglePause();
     });
-    // 다시하기 버튼 — 일시정지 중에만 보임. startRun(true) 호출 + 오버레이 닫기.
+    // 다시하기 — 일시정지 메뉴에서만 노출. startRun + 오버레이/메뉴 닫기.
     registerRestart(() => {
       this.pauseOverlay.setVisible(false);
       this.gamePaused = false;
-      setRestartButtonVisible(false);
+      setPausedMenuVisible(false);
+      setPauseButtonState(false, true);
       this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
       this.startRun("pause"); // 생존 중 재시작 — game_over 없었으므로 death-retry와 분리(F2)
     });
     registerMuteToggle(() => this.toggleMute());
     this.applyMute(loadUserSettings().audio.muted);
+    setPausedMenuVisible(false);
+    this.syncPauseDockPosition();
+    this.scale.on("resize", () => this.syncPauseDockPosition());
 
     // 화면 어디를 탭해도 점프 — ENVELOP 크롭 밖 DOM 영역 탭도 포함
     // #fs-btn은 pointerdown에서 stopPropagation → 이 핸들러까지 버블되지 않음
@@ -2103,8 +2117,8 @@ export class GameScene extends Phaser.Scene {
       this.resultPanelTimer.remove(false);
       this.resultPanelTimer = null;
     }
-    // 재시작 시 다시하기 버튼 반드시 숨김 (일시정지 해제 경로와 별도)
-    setRestartButtonVisible(false);
+    // 재시작 시 일시정지 메뉴 반드시 숨김
+    setPausedMenuVisible(false);
     // 플레이어 사망 페이드 리셋 — 잔여 트윈 제거 + alpha/visible 모두 복원.
     // (사망 페이드 onComplete가 setVisible(false)를 남기므로 visible 복원 필수)
     this.playerDeadFadeStarted = false;
@@ -2313,6 +2327,8 @@ export class GameScene extends Phaser.Scene {
     if (this.youDiedText) this.youDiedText.setVisible(false);
     if (this.pauseOverlay) this.pauseOverlay.setVisible(false);
     setPauseButtonState(false, true);
+    setPausedMenuVisible(false);
+    this.syncPauseDockPosition();
     // 매 판 인트로 표시 (재시도 포함). create() 초반엔 introOverlay가 아직 없을 수 있음.
     if (this.introOverlay) {
       this.beginIntro();
@@ -2975,8 +2991,40 @@ export class GameScene extends Phaser.Scene {
     }
     this.pauseOverlay.setVisible(this.gamePaused);
     setPauseButtonState(this.gamePaused, true);
-    // 일시정지 진입 시 다시하기 버튼 표시, 해제 시 숨김
-    setRestartButtonVisible(this.gamePaused);
+    // 음소거·다시하기는 일시정지 중·중앙 || 아래에서만
+    setPausedMenuVisible(this.gamePaused);
+  }
+
+  /**
+   * 일시정지 도크를 일일 랭킹 칩 열 우측에 맞춘다.
+   * 칩이 없으면 토스 내비 왼쪽(우측 예약폭 안) 기본 위치에 둔다.
+   */
+  private syncPauseDockPosition(): void {
+    const bounds = this.scale.canvasBounds;
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) return;
+
+    const sx = bounds.width / DESIGN_W;
+    const sy = bounds.height / DESIGN_H;
+    const btnHalfLogical = getPauseButtonCssSize() / 2 / sx;
+    const chipY = HUD_TOP_PAD + 28;
+    const chipH = 48;
+
+    let logicalX: number;
+    let logicalY: number;
+    const layout = this.rankDockLayout;
+    if (layout?.chipsVisible) {
+      // 칩 열 오른쪽 + 작은 간격 + 버튼 중심
+      logicalX = layout.startX + layout.totalW + 8 + btnHalfLogical;
+      logicalY = layout.chipY + (chipH * layout.layoutScale) / 2;
+      // 토스 X 영역으로 밀려 들어가지 않게 클램프
+      const maxX = DESIGN_W - HUD_RIGHT_CLEAR + btnHalfLogical * 0.25;
+      logicalX = Math.min(logicalX, maxX);
+    } else {
+      logicalX = DESIGN_W - HUD_RIGHT_CLEAR - btnHalfLogical - 4;
+      logicalY = chipY + chipH / 2;
+    }
+
+    setPauseDockScreenPos(bounds.left + logicalX * sx, bounds.top + logicalY * sy);
   }
 
   update(_time: number, delta: number) {
@@ -3100,6 +3148,7 @@ export class GameScene extends Phaser.Scene {
         this.pausePlayBgm(); // 메인+피버 일시정지 (튜토리얼 닫으면 resume)
         this.feverTutorial.setVisible(true);
         setPauseButtonState(false, false); // 튜토리얼 중 일시정지 버튼 숨김
+        setPausedMenuVisible(false);
         if (this.feverContinueBtn) {
           this.tweens.killTweensOf(this.feverContinueBtn);
           this.feverContinueBtn.setAlpha(1);
@@ -3123,7 +3172,7 @@ export class GameScene extends Phaser.Scene {
       // 메인/피버 → 결과 BGM 크로스페이드 (한 판 더 여운)
       this.startGameoverBgm();
       setPauseButtonState(false, false); // 게임오버 → 일시정지 버튼 숨김
-      setRestartButtonVisible(false); // 게임오버 → 다시하기 버튼도 숨김
+      setPausedMenuVisible(false); // 게임오버 → 일시정지 메뉴도 숨김
       const myDist = this.sim.state.distance;
       const { death_cause, death_obstacle_height, speed_at_death } = deriveDeathCause(
         this.sim.state,
@@ -5381,6 +5430,14 @@ export class GameScene extends Phaser.Scene {
     if (n === 0 || s.gameOver) {
       for (const p of this.rankPanels) p.setVisible(false);
       this.rankHudLabel.setVisible(false);
+      this.rankDockLayout = {
+        startX: HUD_LEFT_PAD,
+        totalW: 0,
+        chipY: HUD_TOP_PAD + 28,
+        layoutScale: 1,
+        chipsVisible: false,
+      };
+      this.syncPauseDockPosition();
       return;
     }
     this.rankHudLabel.setVisible(true);
@@ -5403,17 +5460,27 @@ export class GameScene extends Phaser.Scene {
       slotOfPanel[panelIdx] = slot;
     });
 
-    // 패널 가로 배치 — 우측은 토스 내비(X·더보기) 예약폭을 비우고, 넘치면 칩 스케일 다운.
-    // (이전엔 DESIGN_W 중앙 정렬이라 1등 칩이 토스 버튼에 가려짐)
+    // 패널 가로 배치 — 우측: 토스 내비 예약 + 일시정지 도크 슬롯, 넘치면 칩 스케일 다운.
     const BASE_PW = 236;
     const BASE_PG = 8;
-    const availW = DESIGN_W - HUD_LEFT_PAD - HUD_RIGHT_CLEAR;
+    const PAUSE_SLOT = 52; // 칩 열과 토스 X 사이 일시정지 버튼 자리
+    const availW = DESIGN_W - HUD_LEFT_PAD - HUD_RIGHT_CLEAR - PAUSE_SLOT;
     const naturalW = panelCount * BASE_PW + (panelCount - 1) * BASE_PG;
     const layoutScale = Math.min(1, availW / Math.max(1, naturalW));
     const PW = BASE_PW * layoutScale;
     const PG = BASE_PG * layoutScale;
     const totalW = panelCount * PW + (panelCount - 1) * PG;
-    const startX = HUD_LEFT_PAD + (availW - totalW) / 2;
+    // 칩은 왼쪽 패딩부터 붙이고, 남는 오른쪽은 일시정지 도크용
+    const startX = HUD_LEFT_PAD;
+    const chipY = HUD_TOP_PAD + 28;
+    this.rankDockLayout = {
+      startX,
+      totalW,
+      chipY,
+      layoutScale,
+      chipsVisible: true,
+    };
+    this.syncPauseDockPosition();
     // 라벨만 칩 열 왼쪽 여백에 맞춤 (콤보 띠지는 화면 왼쪽 끝 고정)
     this.rankHudLabel.setX(startX);
     // 표시 위치: 순위 슬롯을 좌우 반전 → 좌측이 하위(나), 우측이 1등
