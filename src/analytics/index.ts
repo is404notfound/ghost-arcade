@@ -66,6 +66,25 @@ export function track(
 }
 
 /**
+ * PostHog distinct_id를 우리 영속 익명 UUID(identity.getUserId)로 고정한다.
+ *
+ * 왜: 기본값은 PostHog가 발급하는 디바이스 단위 익명 ID라, Supabase(ghost_runs·
+ * event_mirror)가 쓰는 우리 user_id와 키가 달라 크로스소스 조인·리텐션 측정이 끊긴다.
+ * identify로 distinct_id = user_id로 통일하면 PostHog 리텐션/코호트가 우리 유저 기준으로
+ * 잡히고, 세 소스(PostHog·Supabase·토스)를 같은 키로 이어붙일 수 있다.
+ *
+ * initAnalytics 직후 1회 호출. 계측 비활성(키 없음) 시 no-op.
+ */
+export function identifyUser(userId: string): void {
+  if (!_enabled || !userId) return;
+  try {
+    posthog.identify(userId, { user_id: userId });
+  } catch {
+    // 계측 실패 ≠ 게임 크래시
+  }
+}
+
+/**
  * Person property를 최초 1회만 설정($set_once 의미론). 이미 값이 있으면 덮어쓰지 않는다.
  * 용도 예: first_played_at.
  */

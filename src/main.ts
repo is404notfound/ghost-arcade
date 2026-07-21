@@ -8,7 +8,8 @@ import { DESIGN_W, DESIGN_H } from './render/viewport';
 import { RENDER_DPR } from './render/dpr';
 import { dailySeed } from './dailySeed';
 import { initGameControls } from './controls';
-import { initAnalytics } from './analytics';
+import { initAnalytics, identifyUser } from './analytics';
+import { getUserId } from './identity';
 import { initHeartbeat } from './heartbeat';
 import { loadRemoteConfig } from './remoteConfig';
 import { runTestError } from './testErrors';
@@ -54,6 +55,9 @@ if (import.meta.env.DEV) {
 }
 
 initAnalytics();
+// PostHog distinct_id를 우리 영속 UUID로 고정 — Supabase·토스와 같은 키로 조인/리텐션 측정.
+// initAnalytics 직후여야 이후 모든 capture가 이 신원으로 귀속된다.
+identifyUser(getUserId(window.localStorage));
 // 비정상 종료 탐지 — initAnalytics 직후여야 직전 세션의 abnormal_exit을 놓치지 않는다
 initHeartbeat();
 // 원격 킬스위치 — 비차단 로드, 실패 시 코드 기본값 (플레이북 §0)
