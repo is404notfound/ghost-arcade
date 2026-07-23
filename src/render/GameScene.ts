@@ -5171,9 +5171,9 @@ export class GameScene extends Phaser.Scene {
       "잠깐... 아니 잠깐만!",
       "이럴 수가!!",
     ];
-    // 죽은 위치(m)를 앞에 붙여 "여기까지 왔다"가 한눈에 읽히게.
+    // [경쟁자] + 죽은 위치(m) — 고스트 대사임을 태그로 구분.
     const phrase = phrases[Math.floor(Math.random() * phrases.length)]!;
-    const msg = `${Math.floor(meters).toLocaleString()}m, ${phrase}`;
+    const msg = `[경쟁자] ${Math.floor(meters).toLocaleString()}m, ${phrase}`;
     const label = this.add
       .text(0, 0, msg, {
         fontSize: "17px", // 거리 접두 포함이라 14→17로 키워 가독성↑
@@ -5222,8 +5222,7 @@ export class GameScene extends Phaser.Scene {
       "전설은 포기하지 않는 자의 것!",
       "이 질주의 끝에서\n새로운 새벽을 만나자",
     ];
-    // '나:' 접두로 주인공 대사임을 고스트 말풍선과 구분.
-    const msg = `나: ${lines[Math.floor(Math.random() * lines.length)]!}`;
+    const msg = lines[Math.floor(Math.random() * lines.length)]!;
 
     const label = this.add
       .text(0, 0, msg, {
