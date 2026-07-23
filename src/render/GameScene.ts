@@ -3020,8 +3020,9 @@ export class GameScene extends Phaser.Scene {
     seed: number,
     allowRemoteUpload = true,
   ): Promise<void> {
-    // r3 = 봇 로그에 티어 기반 meta.nickname 부여 세대 — 일간·주간 이름 일치를 위해 재생성
-    const flagKey = `ga:bots:v${SIM_VERSION}-r3:${seed}`;
+    // r4 = 봇 천장 하향(BOT_TARGETS_M 4000 캡) 세대 — 구 티어 로컬 봇을 강제 재시딩.
+    // (r3 = 티어 기반 meta.nickname 부여 세대. 세대 올릴 때마다 기존 로컬 봇 재생성.)
+    const flagKey = `ga:bots:v${SIM_VERSION}-r4:${seed}`;
     try {
       if (window.localStorage.getItem(flagKey)) return;
     } catch {

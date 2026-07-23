@@ -110,15 +110,21 @@ describe('recordReactiveBotRun', () => {
   });
 });
 
-describe('recordAllBotRuns — 장거리 커버리지', () => {
-  // 시드 특이 구간이 있어도 장거리 경쟁자가 보장되는지 — 시드별로 검증
+describe('recordAllBotRuns — 커버리지 & 천장', () => {
+  // 시드 특이 구간이 있어도 (a)도전할 상위권 (b)중위권 경쟁자가 보장되는지 검증.
+  // 천장은 실유저 p90(~3918m) 근처로 하향됨 — 신규가 한 달 안에 넘을 수 있게.
   it.each([3061741561, 20240101, 42])(
-    '시드 %i: 최소 2봇이 3000m 이상, 최고 봇은 이상치 상한 미만',
+    '시드 %i: 최고 봇은 도달가능한 천장(≈p90, 봇 벽 아님) & 중위권 경쟁자 존재',
     async (s) => {
       const { recordAllBotRuns } = await getBotRecorder();
       const distances = recordAllBotRuns(s).map((r) => r.distance);
 
-      expect(distances.filter((d) => d >= 3000).length).toBeGreaterThanOrEqual(2);
+      // 최고 봇 = 도전할 만한 상위권(2800m↑)이되, 구 봇 벽(~5923m)이 아닌 도달가능 천장.
+      // 상한은 천장 하향(4000 캡) 회귀 가드 — 지터 최대(×1.15≈4600)에도 5500 미만.
+      expect(distances[0]!).toBeGreaterThanOrEqual(2800);
+      expect(distances[0]!).toBeLessThan(5500);
+      // 중위권 경쟁자(1500m↑)가 최소 2봇 — 사다리·일간 보드가 초보만으로 채워지지 않게.
+      expect(distances.filter((d) => d >= 1500).length).toBeGreaterThanOrEqual(2);
       // 이상치 필터(remoteStore DISTANCE_OUTLIER_CEILING ≈ 19,800m)에 안 걸려야 서버에 저장된다
       expect(distances[0]!).toBeLessThan(19_000);
     },
