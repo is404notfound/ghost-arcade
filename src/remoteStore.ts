@@ -8,8 +8,15 @@
 import * as Sentry from '@sentry/browser';
 import { getSupabaseClient } from './supabaseClient';
 import { SIM_VERSION, parseLog, type InputLog, type RunMeta } from './sim/inputLog';
-import { GHOST_TOP_N, type GhostRecord } from './ghostStore';
+import { type GhostRecord } from './ghostStore';
 import { SPEED_MAX, UNITS_PER_METER } from './sim/constants';
+
+// 고스트 필드 풀 크기 — top-8이 아니라 "실력 사다리"(selectLadder)를 뽑을 넓은 풀을
+// 가져온다. 사다리는 풀 전체에 퍼진 백분위를 골라 신규도 넘을 수 있는 하단 발판을
+// 확보하는데, top-8만 받으면 전부 최고 기록이라 사다리를 만들 저거리 표본이 없다.
+// 현재 시드별 일일 판 수(<수백)는 이 값으로 사실상 전량 커버. 일 볼륨이 폭증하면
+// 서버측 백분위 샘플링(RPC)으로 옮겨야 한다 — 그때까지 distance 내림차순 상위 풀로 근사.
+const LADDER_POOL_N = 150;
 
 // 물리 상한: SPEED_MAX(660) / UNITS_PER_METER(30) = 22m/s × 900초(15분) ≈ 19,800m
 // HP 드레인으로 실제 달성 불가능한 값 — 명백한 치트만 걸러낸다
@@ -33,7 +40,8 @@ function isMissingColumnError(e: unknown): boolean {
 }
 
 /**
- * 오늘 시드 기준 원격 상위 N 기록을 가져온다.
+ * 오늘 시드 기준 원격 기록 풀(거리 내림차순 상위 LADDER_POOL_N)을 가져온다.
+ * 호출부가 selectLadder로 사다리를 뽑거나(필드) top-N을 자름(랭킹).
  * Supabase 미설정이거나 네트워크 장애 시 [] 반환 — 호출부가 localStorage로 폴백.
  */
 export async function loadTopRunsRemote(seed: number): Promise<GhostRecord[]> {
@@ -54,7 +62,7 @@ export async function loadTopRunsRemote(seed: number): Promise<GhostRecord[]> {
         .eq('seed', seed)
         .eq('sim_version', SIM_VERSION)
         .order('distance', { ascending: false })
-        .limit(GHOST_TOP_N)
+        .limit(LADDER_POOL_N)
         .abortSignal(controller.signal) as unknown as Promise<{
         data: DbRow[] | null;
         error: unknown;

@@ -26,6 +26,35 @@ export interface GhostRecord {
   log: InputLog;
 }
 
+/**
+ * 거리 내림차순 정렬된 기록 풀에서 N개를 "실력 사다리"로 뽑는다.
+ * idx=0 → 최장 기록(목표로 남는 엘리트), 마지막 → 하위 발판(신규도 넘을 수 있음).
+ *
+ * 배경: 필드를 "거리순 상위 N개"로 채우면 항상 최고 기록만 모여, 신규 유저는
+ * 구조적으로 아무도 못 이긴다(라이브 데이터: 74% 판이 0제침). 대신 풀 전체에
+ * 고르게 퍼진 백분위를 뽑으면 초반 제침이 열리고, 인구가 늘수록 사다리가 자동
+ * 재조정된다(렌더/데이터 레이어 — SIM_VERSION 무관).
+ *
+ * 하단은 최저점(즉사 fluke) 대신 ~하위 8% 지점에서 멈춰 극단값을 피한다.
+ * 풀이 N 이하면 그대로 반환(사다리 만들 표본 부족 — 콜드스타트 봇 보충 대상).
+ */
+export function selectLadder<T>(sortedDesc: readonly T[], n: number): T[] {
+  const len = sortedDesc.length;
+  if (len <= n || n <= 0) return sortedDesc.slice(0, Math.max(0, n));
+  const BOTTOM = 0.92; // 마지막 발판 위치 = 상단에서 92% 지점(=하위 8%), 극단 회피
+  const out: T[] = [];
+  let prev = -1;
+  for (let i = 0; i < n; i++) {
+    const t = n === 1 ? 0 : (i / (n - 1)) * BOTTOM;
+    let idx = Math.round(t * (len - 1));
+    if (idx <= prev) idx = prev + 1; // 작은 풀에서 인덱스 겹침 방지(엄격 증가)
+    if (idx > len - 1) idx = len - 1;
+    out.push(sortedDesc[idx]!);
+    prev = idx;
+  }
+  return out;
+}
+
 export function ghostKey(seed: number): string {
   return `ga:ghost:v${SIM_VERSION}:${seed}`;
 }

@@ -22,6 +22,7 @@ import { dailySeed } from "../dailySeed";
 import {
   saveRun,
   loadTopRuns,
+  selectLadder,
   GHOST_TOP_N,
   type GhostRecord,
 } from "../ghostStore";
@@ -2061,7 +2062,8 @@ export class GameScene extends Phaser.Scene {
    * 같은 필드에서 경쟁한다 → 봇 기록이 유저보다 높으면 자연히 상단 랭킹에 노출.
    * 봇 로그는 시드별 결정론이라 원격·로컬 양쪽에 같은 사본이 있을 수 있어 dedup.
    */
-  private mergeGhostRecords(
+  /** 원격+로컬을 dedup + 거리 내림차순 정렬한 "전체 풀"(상한 없음). */
+  private mergePool(
     remote: GhostRecord[],
     local: GhostRecord[],
   ): GhostRecord[] {
@@ -2076,7 +2078,31 @@ export class GameScene extends Phaser.Scene {
       out.push(r);
     }
     out.sort((a, b) => b.distance - a.distance);
-    return out.slice(0, GHOST_TOP_N);
+    return out;
+  }
+
+  /** 랭킹/보드용 — 풀의 거리순 상위 N개. (인게임 필드는 applyGhostLadder를 쓴다) */
+  private mergeGhostRecords(
+    remote: GhostRecord[],
+    local: GhostRecord[],
+  ): GhostRecord[] {
+    return this.mergePool(remote, local).slice(0, GHOST_TOP_N);
+  }
+
+  /**
+   * 인게임 고스트 필드 조립 — 풀에서 "실력 사다리"(selectLadder)를 뽑아 세운다.
+   * 상단 칩(top3)은 사다리가 아니라 풀의 진짜 최상위 리더보드로 캐시한다
+   * (applyGhostField가 필드 기준 top3를 덮으므로 그 뒤에 재설정).
+   * 반환값은 병합 풀 — 호출부가 콜드스타트 보충 여부(pool.length<N) 판단에 쓴다.
+   */
+  private applyGhostLadder(
+    remote: GhostRecord[],
+    local: GhostRecord[],
+  ): GhostRecord[] {
+    const pool = this.mergePool(remote, local);
+    this.applyGhostField(selectLadder(pool, GHOST_TOP_N));
+    this.cacheTop3FromRecords(pool);
+    return pool;
   }
 
   /** 고스트 레코드 배열을 현재 세션 필드(ghosts/distances/top3)에 반영. */
@@ -2137,10 +2163,10 @@ export class GameScene extends Phaser.Scene {
     this.log = createInputLog(this.seed);
     this.timestep = new FixedTimestep(C.DT * 1000);
 
-    // 원격(타 유저) + 로컬(봇/셀프)을 병합해 거리순 상위 N → 봇이 유저보다 높으면 상단 노출.
+    // 원격(타 유저) + 로컬(봇/셀프)을 병합 → "실력 사다리"로 필드 구성.
+    // (거리순 top-N이 아니라 백분위 사다리라 신규도 하단 발판을 넘을 수 있음)
     const localRecords = loadTopRuns(window.localStorage, this.seed);
-    const merged = this.mergeGhostRecords(this.remoteRuns, localRecords);
-    this.applyGhostField(merged);
+    this.applyGhostLadder(this.remoteRuns, localRecords);
     this.overtakenLive = 0;
     this.spectating = false;
     this.prevCombo = 0;
@@ -2211,24 +2237,25 @@ export class GameScene extends Phaser.Scene {
       this.remoteRuns = remote;
       // 로컬을 다시 읽어 봇 콜드스타트 직후 저장분도 포함
       const localNow = loadTopRuns(window.localStorage, currentSeed);
-      const freshMerged = this.mergeGhostRecords(remote, localNow);
+      const pool = this.mergePool(remote, localNow);
       if (this.seed !== currentSeed || this.sim.state.gameOver) return;
 
-      // ★ 실시간 칩 닉/거리는 항상 원격+로컬 병합 결과로 갱신.
+      // 고스트가 아직 없거나 초반이면 필드 자체도 사다리로 교체
+      if (
+        pool.length > 0 &&
+        (this.ghosts.length === 0 || this.sim.state.frame < C.SIM_FPS * 3)
+      ) {
+        this.applyGhostField(selectLadder(pool, GHOST_TOP_N));
+      }
+      // ★ 실시간 칩 닉/거리는 항상 풀의 진짜 top3로 갱신 (사다리 아님).
+      //   applyGhostField가 필드 기준 top3를 덮으므로 반드시 그 뒤에 호출.
       //   예전엔 ghosts.length===0 일 때만 applyGhostField 해서, 로컬 셀프 고스트만
       //   있으면(전부 같은 내 닉) 칩이 "시안매-12"로 도배되고 게임오버 패널(원격/봇
       //   이름)과 어긋났다.
-      this.cacheTop3FromRecords(freshMerged);
+      this.cacheTop3FromRecords(pool);
 
-      // 고스트가 아직 없거나 초반이면 필드 자체도 원격 병합본으로 교체
-      if (
-        freshMerged.length > 0 &&
-        (this.ghosts.length === 0 || this.sim.state.frame < C.SIM_FPS * 3)
-      ) {
-        this.applyGhostField(freshMerged);
-      }
-      // 병합 필드가 N보다 적으면 봇으로 보충
-      if (freshMerged.length < GHOST_TOP_N) {
+      // 병합 풀이 N보다 적으면 봇으로 보충
+      if (pool.length < GHOST_TOP_N) {
         void this.uploadBotColdStart(currentSeed, remote.length === 0);
       }
     });
@@ -2932,8 +2959,7 @@ export class GameScene extends Phaser.Scene {
     // ghosts가 이미 가득 차 있어도 봇이 더 빠르면 상단에 끼어들 수 있게 재병합.
     if (!this.sim.state.gameOver && this.seed === seed) {
       const localNow = loadTopRuns(window.localStorage, seed);
-      const mergedNow = this.mergeGhostRecords(this.remoteRuns, localNow);
-      this.applyGhostField(mergedNow);
+      this.applyGhostLadder(this.remoteRuns, localNow);
     }
 
     // 원격 시딩은 원격이 비었을 때만 — 실제 유저가 있는 보드에 봇을 섞지 않는다.
@@ -3213,13 +3239,13 @@ export class GameScene extends Phaser.Scene {
       // submitRunRemote가 아직 완료되지 않아도 다음 판에서 내 점수가 고스트로 보인다.
       const myRecord = { distance: myDist, log: this.log };
       const localWithMe = loadTopRuns(window.localStorage, this.seed);
-      const optimisticMerged = this.mergeGhostRecords(
+      // mergePool로 넓은 풀을 유지한다 — top-N으로 자르면 다음 판 필드가 사다리
+      // 대신 top-8로 퇴화한다(하단 발판 소실).
+      const optimisticPool = this.mergePool(
         [myRecord, ...this.remoteRuns],
         localWithMe,
       );
-      this.remoteRuns = optimisticMerged.filter(
-        (r) => r !== myRecord,
-      );
+      this.remoteRuns = optimisticPool.filter((r) => r !== myRecord);
 
       // 원격 제출 — 제출 완료 후 ghost 목록 + 주간 랭킹을 체이닝해 읽음.
       // 병렬 레이스 제거: loadTopRunsRemote가 submitRunRemote의 INSERT 이후 실행됨.
