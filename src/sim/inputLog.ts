@@ -28,7 +28,10 @@
 // 1.12.0: INTERVAL_MIN 980→760, RAMP 11→16 — 과도하게 쉬워진 간격 재조정(난이도 복원).
 // 1.13.0: FEVER_TAP_HEAL 3→1 — 피버 중 체력 회복 과도 보정.
 // 1.14.0: POTION_R 13→30 — 연료통 판정을 표시 크기에 근접(수집 누락 버그) → 수집 궤적 변경.
-export const SIM_VERSION = '1.14.0';
+// 1.15.0: 챌린지(8월) 전 1회 리더보드 리셋 — 사다리·봇 천장 하향(4000)·튜토리얼
+//         (포션/더블점프 토스트·피버 tap! 산발)·제침 연출 번들을 출시하며 옛 로그 무효화.
+//         sim-core 궤적 변경은 없음(렌더/데이터 레이어). 버전 격리는 순수 리셋 목적.
+export const SIM_VERSION = '1.15.0';
 
 export interface InputEvent {
   frame: number;
