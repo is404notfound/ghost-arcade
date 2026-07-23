@@ -340,6 +340,11 @@ const GHOST_RUN_FPS = 12; // 고스트 달리기 6프레임 사이클 속도(렌
 // 고스트 x 분산 오프셋 — 렌더 전용. 충돌·거리 판정과 무관.
 // 한 덩어리로 겹치지 않게 주인공 주변으로 흩어뜨림(주로 뒤쪽에).
 const GHOST_X_OFFSETS = [-72, -42, -20, 18, 40, 64, -54, 32, -10, 50] as const; // 너무 퍼지지 않도록 줄임
+// 고스트 사망 연출 "마지막 질주" — 엎어지기 직전 앞으로 확 치고 나가는 렌더 전용 돌진.
+// x는 거리 판정과 무관(위 주석)하므로 논리/제침에 영향 없음. 튜닝값(플레이테스트 대상).
+const GHOST_LUNGE_DX = 46; // 앞으로 튕겨나가는 거리(px)
+const GHOST_LUNGE_TILT = 16; // 돌진 중 앞으로 기우는 각도(도)
+const GHOST_LUNGE_MS = 190; // 돌진 지속(ms) — 짧게 "안간힘" 후 곧바로 고꾸라짐
 
 const MAX_METEORS = 4; // 동시 메테오 상한 — 드로우 비용 완화
 
@@ -4811,38 +4816,50 @@ export class GameScene extends Phaser.Scene {
         if (airborne && !sprite.anims.isPaused) sprite.anims.pause();
         else if (!airborne && sprite.anims.isPaused) sprite.anims.resume();
       } else if (state === "run") {
-        // 기록 끝 or 게임오버 → 엎어짐 collapse 애니 1회 재생(전용 3프레임 에셋).
+        // 기록 끝 or 게임오버 → (A) "마지막 질주" 돌진 후 엎어짐.
+        // 돌진·엎어짐 모두 렌더 전용(x는 거리 판정과 무관) → 논리/제침(:3089)에 영향 없음.
         this.ghostTumbleState[i] = "tumbling";
         sprite.setVisible(true);
-        // 지면 고정: collapse 프레임은 하단 정렬이라 발/몸이 GROUND_Y_PX에 닿음.
-        sprite.setX(toScreenX(C.PLAYER_X) + xOff).setY(GROUND_Y_PX);
         this.tweens.killTweensOf(sprite);
-        sprite.setAngle(0);
-        sprite.anims.resume(); // 점프 중 멈춰있던 anim 해제
-        // 고스트 쓰러질 때 이모션: 머리 위에 짧게 말풍선 표시 (Tier 1-1)
-        this.showGhostEmotion(
-          toScreenX(C.PLAYER_X) + xOff,
-          GROUND_Y_PX - GHOST_ART_H - 10,
-        );
-        // play()가 텍스처를 collapse로 전환 — 스케일은 run과 동일(높이300 기준) 유지.
-        sprite.play("ghost-collapse");
-        sprite.once(
-          Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + "ghost-collapse",
-          () => {
-            // 엎어진 채 충분히 머물다 천천히 사라짐 — "쓰러짐"이 확실히 읽히도록.
-            this.tweens.add({
-              targets: sprite,
-              alpha: 0,
-              delay: 1400,
-              duration: 900,
-              ease: "Quad.in",
-              onComplete: () => {
-                this.ghostTumbleState[i] = "done";
-                sprite.setVisible(false);
-              },
-            });
-          },
-        );
+        sprite.anims.resume(); // 점프 중 멈춰있던 run anim 해제 → 돌진 동안 달리는 프레임
+        const baseX = toScreenX(C.PLAYER_X) + xOff;
+        const lungeX = baseX + GHOST_LUNGE_DX; // 앞으로 치고 나간 지점 = 고꾸라지는 곳
+        // 돌진 완료 후 그 자리에서 엎어짐 collapse 애니 1회 재생(전용 3프레임 에셋).
+        const collapse = (): void => {
+          // 지면 고정: collapse 프레임은 하단 정렬이라 발/몸이 GROUND_Y_PX에 닿음.
+          sprite.setX(lungeX).setY(GROUND_Y_PX).setAngle(0);
+          // 고스트 쓰러질 때 이모션: 머리 위에 짧게 말풍선 표시 (Tier 1-1)
+          this.showGhostEmotion(lungeX, GROUND_Y_PX - GHOST_ART_H - 10);
+          // play()가 텍스처를 collapse로 전환 — 스케일은 run과 동일(높이300 기준) 유지.
+          sprite.play("ghost-collapse");
+          sprite.once(
+            Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + "ghost-collapse",
+            () => {
+              // 엎어진 채 충분히 머물다 천천히 사라짐 — "쓰러짐"이 확실히 읽히도록.
+              this.tweens.add({
+                targets: sprite,
+                alpha: 0,
+                delay: 1400,
+                duration: 900,
+                ease: "Quad.in",
+                onComplete: () => {
+                  this.ghostTumbleState[i] = "done";
+                  sprite.setVisible(false);
+                },
+              });
+            },
+          );
+        };
+        // 마지막 안간힘: 앞으로 확 치고 나가며(전진+앞으로 기울기) 지면으로 내려온 뒤 고꾸라짐.
+        this.tweens.add({
+          targets: sprite,
+          x: lungeX,
+          y: toScreenY(0),
+          angle: GHOST_LUNGE_TILT,
+          duration: GHOST_LUNGE_MS,
+          ease: "Cubic.out",
+          onComplete: collapse,
+        });
       }
       // state === 'tumbling': collapse 애니/페이드가 제어 — 건드리지 않음.
       // state === 'done': 숨김 유지(위 onComplete).
