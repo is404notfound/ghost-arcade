@@ -342,7 +342,7 @@ const GHOST_RUN_FPS = 12; // 고스트 달리기 6프레임 사이클 속도(렌
 const GHOST_X_OFFSETS = [-72, -42, -20, 18, 40, 64, -54, 32, -10, 50] as const; // 너무 퍼지지 않도록 줄임
 // 고스트 사망 연출 "마지막 질주" — 엎어지기 직전 앞으로 확 치고 나가는 렌더 전용 돌진.
 // x는 거리 판정과 무관(위 주석)하므로 논리/제침에 영향 없음. 튜닝값(플레이테스트 대상).
-const GHOST_LUNGE_DX = 46; // 앞으로 튕겨나가는 거리(px)
+const GHOST_LUNGE_DX = 138; // 앞으로 튕겨나가는 거리(px) — 46→138(3배), 안간힘 돌진이 더 크게 읽히도록
 const GHOST_LUNGE_TILT = 16; // 돌진 중 앞으로 기우는 각도(도)
 const GHOST_LUNGE_MS = 190; // 돌진 지속(ms) — 짧게 "안간힘" 후 곧바로 고꾸라짐
 
@@ -4829,7 +4829,12 @@ export class GameScene extends Phaser.Scene {
           // 지면 고정: collapse 프레임은 하단 정렬이라 발/몸이 GROUND_Y_PX에 닿음.
           sprite.setX(lungeX).setY(GROUND_Y_PX).setAngle(0);
           // 고스트 쓰러질 때 이모션: 머리 위에 짧게 말풍선 표시 (Tier 1-1)
-          this.showGhostEmotion(lungeX, GROUND_Y_PX - GHOST_ART_H - 10);
+          // 거리는 쓰러진 순간의 sim 위치 — finished면 기록 끝, gameOver 동반 쓰러짐이면 중간 지점.
+          this.showGhostEmotion(
+            lungeX,
+            GROUND_Y_PX - GHOST_ART_H - 10,
+            g.sim.state.distance,
+          );
           // play()가 텍스처를 collapse로 전환 — 스케일은 run과 동일(높이300 기준) 유지.
           sprite.play("ghost-collapse");
           sprite.once(
@@ -5158,7 +5163,7 @@ export class GameScene extends Phaser.Scene {
    * 고스트가 쓰러지는 순간 머리 위에 짧은 이모션 말풍선 표시 (Tier 1-1).
    * 렌더 전용 — 결정론 무관.
    */
-  private showGhostEmotion(x: number, y: number): void {
+  private showGhostEmotion(x: number, y: number, meters: number): void {
     const phrases = [
       "으아아아!",
       "나는 여기까지다...",
@@ -5166,24 +5171,26 @@ export class GameScene extends Phaser.Scene {
       "잠깐... 아니 잠깐만!",
       "이럴 수가!!",
     ];
-    const msg = phrases[Math.floor(Math.random() * phrases.length)]!;
+    // 죽은 위치(m)를 앞에 붙여 "여기까지 왔다"가 한눈에 읽히게.
+    const phrase = phrases[Math.floor(Math.random() * phrases.length)]!;
+    const msg = `${Math.floor(meters).toLocaleString()}m, ${phrase}`;
     const label = this.add
       .text(0, 0, msg, {
-        fontSize: "14px",
+        fontSize: "17px", // 거리 접두 포함이라 14→17로 키워 가독성↑
         fontFamily: FONT_KR,
         color: "#ffffff",
         align: "center",
         resolution: TXT_RES,
       })
       .setOrigin(0.5);
-    const padX = 10;
-    const padY = 6;
+    const padX = 12;
+    const padY = 8;
     const w = label.width + padX * 2;
     const h = label.height + padY * 2;
     const box = this.add.graphics();
     box.fillStyle(0x1a0030, 0.82);
-    box.fillRoundedRect(-w / 2, -h / 2, w, h, 3);
-    box.fillTriangle(-6, h / 2 - 1, 6, h / 2 - 1, 0, h / 2 + 8);
+    box.fillRoundedRect(-w / 2, -h / 2, w, h, 4);
+    box.fillTriangle(-7, h / 2 - 1, 7, h / 2 - 1, 0, h / 2 + 9);
     const c = this.add.container(x, y, [box, label]).setDepth(48).setAlpha(0);
     this.tweens.add({ targets: c, alpha: 1, duration: 150, ease: "Quad.out" });
     this.tweens.add({
@@ -5215,7 +5222,8 @@ export class GameScene extends Phaser.Scene {
       "전설은 포기하지 않는 자의 것!",
       "이 질주의 끝에서\n새로운 새벽을 만나자",
     ];
-    const msg = lines[Math.floor(Math.random() * lines.length)]!;
+    // '나:' 접두로 주인공 대사임을 고스트 말풍선과 구분.
+    const msg = `나: ${lines[Math.floor(Math.random() * lines.length)]!}`;
 
     const label = this.add
       .text(0, 0, msg, {
