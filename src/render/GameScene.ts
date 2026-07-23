@@ -127,6 +127,11 @@ import signMusicUrl from "../../assets/images/signage/signage-music-bar.png";
 import signShinyaUrl from "../../assets/images/signage/signage-shinya.png";
 
 const COLOR_GHOST = 0xb39ddb; // 고스트 — 보라 계열 반투명(스프라이트 틴트)
+/** 다음 라이벌 강조 — 보라 고스트·시안 플레이어와 대비되는 위협 레드 */
+const COLOR_RIVAL_STROKE = 0xff4d6a;
+const COLOR_RIVAL_STROKE_HEX = "#ff4d6a";
+/** 실루엣 스트로크용 확대 배율 (뒤쪽 tintFill 레이어) */
+const RIVAL_STROKE_SCALE = 1.12;
 
 /** Fever 아이콘에서 샘플한 형광 네온 노랑 — HUD/피버 강조 통일 */
 const NEON_YELLOW = 0xf0f838;
@@ -245,6 +250,23 @@ function hideTutorialToday(kind: "howto" | "fever"): void {
   }
 }
 
+/** 컨텍스트 토스트 평생 1회 플래그 — Part A (포션/더블점프). */
+type TaughtKey = "potion" | "doublejump";
+function isMechanismTaught(key: TaughtKey): boolean {
+  try {
+    return window.localStorage.getItem(`ga:taught:${key}`) === "1";
+  } catch {
+    return true; // 저장 불가 환경에선 스팸 방지로 이미 배운 취급
+  }
+}
+function markMechanismTaught(key: TaughtKey): void {
+  try {
+    window.localStorage.setItem(`ga:taught:${key}`, "1");
+  } catch {
+    /* 무시 */
+  }
+}
+
 // 배경(코드 스킨) 팔레트 — docs/design/asset-guide.md §3 컬러 토큰. 전부 렌더 전용.
 // 하늘 색은 BIOMES[0](기본 노을 팔레트)로 이동 — 바이옴 전환 도입
 const COLOR_NEON_CYAN = 0x36f9f6; // 바닥 그리드 / 지평선 글로우
@@ -345,6 +367,21 @@ const GHOST_X_OFFSETS = [-72, -42, -20, 18, 40, 64, -54, 32, -10, 50] as const; 
 const GHOST_LUNGE_DX = 138; // 앞으로 튕겨나가는 거리(px) — 46→138(3배), 안간힘 돌진이 더 크게 읽히도록
 const GHOST_LUNGE_TILT = 16; // 돌진 중 앞으로 기우는 각도(도)
 const GHOST_LUNGE_MS = 190; // 돌진 지속(ms) — 짧게 "안간힘" 후 곧바로 고꾸라짐
+
+// ── 제침 연출(Overtake Juice) — docs/design-overtake-juice.md, 렌더 전용 튜닝 상수 ──
+const OVERTAKE_STREAK_WINDOW_SEC = 2.5; // streak 롤링 윈도
+const OVERTAKE_SFX_DETUNE_STEP = 160; // 연쇄마다 sfx-overtake 피치(센트)
+const OVERTAKE_FLASH_MS_T2 = 90;
+const OVERTAKE_FLASH_MS_T3 = 120;
+const OVERTAKE_PARTICLE_N_T2 = 8;
+const OVERTAKE_PARTICLE_N_T3 = 14;
+const OVERTAKE_GLANCE_MS = 140; // 고꾸라지기 전 힐끗(flipX) 유지
+
+// ── 피버 tap! 산발 촉구 — docs/design-tutorial-onboarding.md Part A-2 ──
+const FEVER_TAP_SPAWN_MIN_MS = 200;
+const FEVER_TAP_SPAWN_MAX_MS = 350;
+const FEVER_TAP_HOLD_MS = 2000; // 읽힐 만큼 유지한 뒤 페이드
+const FEVER_TAP_FADE_MS = 350;
 
 const MAX_METEORS = 4; // 동시 메테오 상한 — 드로우 비용 완화
 
@@ -569,10 +606,21 @@ export class GameScene extends Phaser.Scene {
   private ghosts: GhostDriver[] = [];
   // 판 시작 시점의 고스트 최종 거리들 (비교 기준 — 이번 판 저장 전에 캡처)
   private ghostDistances: number[] = [];
+  // ghosts[]와 동일 인덱스 — 랭킹 칩 닉 (meta.nickname 또는 결정론 폴백)
+  private ghostNames: string[] = [];
   // 이번 판에서 내가 살아있는 동안 죽은(=제친) 고스트 수
   private overtakenLive = 0;
+  /** 제침 연쇄(streak) — 롤링 윈도 안 연속 횟수. 렌더 전용. */
+  private overtakeStreak = 0;
+  /** 마지막 제침 프레임 — streak 윈도 판정용 */
+  private lastOvertakeFrame = -99999;
   // 마지막으로 완료된 원격 로드 결과 — 다음 판 startRun()에서 사용
   private remoteRuns: GhostRecord[] = [];
+  /** 피버 중 "tap!" 다음 스폰까지 남은 ms */
+  private feverTapMs = 0;
+  /** Part A 1회성 토스트 — 세션 캐시(localStorage와 동기) */
+  private taughtPotion = true;
+  private taughtDoubleJump = true;
 
   // 구경 모드 제거됨: 게임오버 시 모든 고스트가 함께 쓰러지고 즉시 결과로 전환.
   private spectating = false;
@@ -651,6 +699,10 @@ export class GameScene extends Phaser.Scene {
   private ghostRankLabels: Phaser.GameObjects.Text[] = [];
   // 고스트 엎어짐 연출 상태 — 기록 종료(finished) 시 1회 텀블 후 done. 렌더 전용.
   private ghostTumbleState: ("run" | "tumbling" | "done")[] = [];
+  /** 다음 제칠 라이벌 실루엣 스트로크 (tintFill, 1명만). 렌더 전용. */
+  private ghostRivalStroke!: Phaser.GameObjects.Sprite;
+  /** 다음 라이벌 머리 위 짧은 닉 — 스트로크와 동일 레드. */
+  private ghostRivalNickLabel!: Phaser.GameObjects.Text;
   private playerRect!: Phaser.GameObjects.Sprite; // 후드 라이더 + 네온 오토바이
   // sim의 고정 크기 풀과 1:1 매핑 — 생성은 create()에서 단 한 번 (D6)
   private obstacleRects: Phaser.GameObjects.Image[] = []; // 아포칼립스 장애물(가변 높이)
@@ -1000,6 +1052,27 @@ export class GameScene extends Phaser.Scene {
       this.ghostRects.push(g);
       this.ghostTumbleState.push("run");
     }
+
+    // 다음 라이벌 스트로크 — 고스트(25) 바로 뒤. tintFill로 실루엣 외곽만 레드.
+    this.ghostRivalStroke = this.add
+      .sprite(toScreenX(C.PLAYER_X), GROUND_Y_PX, "ghost-run", 0)
+      .setOrigin(0.5, 1)
+      .setTintFill(COLOR_RIVAL_STROKE)
+      .setDepth(24)
+      .setVisible(false);
+    this.ghostRivalNickLabel = this.add
+      .text(0, 0, "", {
+        fontSize: "16px",
+        fontFamily: FONT_KR,
+        fontStyle: "bold",
+        color: COLOR_RIVAL_STROKE_HEX,
+        resolution: TXT_RES,
+        stroke: "#1a0010",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(25)
+      .setVisible(false);
 
     // 네온 트레일 — 캐릭터(25) 바로 뒤.
     this.trailGfx = this.add.graphics().setDepth(24);
@@ -2114,6 +2187,11 @@ export class GameScene extends Phaser.Scene {
   private applyGhostField(records: GhostRecord[]): void {
     this.ghosts = records.map((r) => new GhostDriver(r.log));
     this.ghostDistances = records.map((r) => r.distance);
+    this.ghostNames = records.map(
+      (r, i) =>
+        r.log.meta?.nickname ||
+        deterministicNickname(Math.imul(i + 1, 0x9e3779b9)),
+    );
     this.cacheTop3FromRecords(records);
     this.prevRank = this.ghosts.length + 1;
   }
@@ -2173,6 +2251,11 @@ export class GameScene extends Phaser.Scene {
     const localRecords = loadTopRuns(window.localStorage, this.seed);
     this.applyGhostLadder(this.remoteRuns, localRecords);
     this.overtakenLive = 0;
+    this.overtakeStreak = 0;
+    this.lastOvertakeFrame = -99999;
+    this.feverTapMs = 0;
+    this.taughtPotion = isMechanismTaught("potion");
+    this.taughtDoubleJump = isMechanismTaught("doublejump");
     this.spectating = false;
     this.prevCombo = 0;
     this.feverCount = 0;
@@ -2318,13 +2401,15 @@ export class GameScene extends Phaser.Scene {
       sprite.off(
         Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + "ghost-collapse",
       );
-      sprite.setAngle(0).setAlpha(GHOST_SPRITE_ALPHA);
+      sprite.setAngle(0).setAlpha(GHOST_SPRITE_ALPHA).setFlipX(false);
       sprite.play({ key: "ghost-run", startFrame: Phaser.Math.Between(0, 5) });
       sprite.anims.timeScale = 0.82 + Math.random() * 0.46;
       this.ghostTumbleState[i] = "run";
     }
     // 순위 라벨 리셋 — 새 판 시작 시 숨김
     for (const lbl of this.ghostRankLabels) lbl.setVisible(false);
+    if (this.ghostRivalStroke) this.ghostRivalStroke.setVisible(false);
+    if (this.ghostRivalNickLabel) this.ghostRivalNickLabel.setVisible(false);
     if (this.gameOverRoot) this.gameOverRoot.setVisible(false);
     if (this.comboRibbon) {
       this.tweens.killTweensOf(this.comboRibbon);
@@ -3068,6 +3153,22 @@ export class GameScene extends Phaser.Scene {
           this.bubbleMs = 20000 + Math.random() * 12000; // 20~32초마다 (더 드물게)
         }
       }
+      // 피버 중 "tap!" 산발 촉구 (Part A-2) — 매 피버마다, 렌더 RNG.
+      if (
+        !this.sim.state.gameOver &&
+        !this.spectating &&
+        this.sim.state.feverFramesLeft > 0
+      ) {
+        this.feverTapMs -= delta;
+        if (this.feverTapMs <= 0) {
+          this.spawnFeverTapPrompt();
+          this.feverTapMs =
+            FEVER_TAP_SPAWN_MIN_MS +
+            Math.random() * (FEVER_TAP_SPAWN_MAX_MS - FEVER_TAP_SPAWN_MIN_MS);
+        }
+      } else {
+        this.feverTapMs = 0;
+      }
       // 메테오 스포너 — 렌더 타이머(delta 기반), sim 무관. 게임 진행 중에만 스폰.
       if (!this.sim.state.gameOver && !this.spectating) {
         this.meteorSpawnMs -= delta;
@@ -3087,14 +3188,13 @@ export class GameScene extends Phaser.Scene {
         }
         // 유령들은 라이브와 lockstep. 내가 죽으면 게임이 즉시 끝나므로 그 뒤엔 멈춘다.
         if (!this.sim.state.gameOver) {
-          for (const g of this.ghosts) {
+          for (let gi = 0; gi < this.ghosts.length; gi++) {
+            const g = this.ghosts[gi]!;
             const wasFinished = g.finished;
             g.step();
             // 유령이 죽는 순간(finished 전환) = 내가 그 기록보다 오래 버팀 = 제침
             if (!wasFinished && g.finished) {
-              this.overtakenLive++;
-              this.popup("고스트 제침!", "#b39ddb");
-              this.playSfx("sfx-overtake", { volume: SFX_VOL_OVERTAKE });
+              this.onGhostOvertaken(gi);
             }
           }
         }
@@ -3135,9 +3235,16 @@ export class GameScene extends Phaser.Scene {
       this.potionsCollected++;
       this.showHpPlusToast();
       this.playSfx("sfx-potion", { volume: SFX_VOL_POTION });
+      // Part A: 첫 포션만 "포션 회복!" — 평생 1회, 비차단.
+      if (!this.taughtPotion) {
+        this.taughtPotion = true;
+        markMechanismTaught("potion");
+        this.showTeachToast("포션 회복!", 3000);
+      }
     }
     if (ev & C.EV_FEVER_START) {
       this.feverCount++;
+      this.feverTapMs = 80; // 곧바로 tap! 스폰 시작
       this.cameras.main.flash(200, 255, 215, 0); // 황금빛 노란 플래시 (피격 빨강과 구분)
       this.punchZoom(1.12, 170); // 주인공 쪽으로 펀치 줌인 — 가속감 강조
       this.feverOverlay.setVisible(true);
@@ -4822,6 +4929,8 @@ export class GameScene extends Phaser.Scene {
         sprite.setVisible(true);
         this.tweens.killTweensOf(sprite);
         sprite.anims.resume(); // 점프 중 멈춰있던 run anim 해제 → 돌진 동안 달리는 프레임
+        // Tier1 힐끗 — 고꾸라지기 직전 이쪽을 보는 포즈(flipX), 저비용.
+        if (g.finished && !s.gameOver) this.ghostGlance(sprite);
         const baseX = toScreenX(C.PLAYER_X) + xOff;
         const lungeX = baseX + GHOST_LUNGE_DX; // 앞으로 치고 나간 지점 = 고꾸라지는 곳
         // 돌진 완료 후 그 자리에서 엎어짐 collapse 애니 1회 재생(전용 3프레임 에셋).
@@ -4886,6 +4995,9 @@ export class GameScene extends Phaser.Scene {
         }
       }
     }
+
+    // 다음 라이벌(곧 제칠 1명) — 레드 실루엣 스트로크 + 짧은 닉. 상시 경쟁감용.
+    this.syncNextRivalAccent(showGhosts);
 
     // 장애물/연료통: active만 보이게, 위치·텍스처·크기 갱신 (객체 생성/파괴 없음).
     for (let i = 0; i < C.MAX_OBSTACLES; i++) {
@@ -5073,6 +5185,8 @@ export class GameScene extends Phaser.Scene {
     this.overtakeHudText.setVisible(false);
     // 랭킹 패널 업데이트 (렌더 전용 — sim 읽기만)
     this.updateRankPanel();
+    // Part A: 첫 TALL이 화면에 들어오면 더블점프 힌트(평생 1회).
+    if (!s.gameOver && !this.spectating) this.maybeTeachDoubleJump();
     if (hasGhosts) {
       const is1st = currentRank === 1;
       this.paceText.setColor(is1st ? NEON_YELLOW_HEX : "#ffffff");
@@ -5123,6 +5237,179 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * 고스트 제침 연출 — docs/design-overtake-juice.md 계단식 Tier1~3.
+   * 순수 렌더: sim/고스트 lockstep·입력에 무접촉.
+   */
+  private onGhostOvertaken(ghostIndex: number): void {
+    const frame = this.sim.state.frame;
+    const windowFrames = Math.round(C.SIM_FPS * OVERTAKE_STREAK_WINDOW_SEC);
+    if (frame - this.lastOvertakeFrame <= windowFrames) this.overtakeStreak++;
+    else this.overtakeStreak = 1;
+    this.lastOvertakeFrame = frame;
+    this.overtakenLive++;
+
+    const rankAfter = this.ghosts.length - this.overtakenLive + 1;
+    const rankBefore = rankAfter + 1;
+    const enteredTop3 = rankAfter <= 3 && rankBefore > 3;
+    const tookFirst = rankAfter === 1 && rankBefore > 1;
+
+    let tier = 1;
+    if (this.overtakeStreak >= 3 || tookFirst) tier = 3;
+    else if (this.overtakeStreak === 2 || enteredTop3) tier = 2;
+
+    // 닉네임 문구 팝업은 시야에 안 들어와 제거 — sfx·칩 펄스·티어 이펙트만.
+    this.playSfx("sfx-overtake", {
+      volume: SFX_VOL_OVERTAKE,
+      detune: (this.overtakeStreak - 1) * OVERTAKE_SFX_DETUNE_STEP,
+    });
+    this.pulseYouChip();
+
+    if (tier >= 2) {
+      const flashMs = tier >= 3 ? OVERTAKE_FLASH_MS_T3 : OVERTAKE_FLASH_MS_T2;
+      // 연보라 플래시 — 짧게 유지해 닷지 시야 방해↓
+      this.cameras.main.flash(flashMs, 200, 160, 255);
+      if (this.sim.state.feverFramesLeft === 0) {
+        this.burstOvertakeParticles(
+          ghostIndex,
+          tier >= 3 ? OVERTAKE_PARTICLE_N_T3 : OVERTAKE_PARTICLE_N_T2,
+        );
+      }
+      this.punchZoom(tier >= 3 ? 1.12 : 1.06, tier >= 3 ? 110 : 70);
+    }
+  }
+
+  /** HUD 순위 틱 — YOU 칩 스케일 펄스만 (문구 없음). */
+  private pulseYouChip(): void {
+    const youTxt = this.rankPanelTexts[0];
+    if (!youTxt) return;
+    this.tweens.killTweensOf(youTxt);
+    youTxt.setScale(1.35);
+    this.tweens.add({
+      targets: youTxt,
+      scaleX: 1,
+      scaleY: 1,
+      duration: 280,
+      ease: "Back.out",
+    });
+  }
+
+  /** 고스트가 쓰러지기 직전 플레이어 쪽을 힐끗 봄. */
+  private ghostGlance(sprite: Phaser.GameObjects.Sprite): void {
+    sprite.setFlipX(true);
+    this.time.delayedCall(OVERTAKE_GLANCE_MS, () => {
+      if (sprite.active) sprite.setFlipX(false);
+    });
+  }
+
+  /** Tier2/3 파티클 버스트 — 제친 고스트 위치, 개수 상한. */
+  private burstOvertakeParticles(ghostIndex: number, n: number): void {
+    const sprite = this.ghostRects[ghostIndex];
+    const x = sprite?.x ?? toScreenX(C.PLAYER_X);
+    const y = (sprite?.y ?? GROUND_Y_PX) - GHOST_ART_H * 0.45;
+    for (let i = 0; i < n; i++) {
+      const r = 2.5 + Math.random() * 3.5;
+      const c = this.add.circle(x, y, r, 0xc9a0ff, 0.95).setDepth(47);
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 36 + Math.random() * 64;
+      this.tweens.add({
+        targets: c,
+        x: x + Math.cos(ang) * dist,
+        y: y + Math.sin(ang) * dist - 28,
+        alpha: 0,
+        scale: 0.3,
+        duration: 260 + Math.random() * 180,
+        ease: "Cubic.out",
+        onComplete: () => c.destroy(),
+      });
+    }
+  }
+
+  /**
+   * Part A 컨텍스트 토스트 — 비차단. holdMs만큼 유지 후 천천히 페이드.
+   * 화면 중앙 닷지 궤적은 피함(상단 쪽).
+   */
+  private showTeachToast(msg: string, holdMs = 900): void {
+    const y = DESIGN_H * 0.26;
+    const t = this.add
+      .text(DESIGN_W / 2, y, msg, {
+        fontSize: "24px",
+        fontFamily: FONT_KR_IMPACT,
+        color: "#ffe566",
+        resolution: TXT_RES,
+        stroke: "#0a0018",
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5)
+      .setDepth(52)
+      .setAlpha(0);
+    this.tweens.add({ targets: t, alpha: 1, duration: 120 });
+    this.tweens.add({
+      targets: t,
+      y: y - 14,
+      alpha: 0,
+      delay: holdMs,
+      duration: 480,
+      ease: "Quad.in",
+      onComplete: () => t.destroy(),
+    });
+  }
+
+  /** 첫 TALL(h>OBS_H_MAX)이 화면에 들어오면 더블점프 힌트 1회. */
+  private maybeTeachDoubleJump(): void {
+    if (this.taughtDoubleJump) return;
+    const world = this.sim.state;
+    for (let i = 0; i < C.MAX_OBSTACLES; i++) {
+      const o = world.obstacles[i]!;
+      if (!o.active || o.h <= C.OBS_H_MAX) continue;
+      const sx = toScreenX(o.x);
+      if (sx > 48 && sx < DESIGN_W - 24) {
+        this.taughtDoubleJump = true;
+        markMechanismTaught("doublejump");
+        this.showTeachToast("↑↑ 두 번 탭");
+        return;
+      }
+    }
+  }
+
+  /**
+   * 피버 중 "tap!" 산발 스폰 — 플레이어 궤적·화면 중앙을 피해 흩뿌림.
+   * Math.random 허용(렌더 전용, 결정론 무관).
+   */
+  private spawnFeverTapPrompt(): void {
+    const playerSx = toScreenX(C.PLAYER_X);
+    let x = 0;
+    for (let tries = 0; tries < 6; tries++) {
+      x = 70 + Math.random() * (DESIGN_W - 140);
+      if (Math.abs(x - playerSx) > 90) break;
+    }
+    // 세로: 상·중만 — 하단 HP바·플레이어 몸통과 겹침 최소화
+    const y = 70 + Math.random() * (DESIGN_H * 0.42);
+    const t = this.add
+      .text(x, y, "tap!", {
+        fontSize: `${28 + Math.floor(Math.random() * 12)}px`, // 18~27 → 28~39, 피버 CTA 가독성
+        fontFamily: FONT_IMPACT,
+        color: "#fff36a",
+        resolution: TXT_RES,
+        stroke: "#3a2000",
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5)
+      .setDepth(46)
+      .setAlpha(0.85)
+      .setAngle(-12 + Math.random() * 24);
+    this.tweens.add({
+      targets: t,
+      y: y - 12 - Math.random() * 10,
+      alpha: 0,
+      scale: 1.1,
+      delay: FEVER_TAP_HOLD_MS,
+      duration: FEVER_TAP_FADE_MS,
+      ease: "Quad.in",
+      onComplete: () => t.destroy(),
+    });
+  }
+
   /** 포션 획득 — HP바 좌상단에 작은 "HP+" 토스트 (네온 민트) */
   private showHpPlusToast(): void {
     const txt = this.add
@@ -5156,11 +5443,75 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 오글거리는 랜덤 말풍선 — 검은 사각 박스 + 흰 글씨, 주인공 위에 잠깐 떠올랐다 사라짐.
-   * 렌더 전용(sim 무관). {n}은 현재 고스트 수로 치환.
+   * 아직 안 제친 고스트 중 기록 거리가 가장 짧은 인덱스 = 다음에 제칠 라이벌.
+   * 없으면 -1.
    */
+  private findNextRivalIndex(): number {
+    let best = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < this.ghosts.length; i++) {
+      const g = this.ghosts[i];
+      if (!g || g.finished) continue;
+      const d = this.ghostDistances[i] ?? Infinity;
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * 다음 라이벌에만 레드 실루엣 스트로크 + 닉. 피버·쓰러짐·부재 시 숨김.
+   * 렌더 전용 — sim 무접촉.
+   */
+  private syncNextRivalAccent(showGhosts: boolean): void {
+    const stroke = this.ghostRivalStroke;
+    const nickLbl = this.ghostRivalNickLabel;
+    if (!stroke || !nickLbl) return;
+
+    const idx = showGhosts ? this.findNextRivalIndex() : -1;
+    const g = idx >= 0 ? this.ghosts[idx] : undefined;
+    const sprite = idx >= 0 ? this.ghostRects[idx] : undefined;
+    if (
+      idx < 0 ||
+      !g ||
+      !sprite ||
+      !sprite.visible ||
+      (this.ghostTumbleState[idx] ?? "run") !== "run" ||
+      g.finished ||
+      this.sim.state.gameOver
+    ) {
+      stroke.setVisible(false);
+      nickLbl.setVisible(false);
+      return;
+    }
+
+    // tintFill 실루엣을 살짝 키워 외곽 스트로크처럼 읽히게.
+    const w = sprite.displayWidth * RIVAL_STROKE_SCALE;
+    const h = sprite.displayHeight * RIVAL_STROKE_SCALE;
+    stroke
+      .setTexture(sprite.texture.key, sprite.frame.name)
+      .setFlipX(sprite.flipX)
+      .setAngle(sprite.angle)
+      .setPosition(sprite.x, sprite.y)
+      .setDisplaySize(w, h)
+      .setVisible(true);
+
+    const xOff = GHOST_X_OFFSETS[idx % GHOST_X_OFFSETS.length] ?? 0;
+    const nick = this.clipNickChars(this.ghostNames[idx] ?? "라이벌", 8);
+    // top3 순위 라벨(머리 -6) 위에 올려 겹침 방지.
+    const nickY =
+      toScreenY(g.sim.state.player.y) - GHOST_ART_H - (idx < 3 ? 24 : 8);
+    nickLbl
+      .setText(nick)
+      .setPosition(toScreenX(C.PLAYER_X) + xOff, nickY)
+      .setVisible(true);
+  }
+
   /**
    * 고스트가 쓰러지는 순간 머리 위에 짧은 이모션 말풍선 표시 (Tier 1-1).
+   * 미터만 라이벌 레드로 강조 — 스트로크/닉과 동일 시그널.
    * 렌더 전용 — 결정론 무관.
    */
   private showGhostEmotion(x: number, y: number, meters: number): void {
@@ -5171,27 +5522,42 @@ export class GameScene extends Phaser.Scene {
       "잠깐... 아니 잠깐만!",
       "이럴 수가!!",
     ];
-    // [경쟁자] + 죽은 위치(m) — 고스트 대사임을 태그로 구분.
     const phrase = phrases[Math.floor(Math.random() * phrases.length)]!;
-    const msg = `[경쟁자] ${Math.floor(meters).toLocaleString()}m, ${phrase}`;
-    const label = this.add
-      .text(0, 0, msg, {
-        fontSize: "17px", // 거리 접두 포함이라 14→17로 키워 가독성↑
-        fontFamily: FONT_KR,
-        color: "#ffffff",
-        align: "center",
-        resolution: TXT_RES,
+    const metersStr = `${Math.floor(meters).toLocaleString()}m`;
+    const styleBase = {
+      fontSize: "17px",
+      fontFamily: FONT_KR,
+      resolution: TXT_RES,
+    } as const;
+    const left = this.add
+      .text(0, 0, "[경쟁자] ", { ...styleBase, color: "#ffffff" })
+      .setOrigin(0, 0.5);
+    const mid = this.add
+      .text(0, 0, metersStr, {
+        ...styleBase,
+        fontStyle: "bold",
+        color: COLOR_RIVAL_STROKE_HEX,
       })
-      .setOrigin(0.5);
+      .setOrigin(0, 0.5);
+    const right = this.add
+      .text(0, 0, `, ${phrase}`, { ...styleBase, color: "#ffffff" })
+      .setOrigin(0, 0.5);
+    const totalW = left.width + mid.width + right.width;
+    left.setX(-totalW / 2);
+    mid.setX(left.x + left.width);
+    right.setX(mid.x + mid.width);
     const padX = 12;
     const padY = 8;
-    const w = label.width + padX * 2;
-    const h = label.height + padY * 2;
+    const w = totalW + padX * 2;
+    const h = Math.max(left.height, mid.height, right.height) + padY * 2;
     const box = this.add.graphics();
     box.fillStyle(0x1a0030, 0.82);
     box.fillRoundedRect(-w / 2, -h / 2, w, h, 4);
     box.fillTriangle(-7, h / 2 - 1, 7, h / 2 - 1, 0, h / 2 + 9);
-    const c = this.add.container(x, y, [box, label]).setDepth(48).setAlpha(0);
+    const c = this.add
+      .container(x, y, [box, left, mid, right])
+      .setDepth(48)
+      .setAlpha(0);
     this.tweens.add({ targets: c, alpha: 1, duration: 150, ease: "Quad.out" });
     this.tweens.add({
       targets: c,
