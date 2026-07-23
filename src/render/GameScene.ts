@@ -2368,7 +2368,7 @@ export class GameScene extends Phaser.Scene {
     this.codeMeteors = [];
     this.meteorSpawnMs = 0;
     // trailGfx는 drawNeonTrail에서 매 프레임 clear — 별도 리셋 불필요
-    // 말풍선 리셋 — 시작 직후엔 안 뜨게 첫 발화를 4~7초 뒤로
+    // 말풍선 리셋 — 고스트를 다 제친 뒤 첫 발화까지 4~7초(그 전엔 타이머 정지)
     if (this.bubble) {
       this.bubble.destroy();
       this.bubble = undefined;
@@ -3145,8 +3145,12 @@ export class GameScene extends Phaser.Scene {
           (m) => m.elapsed < m.duration,
         );
       }
-      // 오글거리는 말풍선 — 게임 진행 중에만, 일정 간격 랜덤 표시(렌더 전용)
-      if (!this.sim.state.gameOver && !this.spectating) {
+      // 플레이어 말풍선 — 고스트를 전부 제친 뒤에만 시작(경쟁 구간과 대사 겹침 방지)
+      if (
+        !this.sim.state.gameOver &&
+        !this.spectating &&
+        this.areAllGhostsCleared()
+      ) {
         this.bubbleMs -= delta;
         if (this.bubbleMs <= 0) {
           this.showSpeechBubble();
@@ -5568,6 +5572,12 @@ export class GameScene extends Phaser.Scene {
       ease: "Quad.in",
       onComplete: () => c.destroy(),
     });
+  }
+
+  /** 고스트가 없거나 전원 finished — 플레이어 대사 해금 조건. */
+  private areAllGhostsCleared(): boolean {
+    if (this.ghosts.length === 0) return true;
+    return this.ghosts.every((g) => g.finished);
   }
 
   private showSpeechBubble(): void {
