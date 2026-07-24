@@ -79,7 +79,8 @@ void (async () => {
     setBootLoadingStatus('폰트 준비 중…');
     // 한글 샘플을 넘겨 서브셋 폰트(Black Han Sans)가 실제 음절을 받도록 함.
     // 인자 없이 load하면 라틴만 받아 '어' 같은 글자가 시스템 폰트로 떨어질 수 있음.
-    const krSample = "가나다라마바사아자차카타파하이어하기제침고스트계속";
+    const krSample =
+      "가나다라마바사아자차카타파하이어하기제침고스트계속탭할수록회복돼요누적랭킹";
     await Promise.all([
       document.fonts.load("600 16px Fredoka"),
       document.fonts.load("400 16px Bangers"),

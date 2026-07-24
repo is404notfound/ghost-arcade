@@ -36,6 +36,19 @@ import { getUserId, getNickname, deterministicNickname } from "../identity";
 import { mirrorEvent } from "../eventMirror";
 import { remoteConfig } from "../remoteConfig";
 import { RENDER_DPR } from "./dpr";
+import {
+  FX_FLAME_EMBERS,
+  FX_FLAME_SPARKS,
+  FX_FLAME_TONGUE_SCALE,
+  FX_MAX_METEORS,
+  FX_METEOR_EMBERS,
+  FX_METEOR_SPARKS,
+  FX_METEOR_TONGUES,
+  FX_PLAYER_GLOW,
+  FX_REDRAW_MS,
+  FX_SUN_BLOOM_LAYERS,
+  FX_SUN_REDRAW_MS,
+} from "./fxQuality";
 import { compareGhosts, type GhostComparison } from "./ghostCompare";
 import {
   DESIGN_W,
@@ -382,8 +395,12 @@ const FEVER_TAP_SPAWN_MIN_MS = 200;
 const FEVER_TAP_SPAWN_MAX_MS = 350;
 const FEVER_TAP_HOLD_MS = 2000; // 읽힐 만큼 유지한 뒤 페이드
 const FEVER_TAP_FADE_MS = 350;
+/** 피버 탭 HP+ 피드백 최소 간격 — 연타 시 텍스트 폭주·가독성 붕괴 방지 */
+const FEVER_HP_PLUS_MIN_MS = 90;
+const FEVER_HP_PLUS_HOLD_MS = 480; // 읽힐 만큼 유지 (tap!보다 짧아 CTA에 안 먹힘)
+const FEVER_HP_PLUS_FADE_MS = 280;
 
-const MAX_METEORS = 4; // 동시 메테오 상한 — 드로우 비용 완화
+const MAX_METEORS = FX_MAX_METEORS; // 동시 메테오 상한 — fxQuality(전역 C + Android A)
 
 /** 화염 레이어 정의 — 매 프레임 재할당 방지(시각 동일). */
 const FLAME_LAYERS = [
@@ -618,6 +635,8 @@ export class GameScene extends Phaser.Scene {
   private remoteRuns: GhostRecord[] = [];
   /** 피버 중 "tap!" 다음 스폰까지 남은 ms */
   private feverTapMs = 0;
+  /** 피버 탭 HP+ 피드백 스로틀용 — 마지막 표시 renderTimeMs */
+  private lastFeverHpPlusAt = -Infinity;
   /** Part A 1회성 토스트 — 세션 캐시(localStorage와 동기) */
   private taughtPotion = true;
   private taughtDoubleJump = true;
@@ -1128,23 +1147,26 @@ export class GameScene extends Phaser.Scene {
       .setAlpha(0.95)
       .setDepth(25)
       .setVisible(false);
-    // 바이크 시안 네온 글로우 — WebGL postFX, 비지원 기기는 무시 (렌더 전용, 결정론 무관)
-    try {
-      if (this.playerRect.postFX) {
-        // 글로우 강도·반경을 낮춤 — postFX는 저사양에서 프레임 드롭의 주원인
-        this.playerGlow = this.playerRect.postFX.addGlow(
-          0x5efce8,
-          1.5,
-          0,
-          false,
-          0.1,
-          // 글로우 반경은 백킹 픽셀 단위 — 레티나 백킹(×RENDER_DPR)에서 같은
-          // 시각 크기를 유지하려면 배율 보정 필요
-          6 * RENDER_DPR,
-        );
+    // 바이크 시안 네온 글로우 — WebGL postFX.
+    // Android는 fxQuality에서 끔(필레이트 주원인). 비지원 기기도 무시.
+    if (FX_PLAYER_GLOW) {
+      try {
+        if (this.playerRect.postFX) {
+          // 글로우 강도·반경을 낮춤 — postFX는 저사양에서 프레임 드롭의 주원인
+          this.playerGlow = this.playerRect.postFX.addGlow(
+            0x5efce8,
+            1.5,
+            0,
+            false,
+            0.1,
+            // 글로우 반경은 백킹 픽셀 단위 — 레티나 백킹(×RENDER_DPR)에서 같은
+            // 시각 크기를 유지하려면 배율 보정 필요
+            6 * RENDER_DPR,
+          );
+        }
+      } catch {
+        /* postFX 비지원 환경 — 무시 */
       }
-    } catch {
-      /* postFX 비지원 환경 — 무시 */
     }
 
     // 장애물 연기 레이어 — 장애물 풀보다 먼저 add → 장애물 스프라이트 뒤에서 피어오름.
@@ -1587,7 +1609,7 @@ export class GameScene extends Phaser.Scene {
 
       const weekly = buildRankPanel(
         "panel-weekly",
-        "주간 랭킹 · 7일",
+        "누적 랭킹 · 7일",
         "#ffb347",
       );
       weekly.container.x = colR;
@@ -1978,20 +2000,15 @@ export class GameScene extends Phaser.Scene {
         .setOrigin(0.5)
         .setStroke("#1a1a2e", 4);
       const ftDesc = this.add
-        .text(
-          cx,
-          cy - 8,
-          "무한 점프를 할 수 있습니다\n점프 시, 체력이 회복됩니다",
-          {
-            fontSize: "17px",
-            fontFamily: FONT_KR,
-            color: "#ffffff",
-            align: "center",
-            lineSpacing: 10,
-            wordWrap: { width: FW - 48 },
-            resolution: TXT_RES,
-          },
-        )
+        .text(cx, cy - 8, "탭할수록 HP가 회복돼요", {
+          fontSize: "17px",
+          fontFamily: FONT_KR,
+          color: "#ffffff",
+          align: "center",
+          lineSpacing: 10,
+          wordWrap: { width: FW - 48 },
+          resolution: TXT_RES,
+        })
         .setOrigin(0.5)
         .setStroke("#1a1a2e", 3);
       const ftContinue = this.add
@@ -3222,6 +3239,10 @@ export class GameScene extends Phaser.Scene {
         volume: SFX_VOL_JUMP,
         detune: isDoubleJump ? SFX_JUMP_DOUBLE_DETUNE : 0,
       });
+      // 피버 중 탭 = HP 회복 — 행동에 묶인 HP+ (산발 tap! CTA와 역할 분리)
+      if (this.sim.state.feverFramesLeft > 0) {
+        this.showFeverHealFeedback();
+      }
     }
     if (ev & C.EV_HIT) {
       this.hitsTaken++;
@@ -4346,16 +4367,20 @@ export class GameScene extends Phaser.Scene {
     g.fillCircle(sx, baseY - 2, baseHalf * 0.9);
 
     // 불혀 다발 — 색 레이어별로 바깥(짙은 빨강·큼)→안(흰노랑 코어·작음) 순서로 겹쳐 그림.
-    // 가닥 수를 늘려(11→3) 더 빽빽하게, 흔들림 위상을 가닥마다 달리해 일렁임을 살린다.
+    // tongues는 fxQuality 배율로 절감(전역 C + Android A). 가닥마다 위상 달라 일렁임 유지.
     for (let li = 0; li < FLAME_LAYERS.length; li++) {
       const layer = FLAME_LAYERS[li]!;
       const layerH = artH * layer.hMul;
       const layerHalf = baseHalf * layer.wMul;
-      for (let s = 0; s < layer.tongues; s++) {
+      const tongues = Math.max(
+        2,
+        Math.round(layer.tongues * FX_FLAME_TONGUE_SCALE),
+      );
+      for (let s = 0; s < tongues; s++) {
         // 불혀를 밑동 폭에 고르게 분포(-1..1)
-        const u = (s / (layer.tongues - 1)) * 2 - 1;
+        const u = (s / (tongues - 1)) * 2 - 1;
         const rootX = sx + u * layerHalf;
-        const rootW = Math.max(2, (layerHalf / layer.tongues) * 2.2); // 밑동 두께(겹치게)
+        const rootW = Math.max(2, (layerHalf / tongues) * 2.2); // 밑동 두께(겹치게)
         // 가닥별 높이 깜빡임 — 가운데가 가장 높음(분수형), 빠른 깜빡임으로 활활.
         const heightFall = 1 - Math.abs(u) * 0.4;
         const flick = 0.7 + 0.3 * Math.sin(t * (6 + s * 0.7) + phase + s * 1.7);
@@ -4377,7 +4402,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 솟구치는 불씨 — 위로 떠오르며 반짝이는 점들(색·반짝임 다양화).
-    for (let e = 0; e < 8; e++) {
+    for (let e = 0; e < FX_FLAME_EMBERS; e++) {
       const rise = (t * (0.8 + e * 0.1) + e * 0.21) % 1; // 0→1
       const ex = sx + Math.sin(t * 4 + e * 2) * baseHalf * 0.7;
       const ey = baseY - rise * artH * 1.15;
@@ -4389,8 +4414,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // 사방으로 튀는 스파크 — 밑동에서 좌우로 부채꼴로 퍼지며 솟구쳤다 살짝 떨어짐(중력).
-    // 메테오/불꽃 주변에 불티가 더 튀길 바라는 요청 반영. 반짝임으로 평면감 완화.
-    for (let k = 0; k < 12; k++) {
+    for (let k = 0; k < FX_FLAME_SPARKS; k++) {
       const life = (t * (1.1 + k * 0.11) + k * 0.31) % 1; // 0→1 수명
       const side = ((k % 6) / 5 - 0.5) * 2; // -1..1 좌우 분산
       const px = sx + side * baseHalf * 1.7 * life;
@@ -4721,9 +4745,9 @@ export class GameScene extends Phaser.Scene {
     const jumpY = s.player.y * 0.07; // 최대 ≈26px. 과하면 멀미 — 작게 시작.
     this.bgSkylineFar.y = jumpY * 0.5; // 원경: 절반
     this.sunGraphics.y = 214 + jumpY * 0.3; // 태양: 약하게 점프 연동
-    // 태양 재드로우(블룸+스캔라인)는 CPU 비용이 커 ≈10fps로 스로틀 —
+    // 태양 재드로우(블룸+스캔라인)는 CPU 비용이 커 스로틀 —
     // 일렁임 주파수가 낮아 체감 차이 없음. 위치(y) 추적은 매 프레임 유지.
-    if (this.sunRedrawAccMs >= 100) {
+    if (this.sunRedrawAccMs >= FX_SUN_REDRAW_MS) {
       this.sunRedrawAccMs = 0;
       this.updateCodeSun();
     }
@@ -4732,9 +4756,9 @@ export class GameScene extends Phaser.Scene {
       this.starRedrawAccMs = 0;
       this.drawStars();
     }
-    // 메테오·트레일·연기: ≈12fps. 화염(code-flame)은 매 프레임 —
+    // 메테오·트레일·연기: 스로틀. 화염(code-flame)은 매 프레임 —
     // 스로틀하면 장애물 스크롤과 어긋나 뚝뚝 끊겨 보인다.
-    const redrawFx = this.fxRedrawAccMs >= 80;
+    const redrawFx = this.fxRedrawAccMs >= FX_REDRAW_MS;
     if (redrawFx) this.fxRedrawAccMs = 0;
 
     // ── 바이옴 전환 (1000m마다 팔레트 순환, 렌더 전용) + 마일스톤 팡파레 ──
@@ -5448,6 +5472,55 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * 피버 탭 회복 피드백 — 플레이어 옆 "HP+" (렌더 전용).
+   * tap! 산발 CTA와 분리: 실제 탭(회복)에만 떠서 인과를 가르친다.
+   * ※ tap!은 피버 중 자동 산발, HP+는 탭 순간에만 — 안 누르면 HP+가 안 보이는 게 정상.
+   */
+  private showFeverHealFeedback(): void {
+    const now = this.renderTimeMs;
+    if (now - this.lastFeverHpPlusAt < FEVER_HP_PLUS_MIN_MS) return;
+    this.lastFeverHpPlusAt = now;
+
+    // 플레이어 우측 위 — 몸통/장애물과 겹침 줄이고, tap!보다 앞에(depth 47)
+    const px = toScreenX(C.PLAYER_X) + 48 + Math.random() * 36;
+    const py = Math.max(
+      56,
+      toScreenY(this.sim.state.player.y + C.PLAYER_H) - 18 - Math.random() * 24,
+    );
+    const txt = this.add
+      .text(px, py, "HP+", {
+        fontSize: `${22 + Math.floor(Math.random() * 6)}px`, // 22~27 — tap!(28~39)보다 한 단 작게
+        fontFamily: FONT_IMPACT,
+        color: "#3ef0c0",
+        resolution: TXT_RES,
+        stroke: "#062018",
+        strokeThickness: 5,
+      })
+      .setOrigin(0.5)
+      .setDepth(47)
+      .setAlpha(1)
+      .setAngle(-10 + Math.random() * 20)
+      .setScale(0.85);
+    // 팝인 → 유지 → 페이드 (예전엔 즉시 페이드라 사실상 안 보였음)
+    this.tweens.add({
+      targets: txt,
+      scale: 1.12,
+      duration: 120,
+      ease: "Back.out",
+    });
+    this.tweens.add({
+      targets: txt,
+      y: py - 28 - Math.random() * 12,
+      alpha: 0,
+      scale: 1.2,
+      delay: FEVER_HP_PLUS_HOLD_MS,
+      duration: FEVER_HP_PLUS_FADE_MS,
+      ease: "Quad.in",
+      onComplete: () => txt.destroy(),
+    });
+  }
+
+  /**
    * 아직 안 제친 고스트 중 기록 거리가 가장 짧은 인덱스 = 다음에 제칠 라이벌.
    * 없으면 -1.
    */
@@ -5649,8 +5722,9 @@ export class GameScene extends Phaser.Scene {
    * 이미지 풀 불필요, drawCodeMeteor()가 매 프레임 렌더. 렌더 전용(D1).
    */
   private spawnMeteor(): void {
-    // 한 번에 1~3개가 쏟아짐(최대 동시 MAX_METEORS까지만 누적).
-    const burst = 1 + Math.floor(Math.random() * 3);
+    // 한 번에 1~N개 버스트(최대 동시 MAX_METEORS). Android는 N=2로 살짝 완화.
+    const burstMax = MAX_METEORS <= 2 ? 2 : 3;
+    const burst = 1 + Math.floor(Math.random() * burstMax);
     for (let k = 0; k < burst; k++) {
       if (this.codeMeteors.length >= MAX_METEORS) break;
       this.codeMeteors.push(this.makeMeteor());
@@ -5718,7 +5792,7 @@ export class GameScene extends Phaser.Scene {
       pyy = dirx; // 좌우(흔들림 축)
 
     // ─── 1) 화염 꼬리 플룸 — 불혀 다발(가닥 수↓로 60fps 예산 확보) ───
-    const tongues = 6;
+    const tongues = FX_METEOR_TONGUES;
     for (let i = 0; i < tongues; i++) {
       const n = i / (tongues - 1);
       const side = (n - 0.5) * 2; // -1..1
@@ -5790,8 +5864,8 @@ export class GameScene extends Phaser.Scene {
     g.fillStyle(0xfff2cc, alpha * 0.9); // 백열 중심
     g.fillCircle(x - dirx * r * 0.18, y - diry * r * 0.18, r * 0.16);
 
-    // ─── 3) 튀는 불티(ember) — 더 많이·다양하게, 꼬리 방향으로 흩뿌려진다 ───
-    for (let i = 0; i < 11; i++) {
+    // ─── 3) 튀는 불티(ember) — 꼬리 방향으로 흩뿌려진다 ───
+    for (let i = 0; i < FX_METEOR_EMBERS; i++) {
       const ph = t * (3 + i * 0.5) + i * 2.1;
       const ed = (ph % 2) / 2; // 0..1 수명
       const ang = m.tailAngle + Math.sin(ph * 5 + i) * 0.95;
@@ -5804,8 +5878,8 @@ export class GameScene extends Phaser.Scene {
       g.fillCircle(exx, eyy, Math.max(0.5, r * 0.12 * (1 - ed)));
     }
     // ─── 4) 코어 주변 반짝이는 미세 스파크 — 평면감 완화용 ───
-    for (let i = 0; i < 6; i++) {
-      const ap = t * 1.7 + (i / 6) * Math.PI * 2;
+    for (let i = 0; i < FX_METEOR_SPARKS; i++) {
+      const ap = t * 1.7 + (i / FX_METEOR_SPARKS) * Math.PI * 2;
       const rad = r * (1.3 + 0.5 * Math.sin(t * 3 + i * 2));
       const px = x + Math.cos(ap) * rad,
         py = y + Math.sin(ap) * rad;
@@ -6006,7 +6080,7 @@ export class GameScene extends Phaser.Scene {
 
     // ─── 0) 외곽 블룸 헤일로 — 동심원 합성(가우시안 대체). 맥동 포함.
     const bloomPulse = 1 + 0.05 * Math.sin(t * 0.9);
-    const BLOOM_LAYERS = 7;
+    const BLOOM_LAYERS = FX_SUN_BLOOM_LAYERS;
     for (let i = BLOOM_LAYERS; i >= 1; i--) {
       const f = i / BLOOM_LAYERS; // 1(바깥)→0(안)
       const rr = r * (0.96 + 1.05 * f) * bloomPulse;

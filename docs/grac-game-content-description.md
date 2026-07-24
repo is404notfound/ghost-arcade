@@ -129,5 +129,6 @@
 
 ## 관련 문서
 
-- [앱인토스 출시 계획](./toss-miniapp-launch-plan.md)
+- [게임물 개요(신청란 복붙용)](./grac-game-overview.md)
+- [출시 플레이북](./LAUNCH-PLAYBOOK.md)
 - [에셋·비주얼 가이드](./design/asset-guide.md) (§6.3 인트로 스토리)
