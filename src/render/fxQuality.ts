@@ -38,8 +38,8 @@ export const FX_SUN_REDRAW_MS = IS_ANDROID ? 140 : 120;
 export const FX_REDRAW_MS = IS_ANDROID ? 100 : 90;
 
 /**
- * 바이크 postFX 글로우 — Android에선 끄기.
+ * 바이크 postFX 소프트 글로우 — Android에선 끄기.
  * 이유: postFX는 저사양 WebGL에서 프레임 드롭 주원인으로 이미 코멘트됨.
- * 스프라이트·틴트는 유지되므로 실루엣 손실은 작고, GPU 여유는 큼.
+ * 외곽 시안/피버 노랑 스트로크는 GameScene의 tintFill 레이어가 전 기기에서 담당.
  */
 export const FX_PLAYER_GLOW = !IS_ANDROID;

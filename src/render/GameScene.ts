@@ -146,6 +146,11 @@ const COLOR_RIVAL_STROKE_HEX = "#ff4d6a";
 /** 실루엣 스트로크용 확대 배율 (뒤쪽 tintFill 레이어) */
 const RIVAL_STROKE_SCALE = 1.12;
 
+/** 주인공 외곽 — player.fill 시안. postFX 없이도 전 기기에서 읽히게 tintFill 스트로크. */
+const COLOR_PLAYER_STROKE = 0x5efce8;
+/** 주인공 실루엣 스트로크 확대 배율 — 라이벌과 동일 두께감 */
+const PLAYER_STROKE_SCALE = 1.12;
+
 /** Fever 아이콘에서 샘플한 형광 네온 노랑 — HUD/피버 강조 통일 */
 const NEON_YELLOW = 0xf0f838;
 const NEON_YELLOW_HEX = "#f0f838";
@@ -723,6 +728,11 @@ export class GameScene extends Phaser.Scene {
   /** 다음 라이벌 머리 위 짧은 닉 — 스트로크와 동일 레드. */
   private ghostRivalNickLabel!: Phaser.GameObjects.Text;
   private playerRect!: Phaser.GameObjects.Sprite; // 후드 라이더 + 네온 오토바이
+  /**
+   * 주인공 실루엣 스트로크 (tintFill). 평시 시안·피버 노랑.
+   * postFX 글로우는 Android에서 끄므로, 외곽은 이 레이어가 담당(렌더 전용).
+   */
+  private playerStroke!: Phaser.GameObjects.Sprite;
   // sim의 고정 크기 풀과 1:1 매핑 — 생성은 create()에서 단 한 번 (D6)
   private obstacleRects: Phaser.GameObjects.Image[] = []; // 아포칼립스 장애물(가변 높이)
   private obstacleType: string[] = []; // 슬롯별 배정된 아트 타입 키
@@ -1120,6 +1130,20 @@ export class GameScene extends Phaser.Scene {
       this.ghostRankLabels.push(lbl);
     }
 
+    // 주인공 스트로크 — 플레이어(25) 바로 뒤. tintFill 실루엣을 살짝 키워 외곽선.
+    // Android에선 postFX 글로우가 꺼지므로 이 레이어가 시안/피버 노랑 스트로크의 본체.
+    this.playerStroke = this.add
+      .sprite(toScreenX(C.PLAYER_X), GROUND_Y_PX, "player-ride")
+      .setOrigin(PLAYER_ART_ORIGIN_X, PLAYER_ART_ORIGIN_Y)
+      .setTintFill(COLOR_PLAYER_STROKE)
+      .setDepth(24);
+    this.playerStroke.setDisplaySize(
+      (this.playerStroke.width / this.playerStroke.height) *
+        PLAYER_ART_H *
+        PLAYER_STROKE_SCALE,
+      PLAYER_ART_H * PLAYER_STROKE_SCALE,
+    );
+
     // 플레이어: 네온 바이커 소녀. 아트는 히트박스보다 넓다(overhang).
     // depth 25 — 랭킹 칩(22)·메테오(24) 위, 연막(26) 아래.
     this.playerRect = this.add
@@ -1131,6 +1155,7 @@ export class GameScene extends Phaser.Scene {
       PLAYER_ART_H,
     );
     this.playerRect.play("player-ride-anim");
+    // 스트로크 애니/텍스처는 syncPlayerStroke에서 플레이어와 1:1 동기.
     // 주인공 머리 위 닉네임 — 고스트 등수 라벨과 대칭. syncVisuals에서 위치 추적.
     // depth 25 — 연막(26)에 우측이 가려짐(시야 차단 의도). 랭킹 칩보다는 앞.
     this.playerNickLabel = this.add
@@ -2257,6 +2282,14 @@ export class GameScene extends Phaser.Scene {
     if (this.playerRect) {
       this.tweens.killTweensOf(this.playerRect);
       this.playerRect.setAlpha(1).setVisible(true).setAngle(0);
+    }
+    if (this.playerStroke) {
+      this.tweens.killTweensOf(this.playerStroke);
+      this.playerStroke
+        .setAlpha(1)
+        .setVisible(true)
+        .setAngle(0)
+        .setTintFill(COLOR_PLAYER_STROKE);
     }
     this.seed = dailySeed(); // 같은 날 = 같은 코스 (TODOS 시드 공유 → 데일리 시드로 결정)
     this.sim = new GameSim(this.seed);
@@ -4911,17 +4944,22 @@ export class GameScene extends Phaser.Scene {
 
     // 사망 컷 페이드아웃 — 고스트와 동일 방식(트윈 1회). 결과 패널(900ms) 전에 소멸.
     // 200ms 띄운 후 580ms에 걸쳐 투명화 → ~780ms 완료, 패널과 겹치지 않음.
+    // 스트로크도 같이 페이드 — 실루엣만 남는 잔상 방지.
     if (playerTex === "player-dead" && !this.playerDeadFadeStarted) {
       this.playerDeadFadeStarted = true;
       this.tweens.killTweensOf(this.playerRect);
+      if (this.playerStroke) this.tweens.killTweensOf(this.playerStroke);
       this.tweens.add({
-        targets: this.playerRect,
+        targets: this.playerStroke
+          ? [this.playerRect, this.playerStroke]
+          : this.playerRect,
         alpha: 0,
         delay: 200,
         duration: 580,
         ease: "Quad.in",
         onComplete: () => {
           this.playerRect.setVisible(false);
+          if (this.playerStroke) this.playerStroke.setVisible(false);
         },
       });
     }
@@ -5184,7 +5222,9 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // 바이크 네온 글로우 — 평시 시안, 피버 중 골드로 전환 (렌더 전용)
+    // 주인공 스트로크 — tintFill 실루엣(전 기기). 평시 시안 · 피버 노랑.
+    // postFX 소프트 글로우는 non-Android에서만 보조로 유지.
+    this.syncPlayerStroke(s);
     if (this.playerGlow) {
       if (s.feverFramesLeft > 0) {
         this.playerGlow.color = NEON_YELLOW;
@@ -5192,7 +5232,7 @@ export class GameScene extends Phaser.Scene {
       } else if (s.gameOver) {
         this.playerGlow.outerStrength = 0;
       } else {
-        this.playerGlow.color = 0x5efce8;
+        this.playerGlow.color = COLOR_PLAYER_STROKE;
         this.playerGlow.outerStrength =
           s.invincibleFrames > 0 || s.feverGraceFramesLeft > 0 ? 6 : 3;
       }
@@ -5521,7 +5561,41 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 아직 안 제친 고스트 중 기록 거리가 가장 짧은 인덱스 = 다음에 제칠 라이벌.
+   * 주인공 tintFill 스트로크 동기 — 텍스처·원점·각도·알파를 플레이어와 맞춤.
+   * 평시 시안 / 피버 네온 노랑. 사망·비가시 시 숨김.
+   * 렌더 전용 — sim 무접촉(읽기만).
+   */
+  private syncPlayerStroke(s: {
+    feverFramesLeft: number;
+    gameOver: boolean;
+  }): void {
+    const stroke = this.playerStroke;
+    const player = this.playerRect;
+    if (!stroke || !player) return;
+
+    if (s.gameOver || !player.visible) {
+      stroke.setVisible(false);
+      return;
+    }
+
+    const color =
+      s.feverFramesLeft > 0 ? NEON_YELLOW : COLOR_PLAYER_STROKE;
+    const w = player.displayWidth * PLAYER_STROKE_SCALE;
+    const h = player.displayHeight * PLAYER_STROKE_SCALE;
+    stroke
+      .setTexture(player.texture.key, player.frame.name)
+      .setOrigin(player.originX, player.originY)
+      .setFlipX(player.flipX)
+      .setAngle(player.angle)
+      .setPosition(player.x, player.y)
+      .setDisplaySize(w, h)
+      .setAlpha(player.alpha)
+      .setTintFill(color)
+      .setVisible(true);
+  }
+
+  /**
+   * 아직 안 제친 고스트 중 기록 거리가 가장 가까운 인덱스 = 다음에 제칠 라이벌.
    * 없으면 -1.
    */
   private findNextRivalIndex(): number {
