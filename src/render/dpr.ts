@@ -9,9 +9,10 @@
 // 해법(표준 레시피): 게임(백킹) 크기 = 논리 크기 × DPR, 메인 카메라 zoom = DPR.
 // 좌표계는 논리(1040×480) 그대로 유지되고, 렌더만 물리 해상도로 이뤄진다.
 //
-// 상한: fxQuality.RENDER_DPR_CAP (전역 2 / Android 1.5).
+// 상한: fxQuality.RENDER_DPR_CAP (데스크톱 2 / 모바일 WebView 1.5).
 // DPR 3 기기에서 백킹이 논리 대비 9배가 되면 프레임 드랍이 보고됨.
-// 상한 2면 4배, Android 1.5면 ~2.25배 — 텍스트 선명도는 유지하면서 필레이트↓.
+// 상한 2면 4배, 1.5면 ~2.25배 — 텍스트 선명도는 유지하면서 필레이트↓.
+// (2026-08-03: iOS도 1.5로 편입 — iOS ~40fps 실측. fxQuality 상단 주석 참고)
 import { RENDER_DPR_CAP } from "./fxQuality";
 
 export const RENDER_DPR =

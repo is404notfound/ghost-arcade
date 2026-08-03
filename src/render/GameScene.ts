@@ -1173,7 +1173,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(25)
       .setVisible(false);
     // 바이크 시안 네온 글로우 — WebGL postFX.
-    // Android는 fxQuality에서 끔(필레이트 주원인). 비지원 기기도 무시.
+    // 모바일 WebView(Android+iOS)는 fxQuality에서 끔(필레이트 주원인). 비지원 기기도 무시.
     if (FX_PLAYER_GLOW) {
       try {
         if (this.playerRect.postFX) {
