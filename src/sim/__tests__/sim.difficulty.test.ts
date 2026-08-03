@@ -93,7 +93,8 @@ describe('GameSim — 온보딩 난이도 램프', () => {
     const earlyFrames = Math.ceil(C.PATTERN_RAMP_SEC * C.SIM_FPS);
     for (let seed = 1; seed <= 20; seed++) {
       const sim = new GameSim(seed);
-      sim.state.invincibleFrames = 9999; // 피격 방지 (HP 드레인은 720프레임에 48HP라 게임오버 없음)
+      // 피격 방지. HP 드레인은 19초에 76HP(HP_MAX=100)라 온보딩 구간 내 게임오버 없음.
+      sim.state.invincibleFrames = 9999;
       for (let f = 0; f < earlyFrames; f++) {
         sim.step();
         for (const o of sim.state.obstacles) {
@@ -103,5 +104,63 @@ describe('GameSim — 온보딩 난이도 램프', () => {
         }
       }
     }
+  });
+});
+
+// ──────────────────────────────────────────────────────────
+// 온보딩 구간 (1.16.0) — 첫 300m를 넘겨 피버 1회 경험
+// ──────────────────────────────────────────────────────────
+describe('GameSim — 온보딩 구간 (첫 300m 완화)', () => {
+  test('ONBOARD_SEC는 300m 도달 시각(≈18.7초)을 덮는다', () => {
+    // 9000유닛(=300m) = SPEED_BASE·t + (SPEED_RAMP/2)·t²  (SPEED_MAX 도달 전 구간)
+    const a = C.SPEED_RAMP / 2;
+    const b = C.SPEED_BASE;
+    const c = -300 * C.UNITS_PER_METER;
+    const t300 = (-b + Math.sqrt(b * b - 4 * a * c)) / (2 * a);
+    expect(t300).toBeLessThanOrEqual(C.ONBOARD_SEC);
+  });
+
+  test('ONBOARD_SEC는 피버 발동 시간(FEVER_INTERVAL_SEC)보다 길다', () => {
+    // 온보딩을 끝까지 살아남으면 콤보 유지 시 피버를 최소 1회 경험한다
+    expect(C.ONBOARD_SEC).toBeGreaterThan(C.FEVER_INTERVAL_SEC);
+  });
+
+  test('ONBOARD_OBS_H_MAX는 평시 상한(OBS_H_MAX)보다 낮다', () => {
+    expect(C.ONBOARD_OBS_H_MAX).toBeLessThan(C.OBS_H_MAX);
+    expect(C.ONBOARD_OBS_H_MAX).toBeGreaterThanOrEqual(C.OBS_H_MIN);
+  });
+
+  test('온보딩 구간의 모든 활성 장애물은 ONBOARD_OBS_H_MAX 이하다', () => {
+    const onboardFrames = Math.ceil(C.ONBOARD_SEC * C.SIM_FPS);
+    for (let seed = 1; seed <= 20; seed++) {
+      const sim = new GameSim(seed);
+      sim.state.invincibleFrames = 9999; // 피격 방지 (위 테스트와 동일 근거)
+      for (let f = 0; f < onboardFrames; f++) {
+        sim.step();
+        for (const o of sim.state.obstacles) {
+          if (o.active) {
+            expect(o.h).toBeLessThanOrEqual(C.ONBOARD_OBS_H_MAX);
+          }
+        }
+      }
+    }
+  });
+
+  test('온보딩 이후에는 평시 상한(OBS_H_MAX)까지 다시 나온다', () => {
+    // 클램프가 온보딩 구간에만 걸리는지 확인 — 영구 하향이 아님
+    const afterFrames = Math.ceil((C.PATTERN_FULL_SEC + 40) * C.SIM_FPS);
+    let sawAboveOnboardCap = false;
+    for (let seed = 1; seed <= 20 && !sawAboveOnboardCap; seed++) {
+      const sim = new GameSim(seed);
+      sim.state.invincibleFrames = 9999;
+      for (let f = 0; f < afterFrames; f++) {
+        sim.step();
+        if (sim.state.gameOver) break;
+        for (const o of sim.state.obstacles) {
+          if (o.active && o.h > C.ONBOARD_OBS_H_MAX) sawAboveOnboardCap = true;
+        }
+      }
+    }
+    expect(sawAboveOnboardCap).toBe(true);
   });
 });

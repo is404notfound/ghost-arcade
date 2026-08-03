@@ -86,6 +86,24 @@ export const FEVER_GRACE_SEC = 2;
 // 피버 시간 기반 발동 — 콤보가 이 시간(초) 이상 끊기지 않으면 피버 발동
 export const FEVER_INTERVAL_SEC = 10;
 
+// ── 온보딩 구간 (1.16.0) — "첫 300m를 확실히 넘겨 피버를 1회 경험하게" ──
+//
+// 근거 (2026-08-03 PostHog 전수 4,137판 / 209명):
+//   - 300m 미만 사망 22%, 그중 collision 60% (초반 장애물 패턴 학습 전 사망)
+//   - 300m 전에 죽은 판은 100% 피버 미경험 = 핵심 재미를 못 보고 이탈
+//   - 1판 단판 이탈 41%
+//
+// 300m 도달 시각 계산: speed(t) = min(SPEED_BASE + SPEED_RAMP·t, SPEED_MAX) 유닛/초,
+//   UNITS_PER_METER=30 → 9000유닛 = 340t + 7.5t² → t ≈ 18.7초. 여유를 둬 19초.
+// 피버는 콤보 10초 유지로 발동(FEVER_INTERVAL_SEC) → 이 구간을 넘기면 최소 1회 경험.
+export const ONBOARD_SEC = 19;
+
+// 온보딩 중 SINGLE 랜덤 높이 상한.
+// 평시 상한(OBS_H_MAX=120)도 1단 점프 정점(165)으로 넘을 수는 있으나 타이밍이 빡빡해
+// 초보 충돌사의 주원인이다. 90이면 여유가 커 첫 판에서도 반응 시간이 확보된다.
+export const ONBOARD_OBS_H_MAX = 90;
+
 // 온보딩 난이도 램프 — 경과 시간에 따라 어려운 패턴을 점진적으로 해금
-export const PATTERN_RAMP_SEC = 12; // 이 시간 전: SINGLE/WIDE_LOW만 (낮고 단순)
+// 1.16.0: 12→19 (ONBOARD_SEC와 일치) — BURST(근접 2개)도 300m 이후로 밀린다
+export const PATTERN_RAMP_SEC = ONBOARD_SEC; // 이 시간 전: SINGLE/WIDE_LOW만 (낮고 단순)
 export const PATTERN_FULL_SEC = 28; // 이 시간 이후: 전체 패턴 (STAIRCASE 포함)

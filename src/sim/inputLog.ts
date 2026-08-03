@@ -31,7 +31,11 @@
 // 1.15.0: 챌린지(8월) 전 1회 리더보드 리셋 — 사다리·봇 천장 하향(4000)·튜토리얼
 //         (포션/더블점프 토스트·피버 tap! 산발)·제침 연출 번들을 출시하며 옛 로그 무효화.
 //         sim-core 궤적 변경은 없음(렌더/데이터 레이어). 버전 격리는 순수 리셋 목적.
-export const SIM_VERSION = '1.15.0';
+// 1.16.0: 온보딩(첫 300m ≈ 19초) 완화 — PATTERN_RAMP_SEC 12→19(BURST도 300m 이후로),
+//         온보딩 중 SINGLE 랜덤 높이를 90으로 클램프(ONBOARD_OBS_H_MAX).
+//         근거: 300m 미만 사망 22%·그중 collision 60%, 300m 전 사망은 100% 피버 미경험.
+//         장애물 높이·패턴 분포가 달라져 궤적 변경 → 옛 로그 재생 불가.
+export const SIM_VERSION = '1.16.0';
 
 export interface InputEvent {
   frame: number;

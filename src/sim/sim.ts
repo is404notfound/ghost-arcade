@@ -333,7 +333,13 @@ export class GameSim {
       if (patIdx === 4) patIdx = 0;
     }
 
-    const heightRoll = this.rng.nextInt(C.OBS_H_MIN, C.OBS_H_MAX);
+    // 온보딩(첫 300m) 중에는 랜덤 높이를 낮게 클램프한다 (1.16.0).
+    // RNG 호출은 평시와 동일하게 1회 — 값만 깎으므로 (1)~(4) 소비 순서는 불변.
+    const heightRollRaw = this.rng.nextInt(C.OBS_H_MIN, C.OBS_H_MAX);
+    const heightRoll =
+      t < C.ONBOARD_SEC
+        ? Math.min(heightRollRaw, C.ONBOARD_OBS_H_MAX)
+        : heightRollRaw;
     if (this.rng.next() < C.POTION_CHANCE) {
       this.potionPendingY = this.rng.nextInt(C.POTION_Y_MIN, C.POTION_Y_MAX);
       // 포션은 장애물 사이 절반 지점 — 간격과 같은 speedT 시계로 계산
