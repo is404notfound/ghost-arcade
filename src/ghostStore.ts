@@ -4,7 +4,6 @@
 //
 // localStorage를 직접 잡지 않고 KVStore로 주입받는다: 헤드리스 테스트 +
 // PLAN의 "localStorage 실패 시 폴백" 요구(추후 메모리 구현 교체)에 대비.
-import * as Sentry from '@sentry/browser';
 import {
   SIM_VERSION,
   SimVersionMismatchError,
@@ -78,8 +77,8 @@ export function saveRun(store: KVStore, seed: number, log: InputLog, distance: n
     );
     return true;
   } catch (e) {
-    // 저장 실패(QuotaExceeded 등)는 게임을 멈추진 않지만 빈도는 알 가치가 있다
-    Sentry.captureException(e, { level: 'warning' });
+    // 저장 실패(QuotaExceeded 등)는 게임을 멈추진 않음 — 로컬만 실패
+    console.warn('[ghostStore] saveRun 실패', e);
     return false;
   }
 }
@@ -102,9 +101,9 @@ export function loadTopRuns(store: KVStore, seed: number): GhostRecord[] {
         runs.push({ distance: obj.distance, log });
       } catch (e) {
         // 깨진 레코드 하나가 나머지를 죽이지 않는다.
-        // 버전 불일치는 밸런스 패치 후 정상 동작 → 노이즈 제외, 그 외만 보고.
+        // 버전 불일치는 밸런스 패치 후 정상 동작 → 무시, 그 외만 로그.
         if (!(e instanceof SimVersionMismatchError)) {
-          Sentry.captureException(e, { level: 'warning' });
+          console.warn('[ghostStore] 손상 레코드 스킵', e);
         }
       }
     }
@@ -112,7 +111,7 @@ export function loadTopRuns(store: KVStore, seed: number): GhostRecord[] {
     return runs.slice(0, GHOST_TOP_N);
   } catch (e) {
     // 블롭 전체가 깨졌거나(JSON.parse 실패) storage 접근 자체가 실패한 경우
-    Sentry.captureException(e, { level: 'warning' });
+    console.warn('[ghostStore] loadTopRuns 실패', e);
     return [];
   }
 }

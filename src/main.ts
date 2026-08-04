@@ -1,8 +1,5 @@
-// 반드시 첫 import — 어떤 런타임 코드보다 먼저 Sentry.init이 실행되도록 한다.
-import './instrument';
 import './style.css';
 import Phaser from 'phaser';
-import * as Sentry from '@sentry/browser';
 import { GameScene } from './render/GameScene';
 import { DESIGN_W, DESIGN_H } from './render/viewport';
 import { RENDER_DPR } from './render/dpr';
@@ -12,24 +9,10 @@ import { initAnalytics, identifyUser } from './analytics';
 import { getUserId } from './identity';
 import { initHeartbeat } from './heartbeat';
 import { loadRemoteConfig } from './remoteConfig';
-import { runTestError } from './testErrors';
 import { maybeTriggerBug } from './experiment/bug-trigger';
 import { setBootLoadingStatus } from './bootLoading';
 import { lockLandscapeIfPossible } from './aitHost';
 import { initSafeArea } from './safeArea';
-
-// 검증용 의도적 에러 — Sentry/Seer 테스트. (검증 후 제거 가능)
-//   ?error=<type>  하나만 (type/range/reference/syntax/uri/custom/promise/async/manual/generic)
-//   ?error=all     10종 한 번에
-//   ?boom          generic 별칭(기존 호환)
-{
-  const params = new URLSearchParams(window.location.search);
-  if (params.has('boom')) {
-    runTestError('generic');
-  } else if (params.has('error')) {
-    runTestError(params.get('error') ?? '');
-  }
-}
 
 // 에이전트 비교 실험: ?bug=NN 파라미터가 있을 때만 해당 시나리오 실행
 maybeTriggerBug();
@@ -51,7 +34,7 @@ if (import.meta.env.DEV) {
         console.log('[dev] 고스트 시딩 완료 — 새로고침으로 15기 적용');
       };
     })
-    .catch((e: unknown) => Sentry.captureException(e));
+    .catch((e: unknown) => console.error('[dev] seedGhosts 로드 실패', e));
 }
 
 initAnalytics();
@@ -90,7 +73,7 @@ void (async () => {
     await document.fonts.ready;
   } catch (e) {
     // 폰트 로드 실패해도 게임은 띄운다 — fallback으로라도 플레이 가능해야 함
-    Sentry.captureException(e);
+    console.warn('[boot] 폰트 로드 실패 — fallback으로 계속', e);
   }
 
 try {
@@ -121,8 +104,8 @@ try {
   });
   setBootLoadingStatus('에셋 불러오는 중…');
 } catch (e) {
-  // WebGL/Canvas 컨텍스트 생성 실패 등 부트 크래시 — 치명적이라 보고 후 그대로 노출
-  Sentry.captureException(e);
+  // WebGL/Canvas 컨텍스트 생성 실패 등 부트 크래시 — 치명적이라 그대로 노출
+  console.error('[boot] Phaser 시작 실패', e);
   setBootLoadingStatus('시작에 실패했습니다. 새로고침 해 주세요.');
   throw e;
 }

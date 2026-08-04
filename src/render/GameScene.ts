@@ -7,7 +7,6 @@
 // 철칙: 이 파일은 sim.state를 절대 변경하지 않는다. 게임 로직이 여기로 새는 순간
 // 입력 로그만으로 게임을 복원할 수 없게 되어 골든 리플레이(T4)가 깨진다.
 import Phaser from "phaser";
-import * as Sentry from "@sentry/browser";
 import { GameSim } from "../sim/sim";
 import { GhostDriver } from "../sim/ghost";
 import { FixedTimestep } from "../sim/timestep";
@@ -3168,14 +3167,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number) {
-    // 매 프레임 도는 핫 루프 — 같은 예외가 초당 수십 번 Sentry로 폭주하는 걸 막기 위해
-    // 한 번 터지면 보고 1회 후 루프를 정지시킨다 (Sentry 기본 dedupe보다 확실한 차단).
+    // 매 프레임 도는 핫 루프 — 같은 예외가 초당 수십 번 콘솔로 폭주하는 걸 막기 위해
+    // 한 번 터지면 로그 1회 후 루프를 정지시킨다.
     if (this.crashed) return;
     try {
       this.tick(delta);
     } catch (e) {
       this.crashed = true;
-      Sentry.captureException(e);
       console.error("[ghost-arcade] 렌더 루프 크래시 — 정지", e);
     }
   }

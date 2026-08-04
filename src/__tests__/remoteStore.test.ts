@@ -6,10 +6,6 @@ vi.mock('../supabaseClient', () => ({
   getSupabaseClient: vi.fn(),
 }));
 
-vi.mock('@sentry/browser', () => ({
-  captureException: vi.fn(),
-}));
-
 const seed = 20240101;
 const log = createInputLog(seed);
 
@@ -242,9 +238,6 @@ describe('submitRunRemote', () => {
     // 1차는 meta 포함, 2차(재시도)는 meta 제외
     expect(chain.insert.mock.calls[0]![0]).toHaveProperty('meta');
     expect(chain.insert.mock.calls[1]![0]).not.toHaveProperty('meta');
-
-    const { captureException } = await import('@sentry/browser');
-    expect(vi.mocked(captureException)).not.toHaveBeenCalled();
   });
 
   it('네트워크 오류: 예외 미전파', async () => {
@@ -257,7 +250,7 @@ describe('submitRunRemote', () => {
     await expect(submitRunRemote(seed, log, 100)).resolves.toBeUndefined();
   });
 
-  it('INSERT 타임아웃(5초 초과): 예외 미전파, Sentry AbortError 미보고', async () => {
+  it('INSERT 타임아웃(5초 초과): 예외 미전파', async () => {
     vi.useFakeTimers();
     const getClient = await getGetSupabaseClient();
 
@@ -272,9 +265,6 @@ describe('submitRunRemote', () => {
     const resultPromise = submitRunRemote(seed, log, 100);
     vi.advanceTimersByTime(5001); // REMOTE_TIMEOUT_MS 초과
     await expect(resultPromise).resolves.toBeUndefined();
-
-    const { captureException } = await import('@sentry/browser');
-    expect(vi.mocked(captureException)).not.toHaveBeenCalled();
 
     vi.useRealTimers();
   });
@@ -331,8 +321,6 @@ describe('loadWeeklyRankings', () => {
     const { loadWeeklyRankings } = await importRemote();
 
     await expect(loadWeeklyRankings()).resolves.toEqual([]);
-    const { captureException } = await import('@sentry/browser');
-    expect(vi.mocked(captureException)).not.toHaveBeenCalled();
   });
 
   it('Supabase 미설정: 빈 배열 반환', async () => {

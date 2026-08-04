@@ -5,7 +5,6 @@
 //   - 버전 파티션: 모든 쿼리에 SIM_VERSION 포함 → v1/v2 로그 교차 금지.
 //   - 네트워크 장애 = 완전 폴백: 예외를 밖으로 절대 던지지 않는다.
 //   - 이상치 필터(B3): 물리 상한 초과 거리는 서버에 기록하지 않는다.
-import * as Sentry from '@sentry/browser';
 import { getSupabaseClient } from './supabaseClient';
 import { SIM_VERSION, parseLog, type InputLog, type RunMeta } from './sim/inputLog';
 import { type GhostRecord } from './ghostStore';
@@ -95,10 +94,9 @@ export async function loadTopRunsRemote(seed: number): Promise<GhostRecord[]> {
     return runs;
   } catch (e) {
     clearTimeout(timer);
-    // AbortError는 의도적 타임아웃 — Sentry 노이즈 제외
+    // AbortError는 의도적 타임아웃 — 노이즈라 로그도 생략
     if (!(e instanceof DOMException && e.name === 'AbortError')) {
       console.error('[remoteStore] SELECT 실패 —', e);
-      Sentry.captureException(e, { level: 'warning' });
     }
     return [];
   }
@@ -143,10 +141,9 @@ export async function loadWeeklyRankings(): Promise<WeeklyRank[]> {
   } catch (e) {
     clearTimeout(timer);
     if (!(e instanceof DOMException && e.name === 'AbortError')) {
-      console.warn('[remoteStore] 주간 랭킹 조회 실패 —', e);
-      // 뷰 미적용(42P01: relation does not exist)은 예상 가능한 degrade — Sentry 제외
+      // 뷰 미적용(42P01: relation does not exist)은 예상 가능한 degrade — 조용히 폴백
       const code = (e as { code?: unknown }).code;
-      if (code !== '42P01') Sentry.captureException(e, { level: 'warning' });
+      if (code !== '42P01') console.warn('[remoteStore] 주간 랭킹 조회 실패 —', e);
     }
     return [];
   }
@@ -207,9 +204,9 @@ export async function submitRunRemote(
       ({ error } = await raceInsert(baseRow));
     if (error) throw error;
   } catch (e) {
-    // AbortError는 의도적 타임아웃 — Sentry 노이즈 제외
+    // AbortError는 의도적 타임아웃 — 노이즈라 로그도 생략
     if (!(e instanceof DOMException && e.name === 'AbortError')) {
-      Sentry.captureException(e, { level: 'warning' });
+      console.warn('[remoteStore] INSERT 실패 —', e);
     }
   }
 }

@@ -1,5 +1,3 @@
-import * as Sentry from '@sentry/browser';
-
 async function triggerBug01(): Promise<void> {
   window.localStorage.removeItem('user_settings');
   const { loadUserSettings } = await import('../data/UserSettings');
@@ -58,7 +56,7 @@ export function maybeTriggerBug(): void {
   const bugId = params.get('bug');
   if (!bugId) return;
 
-  const capture = (e: unknown) => Sentry.captureException(e);
+  const capture = (e: unknown) => console.error('[experiment] bug trigger failed', e);
   switch (bugId) {
     case '01': triggerBug01().catch(capture); break;
     case '02': triggerBug02().catch(capture); break;
