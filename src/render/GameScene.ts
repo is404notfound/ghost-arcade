@@ -21,12 +21,14 @@ import {
 import {
   isAdsAvailable,
   isAdReady,
+  reviveOfferSkipReason,
   show as showAd,
   isAdSessionActive,
   shouldShowInterstitial,
   readInterstitialState,
   writeInterstitialState,
   normalizeInterstitialPeriod,
+  setBannerVisible,
   type AdResult,
 } from "../ads";
 import { RevivePrompt } from "../ui/RevivePrompt";
@@ -3432,11 +3434,12 @@ export class GameScene extends Phaser.Scene {
         ? null
         : Math.floor(myDist) >= this.bestDistNoReviveAtRunStart * 0.9;
 
-    const canOfferRevive =
-      isAdsAvailable() &&
-      remoteConfig("ads_revive_enabled") &&
-      isAdReady("revive") &&
-      !this.deathFinalizePending;
+    const reviveEnabled = remoteConfig("ads_revive_enabled");
+    const reviveSkip =
+      this.deathFinalizePending
+        ? "finalize_pending"
+        : reviveOfferSkipReason(reviveEnabled);
+    const canOfferRevive = reviveSkip === null;
 
     setPerson({
       lifetime_max_distance: Math.max(this.bestDistAtRunStart, Math.floor(myDist)),
@@ -3463,6 +3466,7 @@ export class GameScene extends Phaser.Scene {
         max_combo: this.maxComboThisRun,
         is_personal_best: isPersonalBest,
         revive_pending: canOfferRevive,
+        revive_skip_reason: reviveSkip,
         revive_count: this.reviveCountThisRun,
       },
       { instant: true },
@@ -3601,6 +3605,7 @@ export class GameScene extends Phaser.Scene {
   private beginAdPresentation(): void {
     this.suppressBackgroundForAds = true;
     pauseHeartbeatDuringAd();
+    setBannerVisible(false);
     try {
       this.game.loop.sleep();
     } catch {
@@ -3617,6 +3622,7 @@ export class GameScene extends Phaser.Scene {
     resumeHeartbeatAfterAd();
     this.suppressBackgroundForAds = false;
     this.timestep.reset();
+    setBannerVisible(true);
   }
 
   /** 판 종료 확정 — 서버 제출·로컬 저장·결과 패널 1회 (결정 I) */
@@ -3726,10 +3732,16 @@ export class GameScene extends Phaser.Scene {
     const period = normalizeInterstitialPeriod(
       remoteConfig("ads_interstitial_period"),
     );
+    const minLife = Math.max(
+      1,
+      Math.round(remoteConfig("ads_interstitial_min_lifetime_run")),
+    );
     const gate = shouldShowInterstitial({
       enabled: remoteConfig("ads_interstitial_enabled"),
       skippedBecauseReviveAd: this.sawReviveAdThisRun,
       period,
+      lifetimeRunIndex: this.lifetimeRunIndexThisRun,
+      minLifetimeRunIndex: minLife,
       stored: readInterstitialState(window.localStorage),
     });
     writeInterstitialState(window.localStorage, gate.next);

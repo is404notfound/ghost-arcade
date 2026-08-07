@@ -13,3 +13,7 @@ INSERT INTO remote_config (key, value) VALUES
   ('ads_interstitial_enabled', 'false'),
   ('ads_interstitial_period', '5')
 ON CONFLICT (key) DO NOTHING;
+
+-- 시딩은 fail-closed(false). QR/샌드박스에서 이어뛰기 광고를 보려면 아래를 실행:
+-- UPDATE remote_config SET value = 'true'::jsonb, updated_at = NOW()
+--   WHERE key = 'ads_revive_enabled';

@@ -13,6 +13,10 @@ export interface ShouldShowInterstitialInput {
   /** 직전 판에서 이어뛰기(보상형) 광고를 시청 완료했는지 */
   skippedBecauseReviveAd: boolean;
   period: number;
+  /** 이번(직전) 판의 lifetime_run_index. minLifetimeRunIndex 미만이면 미노출 */
+  lifetimeRunIndex: number;
+  /** 이 값 이상일 때만 전면광고 후보 (기본 5 = index > 4) */
+  minLifetimeRunIndex: number;
   now?: Date;
   stored?: InterstitialState | null;
 }
@@ -74,7 +78,14 @@ export function shouldShowInterstitial(
   const count = baseCount + 1;
   const next: InterstitialState = { date: today, count };
 
-  if (!input.enabled || input.skippedBecauseReviveAd) {
+  const minLife = Number.isFinite(input.minLifetimeRunIndex)
+    ? Math.max(1, Math.round(input.minLifetimeRunIndex))
+    : 5;
+  if (
+    !input.enabled ||
+    input.skippedBecauseReviveAd ||
+    input.lifetimeRunIndex < minLife
+  ) {
     return { show: false, next };
   }
   return { show: count % period === 0, next };

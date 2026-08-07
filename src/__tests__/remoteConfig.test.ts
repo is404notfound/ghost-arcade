@@ -40,6 +40,8 @@ describe('remoteConfig', () => {
     expect(remoteConfig('ads_revive_enabled')).toBe(false);
     expect(remoteConfig('ads_interstitial_enabled')).toBe(false);
     expect(remoteConfig('ads_interstitial_period')).toBe(5);
+    expect(remoteConfig('ads_interstitial_min_lifetime_run')).toBe(5);
+    expect(remoteConfig('ads_banner_enabled')).toBe(false);
   });
 
   it('원격 값이 있으면 override (타입 일치 시)', async () => {
@@ -67,7 +69,7 @@ describe('remoteConfig', () => {
     const { client } = makeChain({
       data: [
         { key: 'blackout_enabled', value: 'off' }, // boolean이어야 함
-        { key: 'blackout_edge_ratio', value: '0.5' }, // number여야 함
+        { key: 'blackout_edge_ratio', value: 'nope' }, // number여야 함
       ],
       error: null,
     });
@@ -78,6 +80,24 @@ describe('remoteConfig', () => {
     await loadRemoteConfig();
     expect(remoteConfig('blackout_enabled')).toBe(true);
     expect(remoteConfig('blackout_edge_ratio')).toBe(0.7);
+  });
+
+  it('문자열 "true"/"false"/숫자 문자열은 coerce', async () => {
+    const getClient = await getClientMock();
+    const { client } = makeChain({
+      data: [
+        { key: 'ads_revive_enabled', value: 'true' },
+        { key: 'ads_interstitial_period', value: '7' },
+      ],
+      error: null,
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getClient.mockReturnValue(client as any);
+    const { loadRemoteConfig, remoteConfig } = await getModule();
+
+    await loadRemoteConfig();
+    expect(remoteConfig('ads_revive_enabled')).toBe(true);
+    expect(remoteConfig('ads_interstitial_period')).toBe(7);
   });
 
   it('테이블 미적용(에러): 기본값 유지, 예외 미전파', async () => {

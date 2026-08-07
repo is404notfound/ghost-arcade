@@ -13,7 +13,7 @@ import { maybeTriggerBug } from './experiment/bug-trigger';
 import { setBootLoadingStatus } from './bootLoading';
 import { lockLandscapeIfPossible } from './aitHost';
 import { initSafeArea } from './safeArea';
-import { preloadAllEnabled } from './ads';
+import { preloadAllEnabled, mountBannerIfEnabled } from './ads';
 
 // 에이전트 비교 실험: ?bug=NN 파라미터가 있을 때만 해당 시나리오 실행
 maybeTriggerBug();
@@ -64,6 +64,8 @@ void (async () => {
     reviveEnabled: remoteConfig('ads_revive_enabled'),
     interstitialEnabled: remoteConfig('ads_interstitial_enabled'),
   });
+  // 배너는 DOM 슬롯 — Phaser와 별개. 실패해도 게임 부트는 계속.
+  void mountBannerIfEnabled(remoteConfig('ads_banner_enabled'));
 
   try {
     setBootLoadingStatus('폰트 준비 중…');

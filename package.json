@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "gen:sfx": "node scripts/gen-sfx.mjs",
-    "ait:dev": "vite --host",
+    "ait:dev": "VITE_ADS_ENABLED=true vite --host",
     "ait:sandbox": "bash scripts/ait-sandbox-dev.sh",
     "ait:build": "npm run build:ait",
     "ait:deploy": "ait deploy"

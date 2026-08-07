@@ -59,6 +59,16 @@ export function isAdReady(kind: AdKind): boolean {
   return ready.has(kind);
 }
 
+/** 이어뛰기 게이트 진단 — PostHog game_over.revive_skip_reason 용. */
+export function reviveOfferSkipReason(reviveEnabled: boolean): string | null {
+  if (!__ADS_ENABLED__) return 'build_disabled';
+  if (!isAppsInTossHost()) return 'not_ait_host';
+  if (!sdk.isSupported()) return 'unsupported';
+  if (!reviveEnabled) return 'remote_disabled';
+  if (!ready.has('revive')) return 'not_ready';
+  return null;
+}
+
 /** 부트 완료 + remoteConfig 이후 호출. dismiss 직후 재-preload. */
 export function preload(kind: AdKind): void {
   if (!__ADS_ENABLED__) return;
@@ -170,3 +180,4 @@ export {
   INTERSTITIAL_STORAGE_KEY,
 } from './interstitialGate';
 export type { InterstitialState, ShouldShowInterstitialInput } from './interstitialGate';
+export { mountBannerIfEnabled, setBannerVisible, destroyBanner } from './banner';

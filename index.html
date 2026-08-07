@@ -64,8 +64,10 @@
     </style>
   </head>
   <body>
-    <!-- Phaser parent: 뷰포트 전체 + 하늘 톤 — FIT 여백이 검은 띠로 안 보이게 -->
+    <!-- Phaser parent: 배너 높이(--banner-h)만큼 하단을 비움 -->
     <div id="game-root"></div>
+    <!-- 앱인토스 배너 슬롯 — 웹/미지원에선 숨김. 컨테이너는 비워 둔다(SDK 가이드). -->
+    <div id="ait-banner" hidden aria-hidden="true"></div>
     <div id="boot-loading" aria-live="polite" aria-busy="true">
       <div class="boot-loading-inner">
         <div class="boot-loading-spinner" aria-hidden="true"></div>

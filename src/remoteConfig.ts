@@ -23,10 +23,14 @@ const DEFAULTS = {
   bot_upload_enabled: true,
   /** 이어뛰기(보상형) 광고 on/off. R2 fail-closed를 위해 기본 false */
   ads_revive_enabled: false,
-  /** 전면광고 on/off. iOS fps 정리까지 false 유지 (결정 E-2) */
+  /** 전면광고 on/off. 원격에서 켠다 (fail-closed) */
   ads_interstitial_enabled: false,
   /** 전면광고 주기. 게이트에서 정규화됨 (결정 L) */
   ads_interstitial_period: 5,
+  /** 전면광고 최소 lifetime_run_index (이 값 이상, 기본 5 = index > 4) */
+  ads_interstitial_min_lifetime_run: 5,
+  /** 인게임 하단 배너 on/off. 원격에서 켠다 (fail-closed) */
+  ads_banner_enabled: false,
 } as const;
 
 export type RemoteConfigKey = keyof typeof DEFAULTS;
@@ -61,9 +65,31 @@ export async function loadRemoteConfig(): Promise<void> {
   }
 }
 
+/** JSONB/대시보드 입력에서 흔히 오는 문자열·숫자를 기본값 타입으로 정규화. */
+function coerceRemoteValue(key: RemoteConfigKey, v: unknown): unknown {
+  const sample = DEFAULTS[key];
+  if (typeof sample === 'boolean') {
+    if (typeof v === 'boolean') return v;
+    if (v === 'true' || v === 1) return true;
+    if (v === 'false' || v === 0) return false;
+    return undefined;
+  }
+  if (typeof sample === 'number') {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string' && v.trim() !== '') {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+    return undefined;
+  }
+  return v;
+}
+
 /** 플래그 조회 — 원격 값이 있고 타입이 기본값과 일치할 때만 적용. */
 export function remoteConfig<K extends RemoteConfigKey>(key: K): (typeof DEFAULTS)[K] {
-  const v = overrides[key];
+  const raw = overrides[key];
+  if (raw === undefined) return DEFAULTS[key];
+  const v = coerceRemoteValue(key, raw);
   if (v !== undefined && typeof v === typeof DEFAULTS[key]) {
     return v as (typeof DEFAULTS)[K];
   }

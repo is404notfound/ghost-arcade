@@ -18,25 +18,38 @@ describe('normalizeInterstitialPeriod', () => {
 
 describe('shouldShowInterstitial', () => {
   const day = new Date('2026-08-07T12:00:00Z');
+  const base = {
+    enabled: true,
+    skippedBecauseReviveAd: false,
+    period: 5,
+    lifetimeRunIndex: 5,
+    minLifetimeRunIndex: 5,
+    now: day,
+  };
 
   it('count % period === 0 이면 show', () => {
     const r = shouldShowInterstitial({
-      enabled: true,
-      skippedBecauseReviveAd: false,
-      period: 5,
-      now: day,
+      ...base,
       stored: { date: utcDateKey(day), count: 4 },
     });
     expect(r.show).toBe(true);
     expect(r.next.count).toBe(5);
   });
 
+  it('lifetime_run_index < min 이면 skip (count는 +1)', () => {
+    const r = shouldShowInterstitial({
+      ...base,
+      lifetimeRunIndex: 4,
+      stored: { date: utcDateKey(day), count: 4 },
+    });
+    expect(r.show).toBe(false);
+    expect(r.next.count).toBe(5);
+  });
+
   it('UTC 날짜 경계에서 리셋', () => {
     const nextDay = new Date('2026-08-08T00:00:01Z');
     const r = shouldShowInterstitial({
-      enabled: true,
-      skippedBecauseReviveAd: false,
-      period: 5,
+      ...base,
       now: nextDay,
       stored: { date: '2026-08-07', count: 99 },
     });
@@ -47,10 +60,8 @@ describe('shouldShowInterstitial', () => {
 
   it('이어뛰기 시청 직후 skip + count++', () => {
     const r = shouldShowInterstitial({
-      enabled: true,
+      ...base,
       skippedBecauseReviveAd: true,
-      period: 5,
-      now: day,
       stored: { date: utcDateKey(day), count: 4 },
     });
     expect(r.show).toBe(false);
@@ -59,10 +70,9 @@ describe('shouldShowInterstitial', () => {
 
   it('플래그 false면 항상 skip', () => {
     const r = shouldShowInterstitial({
+      ...base,
       enabled: false,
-      skippedBecauseReviveAd: false,
       period: 1,
-      now: day,
       stored: { date: utcDateKey(day), count: 0 },
     });
     expect(r.show).toBe(false);
@@ -71,10 +81,7 @@ describe('shouldShowInterstitial', () => {
 
   it('stored null(손상)이면 기본값부터', () => {
     const r = shouldShowInterstitial({
-      enabled: true,
-      skippedBecauseReviveAd: false,
-      period: 5,
-      now: day,
+      ...base,
       stored: null,
     });
     expect(r.next.count).toBe(1);
