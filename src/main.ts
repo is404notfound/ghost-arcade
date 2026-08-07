@@ -64,8 +64,11 @@ void (async () => {
     reviveEnabled: remoteConfig('ads_revive_enabled'),
     interstitialEnabled: remoteConfig('ads_interstitial_enabled'),
   });
-  // 배너는 DOM 슬롯 — Phaser와 별개. 실패해도 게임 부트는 계속.
-  void mountBannerIfEnabled(remoteConfig('ads_banner_enabled'));
+  // 배너는 DOM 슬롯 — Phaser와 별개. 소형 가로 화면은 미부착(게임면 축소 방지).
+  void mountBannerIfEnabled({
+    enabled: remoteConfig('ads_banner_enabled'),
+    minViewportH: remoteConfig('ads_banner_min_viewport_h'),
+  });
 
   try {
     setBootLoadingStatus('폰트 준비 중…');

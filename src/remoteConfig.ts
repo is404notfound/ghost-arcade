@@ -31,6 +31,11 @@ const DEFAULTS = {
   ads_interstitial_min_lifetime_run: 5,
   /** 인게임 하단 배너 on/off. 원격에서 켠다 (fail-closed) */
   ads_banner_enabled: false,
+  /**
+   * 배너 최소 뷰포트 높이(CSS px). 가로잠금에선 innerHeight.
+   * 폰 가로(~375–430)는 미부착, 태블릿급만 부착. 원격 튜닝용.
+   */
+  ads_banner_min_viewport_h: 500,
 } as const;
 
 export type RemoteConfigKey = keyof typeof DEFAULTS;

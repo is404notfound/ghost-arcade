@@ -1,9 +1,12 @@
-// 앱인토스 WebView 배너 — DOM 슬롯 + TossAds. 웹/미지원은 no-op.
+// 앱인토스 WebView 배너 — DOM 슬롯 + TossAds. 웹/미지원·소형 뷰포트는 no-op.
 import { isAppsInTossHost } from '../aitHost';
 
 const BANNER_EL_ID = 'ait-banner';
-const BANNER_HEIGHT_PX = 96;
+export const BANNER_HEIGHT_PX = 96;
 const TEST_BANNER_ID = 'ait-ad-test-banner-id';
+
+/** 기본: 뷰포트 짧은 변(가로잠금에선 높이) 500px 미만이면 배너 생략 — 폰 가로에서 게임면이 너무 줄어듦 */
+export const DEFAULT_BANNER_MIN_VIEWPORT_H = 500;
 
 type BannerHandle = { destroy: () => void };
 
@@ -14,6 +17,20 @@ function bannerAdGroupId(): string {
   return (
     (import.meta.env.VITE_AD_GROUP_BANNER as string | undefined) || TEST_BANNER_ID
   );
+}
+
+/**
+ * 가로 잠금 기준 짧은 변 ≈ innerHeight.
+ * 배너 96px를 빼고도 게임 면이 남는지 minViewportH로 판정.
+ */
+export function shouldMountBannerForViewport(
+  minViewportH: number,
+  viewportH: number = typeof window !== 'undefined' ? window.innerHeight : 0,
+): boolean {
+  const min = Number.isFinite(minViewportH)
+    ? Math.max(BANNER_HEIGHT_PX + 200, Math.round(minViewportH))
+    : DEFAULT_BANNER_MIN_VIEWPORT_H;
+  return viewportH >= min;
 }
 
 function setCssSlot(active: boolean): void {
@@ -45,16 +62,28 @@ export function destroyBanner(): void {
   setCssSlot(false);
 }
 
+export interface MountBannerOptions {
+  enabled: boolean;
+  /** 이 높이(CSS px) 미만이면 배너 미부착. 기본 500 */
+  minViewportH?: number;
+}
+
 /**
- * remoteConfig 이후 1회. 실패·미지원·웹은 조용히 스킵.
+ * remoteConfig 이후 1회. 실패·미지원·웹·소형 화면은 조용히 스킵.
  */
-export async function mountBannerIfEnabled(enabled: boolean): Promise<void> {
+export async function mountBannerIfEnabled(opts: MountBannerOptions): Promise<void> {
   if (!__ADS_ENABLED__) return;
-  if (!enabled) {
+  if (!opts.enabled) {
     destroyBanner();
     return;
   }
   if (!isAppsInTossHost()) return;
+
+  const minH = opts.minViewportH ?? DEFAULT_BANNER_MIN_VIEWPORT_H;
+  if (!shouldMountBannerForViewport(minH)) {
+    destroyBanner();
+    return;
+  }
 
   const el = document.getElementById(BANNER_EL_ID);
   if (!el) return;

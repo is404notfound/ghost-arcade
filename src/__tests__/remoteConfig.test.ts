@@ -42,6 +42,7 @@ describe('remoteConfig', () => {
     expect(remoteConfig('ads_interstitial_period')).toBe(5);
     expect(remoteConfig('ads_interstitial_min_lifetime_run')).toBe(5);
     expect(remoteConfig('ads_banner_enabled')).toBe(false);
+    expect(remoteConfig('ads_banner_min_viewport_h')).toBe(500);
   });
 
   it('원격 값이 있으면 override (타입 일치 시)', async () => {

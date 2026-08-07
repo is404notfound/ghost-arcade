@@ -180,4 +180,12 @@ export {
   INTERSTITIAL_STORAGE_KEY,
 } from './interstitialGate';
 export type { InterstitialState, ShouldShowInterstitialInput } from './interstitialGate';
-export { mountBannerIfEnabled, setBannerVisible, destroyBanner } from './banner';
+export {
+  mountBannerIfEnabled,
+  setBannerVisible,
+  destroyBanner,
+  shouldMountBannerForViewport,
+  BANNER_HEIGHT_PX,
+  DEFAULT_BANNER_MIN_VIEWPORT_H,
+} from './banner';
+export type { MountBannerOptions } from './banner';
