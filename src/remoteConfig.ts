@@ -21,6 +21,12 @@ const DEFAULTS = {
   blackout_edge_ratio: 0.7,
   /** 봇 로그 원격 업로드 게이트 — 봇이 프로덕션 보드를 오염시킬 때 차단 */
   bot_upload_enabled: true,
+  /** 이어뛰기(보상형) 광고 on/off. R2 fail-closed를 위해 기본 false */
+  ads_revive_enabled: false,
+  /** 전면광고 on/off. iOS fps 정리까지 false 유지 (결정 E-2) */
+  ads_interstitial_enabled: false,
+  /** 전면광고 주기. 게이트에서 정규화됨 (결정 L) */
+  ads_interstitial_period: 5,
 } as const;
 
 export type RemoteConfigKey = keyof typeof DEFAULTS;

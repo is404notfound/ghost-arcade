@@ -39,7 +39,7 @@ export const SIM_VERSION = '1.16.0';
 
 export interface InputEvent {
   frame: number;
-  type: 'tap';
+  type: 'tap' | 'revive';
 }
 
 // ─── Forward-design 메타데이터 슬롯 ───────────────────────────────────────
@@ -112,12 +112,22 @@ export function createInputLog(seed: number): InputLog {
   return { version: SIM_VERSION, seed, events: [] };
 }
 
-export function recordTap(log: InputLog, frame: number): void {
+function assertFrameNotBackward(log: InputLog, frame: number): void {
   const last = log.events[log.events.length - 1];
   if (last !== undefined && frame < last.frame) {
     throw new Error(`입력 프레임 역행: ${last.frame} 다음에 ${frame}`);
   }
+}
+
+export function recordTap(log: InputLog, frame: number): void {
+  assertFrameNotBackward(log, frame);
   log.events.push({ frame, type: 'tap' });
+}
+
+/** 부활(이어뛰기) 이벤트 — frame = 사망 판정 직후 state.frame (= 사망 프레임+1). */
+export function recordRevive(log: InputLog, frame: number): void {
+  assertFrameNotBackward(log, frame);
+  log.events.push({ frame, type: 'revive' });
 }
 
 export function serializeLog(log: InputLog): string {
@@ -138,7 +148,7 @@ export function parseLog(raw: string): InputLog {
   }
   for (const ev of obj.events) {
     const e = ev as Record<string, unknown>;
-    if (typeof e.frame !== 'number' || e.type !== 'tap') {
+    if (typeof e.frame !== 'number' || (e.type !== 'tap' && e.type !== 'revive')) {
       throw new Error('입력 로그 형식 오류: 이벤트 스키마 위반');
     }
   }

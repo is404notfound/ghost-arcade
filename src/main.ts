@@ -8,11 +8,12 @@ import { initGameControls } from './controls';
 import { initAnalytics, identifyUser } from './analytics';
 import { getUserId } from './identity';
 import { initHeartbeat } from './heartbeat';
-import { loadRemoteConfig } from './remoteConfig';
+import { loadRemoteConfig, remoteConfig } from './remoteConfig';
 import { maybeTriggerBug } from './experiment/bug-trigger';
 import { setBootLoadingStatus } from './bootLoading';
 import { lockLandscapeIfPossible } from './aitHost';
 import { initSafeArea } from './safeArea';
+import { preloadAllEnabled } from './ads';
 
 // 에이전트 비교 실험: ?bug=NN 파라미터가 있을 때만 해당 시나리오 실행
 maybeTriggerBug();
@@ -43,8 +44,6 @@ initAnalytics();
 identifyUser(getUserId(window.localStorage));
 // 비정상 종료 탐지 — initAnalytics 직후여야 직전 세션의 abnormal_exit을 놓치지 않는다
 initHeartbeat();
-// 원격 킬스위치 — 비차단 로드, 실패 시 코드 기본값 (플레이북 §0)
-void loadRemoteConfig();
 initGameControls();
 
 // Google Fonts + 물마루가 실제로 로드된 뒤에만 Phaser 시작.
@@ -57,6 +56,14 @@ void (async () => {
   await lockLandscapeIfPossible();
   // landscape 확정 뒤 Safe Area 구독 — CSS --safe-* + Phaser HUD 패드에 반영
   await initSafeArea();
+
+  // 원격 킬스위치 완료(또는 타임아웃) 후 광고 preload — 꺼진 광고 선로드 낭비 방지 (결정 H)
+  setBootLoadingStatus('설정 불러오는 중…');
+  await loadRemoteConfig();
+  preloadAllEnabled({
+    reviveEnabled: remoteConfig('ads_revive_enabled'),
+    interstitialEnabled: remoteConfig('ads_interstitial_enabled'),
+  });
 
   try {
     setBootLoadingStatus('폰트 준비 중…');

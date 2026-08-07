@@ -18,8 +18,14 @@ import { SPEED_MAX, UNITS_PER_METER } from './sim/constants';
 const LADDER_POOL_N = 150;
 
 // 물리 상한: SPEED_MAX(660) / UNITS_PER_METER(30) = 22m/s × 900초(15분) ≈ 19,800m
-// HP 드레인으로 실제 달성 불가능한 값 — 명백한 치트만 걸러낸다
+// HP 드레인으로 실제 달성 불가능한 값 — 명백한 치트만 걸러낸다.
+// 무제한 부활이면 상한을 (revive_count+1)배로 확장 (결정 K).
 const DISTANCE_OUTLIER_CEILING = (SPEED_MAX / UNITS_PER_METER) * 900;
+
+export function distanceOutlierCeiling(reviveCount = 0): number {
+  const n = Number.isFinite(reviveCount) ? Math.max(0, Math.floor(reviveCount)) : 0;
+  return DISTANCE_OUTLIER_CEILING * (n + 1);
+}
 
 // SELECT 타임아웃 — Supabase hang 시 무한 대기 방지 (로컬 폴백 보장)
 const REMOTE_TIMEOUT_MS = 5000;
@@ -160,9 +166,10 @@ export async function submitRunRemote(
   isBot = false,
   meta?: Partial<RunMeta>,
   userId?: string,
+  reviveCount = 0,
 ): Promise<void> {
   // 이상치 필터 (B3) — 물리 상한 초과·음수는 서버에 기록하지 않는다
-  if (distance > DISTANCE_OUTLIER_CEILING || distance < 0) return;
+  if (distance > distanceOutlierCeiling(reviveCount) || distance < 0) return;
 
   const client = getSupabaseClient();
   if (!client) return;
@@ -170,12 +177,19 @@ export async function submitRunRemote(
   // meta 슬롯: log.meta 우선, 파라미터 meta로 보완 (Forward-design)
   const mergedMeta = meta ?? log.meta ?? undefined;
 
-  const baseRow = {
+  // 최소 컬럼 → revive_count → meta/user_id. 구스키마는 missing-column 시 단계 축소.
+  const legacyBase = {
     seed,
     sim_version: SIM_VERSION,
     distance,
     log: log as unknown as Record<string, unknown>,
     is_bot: isBot,
+  };
+  const withRevive = { ...legacyBase, revive_count: reviveCount };
+  const fullRow = {
+    ...withRevive,
+    ...(mergedMeta ? { meta: mergedMeta } : {}),
+    ...(userId ? { user_id: userId } : {}),
   };
   // INSERT hang 방지 — Supabase 장애 시 무한 대기 없이 로컬 기록으로 계속
   const raceInsert = (row: Record<string, unknown>) =>
@@ -189,19 +203,12 @@ export async function submitRunRemote(
       ),
     ]);
 
-  const hasOptionalCols = Boolean(mergedMeta ?? userId);
-  const fullRow = {
-    ...baseRow,
-    ...(mergedMeta ? { meta: mergedMeta } : {}),
-    ...(userId ? { user_id: userId } : {}),
-  };
-
   try {
     let { error } = await raceInsert(fullRow);
-    // 선택 컬럼(meta/user_id) 미적용 DB (migrations/001·002 이전) —
-    // 필수 컬럼만으로 재시도해 기록 자체는 살린다
-    if (hasOptionalCols && isMissingColumnError(error))
-      ({ error } = await raceInsert(baseRow));
+    // meta/user_id 미적용 → revive_count만 재시도
+    if (isMissingColumnError(error)) ({ error } = await raceInsert(withRevive));
+    // revive_count도 미적용 → 필수 컬럼만
+    if (isMissingColumnError(error)) ({ error } = await raceInsert(legacyBase));
     if (error) throw error;
   } catch (e) {
     // AbortError는 의도적 타임아웃 — 노이즈라 로그도 생략

@@ -120,6 +120,8 @@ export class GameSim {
   private potionPendingY = 0;
   // 속도 초기화 기준 프레임 — 피격 시 여기서부터 속도 램프를 재시작한다.
   private speedResetFrame = 0;
+  /** revive()에서 세우고 step() 진입 직후 EV_REVIVE로 소비 — events를 직접 쓰면 step이 지움 */
+  private pendingRevive = false;
 
   constructor(seed: number) {
     this.rng = new Rng(seed);
@@ -157,6 +159,27 @@ export class GameSim {
     this.pendingTaps++;
   }
 
+  /**
+   * 사망 상태에서 이어뛰기. gameOver가 아니면 계약 위반 → no-op.
+   * events는 step()이 지으므로 pendingRevive로만 신호한다.
+   */
+  revive(): void {
+    const s = this.state;
+    if (!s.gameOver) return;
+    s.gameOver = false;
+    s.hp = C.HP_MAX;
+    s.invincibleFrames = Math.round(C.REVIVE_INVINCIBLE_SEC * C.SIM_FPS);
+    s.combo = 0;
+    s.feverTimerFrames = 0;
+    s.feverFramesLeft = 0;
+    s.feverGraceFramesLeft = 0;
+    s.player.jumpsUsed = 0;
+    s.player.vy = 0;
+    this.speedResetFrame = s.frame;
+    this.pendingTaps = 0;
+    this.pendingRevive = true;
+  }
+
   step(): void {
     const s = this.state;
     if (s.gameOver) {
@@ -165,6 +188,10 @@ export class GameSim {
       return;
     }
     s.events = 0;
+    if (this.pendingRevive) {
+      s.events |= C.EV_REVIVE;
+      this.pendingRevive = false;
+    }
 
     const t = s.frame * C.DT;
     // 피격 시 속도 초기화: speedResetFrame 이후 경과 시간으로 속도 재계산.
@@ -387,7 +414,9 @@ export function replay(log: InputLog, frames: number): GameSim {
   let cursor = 0;
   for (let f = 0; f < frames; f++) {
     while (cursor < log.events.length && log.events[cursor]!.frame === sim.state.frame) {
-      sim.queueTap();
+      const ev = log.events[cursor]!;
+      if (ev.type === 'revive') sim.revive();
+      else sim.queueTap();
       cursor++;
     }
     sim.step();

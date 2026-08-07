@@ -36,6 +36,10 @@ describe('remoteConfig', () => {
     await loadRemoteConfig();
     expect(remoteConfig('blackout_enabled')).toBe(true);
     expect(remoteConfig('blackout_edge_ratio')).toBe(0.7);
+    // 광고 킬스위치는 R2 fail-closed — 기본 false
+    expect(remoteConfig('ads_revive_enabled')).toBe(false);
+    expect(remoteConfig('ads_interstitial_enabled')).toBe(false);
+    expect(remoteConfig('ads_interstitial_period')).toBe(5);
   });
 
   it('원격 값이 있으면 override (타입 일치 시)', async () => {

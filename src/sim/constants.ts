@@ -67,6 +67,10 @@ export const EV_GAME_OVER = 16;
 export const EV_COMBO_BREAK = 32; // combo > 0 인 상태에서 피격 시 발화
 export const EV_FEVER_START = 64; // 피버 발동 순간
 export const EV_FEVER_END = 128; // 피버 만료 순간
+export const EV_REVIVE = 256; // 부활(이어뛰기) 순간 — step() 안에서만 발화
+
+/** 부활 후 무적 시간(초). 피격 무적과 별도 — 부활은 "피격의 큰 버전". */
+export const REVIVE_INVINCIBLE_SEC = 3;
 
 // 피버 — 일정 콤보 달성 시 무한 점프 + 2.5배속
 export const FEVER_COMBO = 10; // 이 콤보에 도달하면 피버 발동

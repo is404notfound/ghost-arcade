@@ -14,9 +14,26 @@ import * as C from "../sim/constants";
 import {
   createInputLog,
   recordTap,
+  recordRevive,
   SIM_VERSION,
   type InputLog,
 } from "../sim/inputLog";
+import {
+  isAdsAvailable,
+  isAdReady,
+  show as showAd,
+  isAdSessionActive,
+  shouldShowInterstitial,
+  readInterstitialState,
+  writeInterstitialState,
+  normalizeInterstitialPeriod,
+  type AdResult,
+} from "../ads";
+import { RevivePrompt } from "../ui/RevivePrompt";
+import {
+  pauseHeartbeatDuringAd,
+  resumeHeartbeatAfterAd,
+} from "../heartbeat";
 import { dailySeed } from "../dailySeed";
 import {
   saveRun,
@@ -78,6 +95,7 @@ import {
   readAndConsumePrevRunSnapshot,
   writePrevRunSnapshot,
   nextLifetimeRunIndex,
+  type DeathCause,
   computeRetryLatencyMs,
   type NearMissTracker,
   type RestartReason,
@@ -679,6 +697,23 @@ export class GameScene extends Phaser.Scene {
   private resultPanelTimer: Phaser.Time.TimerEvent | null = null;
   // 플레이어 사망 페이드아웃 — 트윈을 한 번만 시작하기 위한 플래그 (렌더 전용)
   private playerDeadFadeStarted = false;
+  /** 이어뛰기 팝업 — create()에서 생성 */
+  private revivePrompt: RevivePrompt | null = null;
+  /** 이번 판 부활 횟수 — 최종 사망 시에만 서버/로그에 반영 */
+  private reviveCountThisRun = 0;
+  /** 직전 판에서 이어뛰기 광고 시청 완료 — 전면광고 스킵용 */
+  private sawReviveAdThisRun = false;
+  /** 부활 없는 생애 최고 — near_record 분석 축 (ga:best-dist-norevive) */
+  private bestDistNoReviveAtRunStart = 0;
+  /** 광고 표시 중 visibility를 retry_latency 오염으로 치지 않음 */
+  private suppressBackgroundForAds = false;
+  /** 중간 사망 후 판 종료 확정 대기 (팝업/광고) */
+  private deathFinalizePending = false;
+  private pendingDeathCmp: GhostComparison | null = null;
+  private pendingDeathDist = 0;
+  private pendingDeathCause: "collision" | "hp_drain" = "hp_drain";
+  private pendingNearRecord: boolean | null = null;
+  private lastInterstitialShown = false;
   private crashed = false; // 렌더 루프 예외 발생 시 1회만 보고하고 정지 (이벤트 폭주 방지)
   private gamePaused = false;
   // 인게임 안내
@@ -946,7 +981,9 @@ export class GameScene extends Phaser.Scene {
     try {
       this._visibilityHandler = () => {
         if (document.hidden) {
-          this.wentBackgroundSinceLastGameOver = true;
+          if (!this.suppressBackgroundForAds && !isAdSessionActive()) {
+            this.wentBackgroundSinceLastGameOver = true;
+          }
           this.suspendAudioForBackground();
         } else {
           this.resumeAudioFromBackground();
@@ -954,7 +991,9 @@ export class GameScene extends Phaser.Scene {
       };
       this._pagehideHandler = () => {
         // pagehide는 복귀 신호가 아님 — 정지 전용 (visibility보다 먼저 오는 WebView 대비)
-        this.wentBackgroundSinceLastGameOver = true;
+        if (!this.suppressBackgroundForAds && !isAdSessionActive()) {
+          this.wentBackgroundSinceLastGameOver = true;
+        }
         this.suspendAudioForBackground();
       };
       document.addEventListener("visibilitychange", this._visibilityHandler);
@@ -1693,7 +1732,7 @@ export class GameScene extends Phaser.Scene {
         if (!this.gameOverRoot.visible) return;
         this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
         this.ignoreNextWindowTap = true;
-        this.startRun("death"); // 사망 후 Replay — retry_latency_ms/prev_run_* 유효
+        void this.retryWithInterstitialGate("death");
       });
       this.replayBtn = this.add.container(0, 8, [
         this.replayBg,
@@ -2106,11 +2145,31 @@ export class GameScene extends Phaser.Scene {
       setPausedMenuVisible(false);
       setPauseButtonState(false, true);
       this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
-      this.startRun("pause"); // 생존 중 재시작 — game_over 없었으므로 death-retry와 분리(F2)
+      void this.retryWithInterstitialGate("pause");
     });
     registerMuteToggle(() => this.toggleMute());
     this.applyMute(loadUserSettings().audio.muted);
     setPausedMenuVisible(false);
+
+    // 웹 빌드(__ADS_ENABLED__=false)에서 RevivePrompt 문자열이 DCE되도록 가드
+    if (__ADS_ENABLED__) {
+      this.revivePrompt = new RevivePrompt(this);
+    }
+    if (import.meta.env.DEV) {
+      void import("../devTools")
+        .then(({ registerReviveDevHandle }) => {
+          registerReviveDevHandle({
+            reviveNow: () => {
+              if (!this.sim.state.gameOver) {
+                console.warn("[dev] __reviveNow: 사망 상태가 아님");
+                return;
+              }
+              this.applyReviveAfterAd(this.sim.state.distance);
+            },
+          });
+        })
+        .catch((e: unknown) => console.error("[dev] revive handle 실패", e));
+    }
 
     // 화면 어디를 탭해도 점프 — FIT 여백 DOM 영역 탭도 포함
     // #fs-btn은 pointerdown에서 stopPropagation → 이 핸들러까지 버블되지 않음
@@ -2308,6 +2367,10 @@ export class GameScene extends Phaser.Scene {
     this.spectating = false;
     this.prevCombo = 0;
     this.feverCount = 0;
+    this.reviveCountThisRun = 0;
+    this.deathFinalizePending = false;
+    this.pendingDeathCmp = null;
+    this.revivePrompt?.hide();
     // 계측 카운터 전부 리셋 — 이번 판 동안만 누적
     this.hitsTaken = 0;
     this.jumpsCount = 0;
@@ -2318,8 +2381,12 @@ export class GameScene extends Phaser.Scene {
     try {
       this.bestDistAtRunStart =
         parseInt(window.localStorage.getItem("ga:best-dist") ?? "0", 10) || 0;
+      this.bestDistNoReviveAtRunStart =
+        parseInt(window.localStorage.getItem("ga:best-dist-norevive") ?? "0", 10) ||
+        0;
     } catch {
       this.bestDistAtRunStart = 0; // localStorage 차단 환경 — 항상 "신기록" 취급되지만 크래시보다 낫다
+      this.bestDistNoReviveAtRunStart = 0;
     }
     console.log(
       `[ghost-arcade] 시드 ${this.seed}, 유령 ${this.ghosts.length}기 로드 (원격 ${this.remoteRuns.length}기)`,
@@ -2360,7 +2427,9 @@ export class GameScene extends Phaser.Scene {
       prev_run_had_fever: prevRun.prev_run_had_fever,
       prev_run_near_record: prevRun.prev_run_near_record,
       prev_run_death_cause: prevRun.prev_run_death_cause,
+      interstitial_shown: this.lastInterstitialShown,
     });
+    this.lastInterstitialShown = false;
     // PostHog 이중화 — 키 off 출시 대비 최소 미러 (플레이북 §0). 최소 속성만.
     mirrorEvent("game_start", getUserId(window.localStorage), {
       seed: this.seed,
@@ -3232,6 +3301,8 @@ export class GameScene extends Phaser.Scene {
       }
       // 렌더 fps가 어떻든 시뮬은 DT 단위로만 전진 (결정론 경계)
       this.timestep.update(delta, () => {
+        // 사망 스텝에도 고스트가 한 번 더 전진해야 부활 후 1프레임 밀림이 없다 (§5.6)
+        const liveWasOver = this.sim.state.gameOver;
         this.sim.step();
         // 니어미스 판정은 반드시 고정 sim 스텝당 1회 — 렌더 프레임(가변 fps)에서 판정하면
         // 저사양 기기에서 프레임이 건너뛰어 카운트가 기기마다 달라진다(design doc Issue 2).
@@ -3239,8 +3310,7 @@ export class GameScene extends Phaser.Scene {
         if (this.sim.state.combo > this.maxComboThisRun) {
           this.maxComboThisRun = this.sim.state.combo;
         }
-        // 유령들은 라이브와 lockstep. 내가 죽으면 게임이 즉시 끝나므로 그 뒤엔 멈춘다.
-        if (!this.sim.state.gameOver) {
+        if (!liveWasOver) {
           for (let gi = 0; gi < this.ghosts.length; gi++) {
             const g = this.ghosts[gi]!;
             const wasFinished = g.finished;
@@ -3336,129 +3406,362 @@ export class GameScene extends Phaser.Scene {
       this.endFeverBgm(); // 메인 유지, 피버 레이어만 오프
     }
     if (ev & C.EV_GAME_OVER) {
-      this.playSfx("sfx-death", { volume: SFX_VOL_DEATH });
-      // 메인/피버 → 결과 BGM 크로스페이드 (한 판 더 여운)
-      this.startGameoverBgm();
-      setPauseButtonState(false, false); // 게임오버 → 일시정지 버튼 숨김
-      setPausedMenuVisible(false); // 게임오버 → 일시정지 메뉴도 숨김
-      const myDist = this.sim.state.distance;
-      const { death_cause, death_obstacle_height, speed_at_death } = deriveDeathCause(
-        this.sim.state,
-        ev,
-      );
-      const runDurationMs = Math.round(this.sim.state.frame * C.DT * 1000);
-      // "판 시작 시점의 생애 최고기록"(this.bestDistAtRunStart) 기준 — 판 도중 값이 아니라
-      // startRun()에서 캡처해둔 스냅샷을 쓴다(near_record와 동일 축, design doc 명시).
-      const isPersonalBest = Math.floor(myDist) > this.bestDistAtRunStart;
-      const nearRecord: boolean | null =
-        this.bestDistAtRunStart === 0
-          ? null // 생애 첫 판 — 판 시작 시점에 기록이 없었으므로 판정 불가
-          : Math.floor(myDist) >= this.bestDistAtRunStart * 0.9;
+      this.onGameOverEvent(ev);
+    }
+    if (ev & C.EV_REVIVE) {
+      // 렌더 피드백은 씬 복구에서 처리 — sim 이벤트만 소비
+    }
+  }
 
-      setPerson({
-        lifetime_max_distance: Math.max(this.bestDistAtRunStart, Math.floor(myDist)),
-      });
+  /** 매 사망: 계측은 즉시, 서버/로컬/결과패널은 이어뛰기 거절·실패 시에만 (결정 I) */
+  private onGameOverEvent(ev: number): void {
+    this.playSfx("sfx-death", { volume: SFX_VOL_DEATH });
+    this.startGameoverBgm();
+    setPauseButtonState(false, false);
+    setPausedMenuVisible(false);
 
-      track(
-        "game_over",
-        {
-          distance: Math.floor(myDist),
-          rank: this.ghosts.length - this.overtakenLive + 1,
-          ghost_count: this.ghosts.length,
-          run_duration_ms: runDurationMs,
-          lifetime_run_index: this.lifetimeRunIndexThisRun,
-          death_cause,
-          death_obstacle_height,
-          speed_at_death,
-          hits_taken: this.hitsTaken,
-          jumps: this.jumpsCount,
-          double_jumps: this.doubleJumpsCount,
-          potions_collected: this.potionsCollected,
-          fever_count: this.feverCount,
-          overtakes: this.overtakenLive,
-          near_miss_count: this.nearMissTracker.count(),
-          max_combo: this.maxComboThisRun,
-          is_personal_best: isPersonalBest,
-        },
-        { instant: true }, // WebView가 직후 죽어도 유실 안 되게 sendBeacon (design doc Issue 6)
-      );
+    const myDist = this.sim.state.distance;
+    const { death_cause, death_obstacle_height, speed_at_death } = deriveDeathCause(
+      this.sim.state,
+      ev,
+    );
+    const runDurationMs = Math.round(this.sim.state.frame * C.DT * 1000);
+    const isPersonalBest = Math.floor(myDist) > this.bestDistAtRunStart;
+    const nearRecord: boolean | null =
+      this.bestDistNoReviveAtRunStart === 0
+        ? null
+        : Math.floor(myDist) >= this.bestDistNoReviveAtRunStart * 0.9;
 
-      // 다음 game_start가 소비할 스냅샷 저장 + 다음 판까지의 백그라운드 추적 리셋
-      writePrevRunSnapshot(
-        window.localStorage,
-        Date.now(),
-        this.overtakenLive,
-        this.feverCount > 0,
-        nearRecord,
+    const canOfferRevive =
+      isAdsAvailable() &&
+      remoteConfig("ads_revive_enabled") &&
+      isAdReady("revive") &&
+      !this.deathFinalizePending;
+
+    setPerson({
+      lifetime_max_distance: Math.max(this.bestDistAtRunStart, Math.floor(myDist)),
+    });
+
+    track(
+      "game_over",
+      {
+        distance: Math.floor(myDist),
+        rank: this.ghosts.length - this.overtakenLive + 1,
+        ghost_count: this.ghosts.length,
+        run_duration_ms: runDurationMs,
+        lifetime_run_index: this.lifetimeRunIndexThisRun,
         death_cause,
-      );
-      this.wentBackgroundSinceLastGameOver = false;
+        death_obstacle_height,
+        speed_at_death,
+        hits_taken: this.hitsTaken,
+        jumps: this.jumpsCount,
+        double_jumps: this.doubleJumpsCount,
+        potions_collected: this.potionsCollected,
+        fever_count: this.feverCount,
+        overtakes: this.overtakenLive,
+        near_miss_count: this.nearMissTracker.count(),
+        max_combo: this.maxComboThisRun,
+        is_personal_best: isPersonalBest,
+        revive_pending: canOfferRevive,
+        revive_count: this.reviveCountThisRun,
+      },
+      { instant: true },
+    );
 
-      // 비교 먼저 (판 시작 시점 기록 기준) → 저장은 그 다음
-      const cmp = compareGhosts(myDist, this.ghostDistances);
-      // 로컬 기록에도 내 닉을 심는다 — 원격 제출과 동일 닉. 주간 폴백/일간에서
-      // 나를 봇으로 오표기하지 않고 (나) 태깅·실이름 표시가 되도록.
-      this.log.meta = {
-        ...(this.log.meta ?? {}),
-        nickname: getNickname(window.localStorage),
-      };
-      saveRun(window.localStorage, this.seed, this.log, myDist);
+    const cmp = compareGhosts(myDist, this.ghostDistances);
+    this.spectating = false;
 
-      // 낙관적 반영: 방금 판 기록을 네트워크 왕복 전에 즉시 remoteRuns에 주입.
-      // submitRunRemote가 아직 완료되지 않아도 다음 판에서 내 점수가 고스트로 보인다.
-      const myRecord = { distance: myDist, log: this.log };
-      const localWithMe = loadTopRuns(window.localStorage, this.seed);
-      // mergePool로 넓은 풀을 유지한다 — top-N으로 자르면 다음 판 필드가 사다리
-      // 대신 top-8로 퇴화한다(하단 발판 소실).
-      const optimisticPool = this.mergePool(
-        [myRecord, ...this.remoteRuns],
-        localWithMe,
-      );
-      this.remoteRuns = optimisticPool.filter((r) => r !== myRecord);
-
-      // 원격 제출 — 제출 완료 후 ghost 목록 + 주간 랭킹을 체이닝해 읽음.
-      // 병렬 레이스 제거: loadTopRunsRemote가 submitRunRemote의 INSERT 이후 실행됨.
-      const myUserId = getUserId(window.localStorage);
-      const seedForRefresh = this.seed;
-      this.weeklyRanks = null;
-      void submitRunRemote(
-        this.seed,
-        this.log,
-        myDist,
-        false,
-        { nickname: getNickname(window.localStorage) },
-        myUserId,
-      )
-        .then(() =>
-          Promise.all([
-            loadTopRunsRemote(seedForRefresh),
-            loadWeeklyRankings(),
-          ]),
-        )
-        .then(([fresh, ranks]) => {
-          // 원격 도착본으로 교체 (낙관적 주입본과 중복되지 않게 mergeGhostRecords가 dedup)
-          if (fresh.length > 0) this.remoteRuns = fresh;
-          this.weeklyRanks = ranks;
-          if (this.gameOverRoot?.visible) {
-            this.refreshDailyPanel(this.lastResultMyDist);
-            this.refreshWeeklyPanel();
-          }
-        });
-
-      // 구경 모드 제거: 게임오버 즉시 모든 고스트가 함께 쓰러지고(연출은 syncVisuals),
-      // 짧게 보여준 뒤 결과 패널을 띄운다. 뒤에 남은 플레이를 보여주지 않는다.
-      this.spectating = false;
-      const alive = this.ghosts.filter((g) => !g.finished).length;
-      console.log(
-        `[ghost-arcade] 사망 frame=${this.sim.state.frame}, 생존 유령 ${alive}/${this.ghosts.length} → 즉시 종료`,
-      );
-      // 고스트 collapse 연출이 보이도록 ~0.9초 후 결과 패널
-      // 반환값을 저장 → 재시작 시 취소 가능 (startRun 참조)
-      this.resultPanelTimer = this.time.delayedCall(900, () => {
+    if (canOfferRevive && this.revivePrompt) {
+      this.deathFinalizePending = true;
+      this.pendingDeathCmp = cmp;
+      this.pendingDeathDist = myDist;
+      this.pendingDeathCause = death_cause;
+      this.pendingNearRecord = nearRecord;
+      // 결과 패널 타이머는 올리지 않음 — 팝업이 게이팅
+      if (this.resultPanelTimer) {
+        this.resultPanelTimer.remove(false);
         this.resultPanelTimer = null;
-        this.showResultPanel(cmp, myDist);
+      }
+      track("ad_prompt_shown", {
+        distance: Math.floor(myDist),
+        near_record: nearRecord,
+        revive_index: this.reviveCountThisRun,
+        lifetime_run_index: this.lifetimeRunIndexThisRun,
+      });
+      this.revivePrompt.show({
+        onAccepted: () => {
+          track("ad_prompt_closed", { reason: "accepted" });
+          void this.runReviveAdFlow(myDist);
+        },
+        onClosed: (reason) => {
+          track("ad_prompt_closed", { reason });
+          this.finalizeDeathRun(cmp, myDist, death_cause, nearRecord);
+        },
+      });
+      return;
+    }
+
+    this.finalizeDeathRun(cmp, myDist, death_cause, nearRecord);
+  }
+
+  private async runReviveAdFlow(distanceAtDeath: number): Promise<void> {
+    const t0 = Date.now();
+    this.beginAdPresentation();
+    let result: AdResult;
+    try {
+      result = await showAd("revive");
+    } finally {
+      this.endAdPresentation();
+    }
+    track(
+      "ad_show_result",
+      {
+        kind: "revive",
+        result: result.type,
+        reason: result.type === "unavailable" ? result.reason : undefined,
+        latency_ms: Date.now() - t0,
+      },
+      { instant: true },
+    );
+    mirrorEvent("ad_show_result", getUserId(window.localStorage), {
+      kind: "revive",
+      result: result.type,
+    });
+
+    if (result.type === "rewarded") {
+      this.sawReviveAdThisRun = true;
+      this.applyReviveAfterAd(distanceAtDeath);
+      return;
+    }
+    if (result.type === "unavailable") {
+      this.showTeachToast("광고를 불러오지 못했어요", 2200);
+    }
+    this.finalizeDeathRun(
+      this.pendingDeathCmp ?? compareGhosts(this.pendingDeathDist, this.ghostDistances),
+      this.pendingDeathDist,
+      this.pendingDeathCause,
+      this.pendingNearRecord,
+    );
+  }
+
+  private applyReviveAfterAd(distanceAtDeath: number): void {
+    this.reviveCountThisRun += 1;
+    recordRevive(this.log, this.sim.state.frame);
+    this.sim.revive();
+    this.restoreSceneAfterRevive();
+    this.deathFinalizePending = false;
+    this.pendingDeathCmp = null;
+    track("revive_used", {
+      revive_index: this.reviveCountThisRun,
+      distance_at_death: Math.floor(distanceAtDeath),
+    });
+    mirrorEvent("revive_used", getUserId(window.localStorage), {
+      revive_index: this.reviveCountThisRun,
+      distance_at_death: Math.floor(distanceAtDeath),
+    });
+  }
+
+  /** 부활 시 씬 상태 복구 6항목 (§6.2) */
+  private restoreSceneAfterRevive(): void {
+    if (this.resultPanelTimer) {
+      this.resultPanelTimer.remove(false);
+      this.resultPanelTimer = null;
+    }
+    this.playerDeadFadeStarted = false;
+    if (this.playerRect) {
+      this.tweens.killTweensOf(this.playerRect);
+      this.playerRect.setAlpha(1).setVisible(true).setAngle(0);
+    }
+    if (this.playerStroke) {
+      this.tweens.killTweensOf(this.playerStroke);
+      this.playerStroke
+        .setAlpha(1)
+        .setVisible(true)
+        .setAngle(0)
+        .setTintFill(COLOR_PLAYER_STROKE);
+    }
+    for (let i = 0; i < this.ghostRects.length; i++) {
+      const sprite = this.ghostRects[i]!;
+      this.tweens.killTweensOf(sprite);
+      sprite.off(
+        Phaser.Animations.Events.ANIMATION_COMPLETE_KEY + "ghost-collapse",
+      );
+      if (this.ghosts[i] && !this.ghosts[i]!.finished) {
+        sprite.setAngle(0).setAlpha(GHOST_SPRITE_ALPHA).setFlipX(false);
+        sprite.play({ key: "ghost-run", startFrame: Phaser.Math.Between(0, 5) });
+        this.ghostTumbleState[i] = "run";
+      }
+    }
+    setPauseButtonState(false, true);
+    this.startMainBgm();
+    this.timestep.reset();
+    if (this.gameOverRoot) this.gameOverRoot.setVisible(false);
+  }
+
+  private beginAdPresentation(): void {
+    this.suppressBackgroundForAds = true;
+    pauseHeartbeatDuringAd();
+    try {
+      this.game.loop.sleep();
+    } catch {
+      /* Phaser 버전별 sleep 미지원 — 무시 */
+    }
+  }
+
+  private endAdPresentation(): void {
+    try {
+      this.game.loop.wake();
+    } catch {
+      /* 무시 */
+    }
+    resumeHeartbeatAfterAd();
+    this.suppressBackgroundForAds = false;
+    this.timestep.reset();
+  }
+
+  /** 판 종료 확정 — 서버 제출·로컬 저장·결과 패널 1회 (결정 I) */
+  private finalizeDeathRun(
+    cmp: GhostComparison,
+    myDist: number,
+    death_cause: DeathCause,
+    nearRecord: boolean | null,
+  ): void {
+    this.deathFinalizePending = false;
+    this.revivePrompt?.hide();
+
+    writePrevRunSnapshot(
+      window.localStorage,
+      Date.now(),
+      this.overtakenLive,
+      this.feverCount > 0,
+      nearRecord,
+      death_cause,
+    );
+    this.wentBackgroundSinceLastGameOver = false;
+
+    this.log.meta = {
+      ...(this.log.meta ?? {}),
+      nickname: getNickname(window.localStorage),
+    };
+
+    const LOG_EVENT_CAP = 8000;
+    if (this.log.events.length > LOG_EVENT_CAP) {
+      track("run_log_truncated", { event_count: this.log.events.length });
+      // 로컬만 스킵, 원격은 진행 (결정 J)
+    } else {
+      saveRun(window.localStorage, this.seed, this.log, myDist);
+    }
+
+    // 부활 없는 PB 병행 키 (§7.3)
+    if (this.reviveCountThisRun === 0) {
+      try {
+        const prev = parseInt(
+          window.localStorage.getItem("ga:best-dist-norevive") ?? "0",
+          10,
+        ) || 0;
+        if (Math.floor(myDist) > prev) {
+          window.localStorage.setItem(
+            "ga:best-dist-norevive",
+            String(Math.floor(myDist)),
+          );
+        }
+      } catch {
+        /* 무시 */
+      }
+    }
+
+    if (this.reviveCountThisRun > 0) {
+      track("revive_used", {
+        revive_index: this.reviveCountThisRun,
+        final_distance: Math.floor(myDist),
       });
     }
+
+    const myRecord = { distance: myDist, log: this.log };
+    const localWithMe = loadTopRuns(window.localStorage, this.seed);
+    const optimisticPool = this.mergePool(
+      [myRecord, ...this.remoteRuns],
+      localWithMe,
+    );
+    this.remoteRuns = optimisticPool.filter((r) => r !== myRecord);
+
+    const myUserId = getUserId(window.localStorage);
+    const seedForRefresh = this.seed;
+    this.weeklyRanks = null;
+    void submitRunRemote(
+      this.seed,
+      this.log,
+      myDist,
+      false,
+      { nickname: getNickname(window.localStorage) },
+      myUserId,
+      this.reviveCountThisRun,
+    )
+      .then(() =>
+        Promise.all([loadTopRunsRemote(seedForRefresh), loadWeeklyRankings()]),
+      )
+      .then(([fresh, ranks]) => {
+        if (fresh.length > 0) this.remoteRuns = fresh;
+        this.weeklyRanks = ranks;
+        if (this.gameOverRoot?.visible) {
+          this.refreshDailyPanel(this.lastResultMyDist);
+          this.refreshWeeklyPanel();
+        }
+      });
+
+    const alive = this.ghosts.filter((g) => !g.finished).length;
+    console.log(
+      `[ghost-arcade] 최종사망 frame=${this.sim.state.frame}, revive=${this.reviveCountThisRun}, 생존 유령 ${alive}/${this.ghosts.length}`,
+    );
+    this.resultPanelTimer = this.time.delayedCall(900, () => {
+      this.resultPanelTimer = null;
+      this.showResultPanel(cmp, myDist);
+    });
+  }
+
+  /** 재시도 두 경로 공통 — 전면광고 게이트 (결정 G / E) */
+  private async retryWithInterstitialGate(
+    reason: "death" | "pause",
+  ): Promise<void> {
+    const period = normalizeInterstitialPeriod(
+      remoteConfig("ads_interstitial_period"),
+    );
+    const gate = shouldShowInterstitial({
+      enabled: remoteConfig("ads_interstitial_enabled"),
+      skippedBecauseReviveAd: this.sawReviveAdThisRun,
+      period,
+      stored: readInterstitialState(window.localStorage),
+    });
+    writeInterstitialState(window.localStorage, gate.next);
+    this.lastInterstitialShown = false;
+
+    if (gate.show && isAdsAvailable() && isAdReady("interstitial")) {
+      const t0 = Date.now();
+      this.beginAdPresentation();
+      let result: AdResult;
+      try {
+        result = await showAd("interstitial");
+      } finally {
+        this.endAdPresentation();
+      }
+      this.lastInterstitialShown = result.type !== "unavailable";
+      track(
+        "ad_show_result",
+        {
+          kind: "interstitial",
+          result: result.type,
+          reason: result.type === "unavailable" ? result.reason : undefined,
+          latency_ms: Date.now() - t0,
+        },
+        { instant: true },
+      );
+      mirrorEvent("ad_show_result", getUserId(window.localStorage), {
+        kind: "interstitial",
+        result: result.type,
+      });
+    }
+    this.sawReviveAdThisRun = false;
+    this.startRun(reason);
   }
 
   /**

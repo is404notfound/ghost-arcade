@@ -27,6 +27,10 @@ export default defineConfig(({ command, mode }) => {
   }
 
   return {
+    // import.meta.env.VITE_ADS_ENABLED 직접 사용 금지 — define 리터럴이어야 DCE 보장.
+    define: {
+      __ADS_ENABLED__: JSON.stringify(process.env.VITE_ADS_ENABLED === 'true'),
+    },
     test: {
       include: ['src/**/__tests__/**/*.test.ts'],
       environment: 'node', // 시뮬 코어는 DOM 의존 0 — node 환경으로 충분

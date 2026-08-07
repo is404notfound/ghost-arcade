@@ -13,6 +13,6 @@
     "noEmit": true,
     "isolatedModules": true
   },
-  "include": ["src", "vite.config.ts", "eslint.config.js"],
+  "include": ["src", "vite.config.ts", "eslint.config.js", "apps-in-toss.config.ts"],
   "exclude": ["prototypes", "node_modules", "dist"]
 }

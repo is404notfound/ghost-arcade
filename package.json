@@ -4,8 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
+    "build:ait": "tsc --noEmit && VITE_ADS_ENABLED=true vite build && ait build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -14,7 +15,7 @@
     "gen:sfx": "node scripts/gen-sfx.mjs",
     "ait:dev": "vite --host",
     "ait:sandbox": "bash scripts/ait-sandbox-dev.sh",
-    "ait:build": "ait build",
+    "ait:build": "npm run build:ait",
     "ait:deploy": "ait deploy"
   },
   "devDependencies": {
@@ -27,7 +28,7 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
-    "@apps-in-toss/web-framework": "^2.10.5",
+    "@apps-in-toss/web-framework": "^3.0.2",
     "@supabase/supabase-js": "^2.108.2",
     "phaser": "^3.90.0",
     "posthog-js": "^1.391.2"

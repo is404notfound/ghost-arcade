@@ -8,7 +8,7 @@
 
 앱인토스에서만 광고를 붙인다. 죽으면 **광고를 보고 그 자리에서 이어뛰기**(보상형).
 전면광고는 **코드를 다 넣되 원격 플래그로 꺼둔 채** 출시하고 iOS fps 정리 후 켠다.
-웹 배포판에는 광고가 뜨지 않는다. **`SIM_VERSION`은 올리지 않는다 — 리더보드 리셋 없음.**
+웹 배포판에는 광고가 뜨지 않는다. `SIM_VERSION`**은 올리지 않는다 — 리더보드 리셋 없음.**
 
 ---
 
@@ -22,34 +22,42 @@
 
 같은 엔트리가 광고 종류별 시점을 나눴고 **이 계획은 그 구분을 따른다**:
 
-| 광고 | 시점 | 이유(원문) |
-|---|---|---|
-| 부활 리워드 광고 | 지금 바로 | 선택형 — 유저 이탈 영향 낮음 |
+
+| 광고          | 시점           | 이유(원문)                                 |
+| ----------- | ------------ | -------------------------------------- |
+| 부활 리워드 광고   | 지금 바로        | 선택형 — 유저 이탈 영향 낮음                      |
 | 게임 오버 인터스티셜 | iOS fps 해결 후 | 강제 광고라 이탈 가속 가능. fps 버그가 있는 상태에선 복합 원인 |
+
 
 부활 기능은 현재 없으므로 신규 개발이다.
 
 ---
 
+
+
 ## 2. 확정된 의사결정
 
-| # | 결정 | 근거 |
-|---|---|---|
-| **A** | 부활 기록도 랭킹에 **그대로 인정**. 횟수 **무제한**. | 광고는 누구에게나 열려 있어 공정성 문제로 보지 않는다. 랭킹에서 빼면 재화가 없는 이 게임에서 광고를 볼 유인이 0이 된다. |
-| **A-2** | `revive` 이벤트를 로그에 남기고, **`revive_count`를 서버 컬럼으로도 올린다**. | 로그(JSONB) 안에만 있으면 순수 랭킹을 SQL로 만들 때 행마다 수천 개 배열을 스캔해야 해 사실상 불가능. 컬럼이면 `WHERE revive_count = 0` 한 줄. |
-| **B** | **`SIM_VERSION`을 올리지 않는다 (1.16.0 유지).** | 올릴 기술적 이유가 없다 — `revive` 추가는 가법적·후방 안전이고 기존 로그의 재생 궤적이 1비트도 안 바뀐다. 올리면 이유 없는 리더보드 리셋이 `launch-log.md:58`의 "챌린지 창(8/1~26) 리셋 금지" 원칙 안에서 발생한다. |
-| **C** | 부활 시: **HP 풀 / 무적 3초 / 속도 리셋 / 눈앞 장애물 유지 / 콤보·피버 0**. | 부활은 "피격의 큰 버전"이라 규칙이 갈리면 유저가 둘 외워야 하고 코드 분기도 둘로 늘어난다. |
-| **D** | 이어뛰기 팝업 = **버튼 + 5초 카운트다운**, 등장 후 **0.4초 입력 무시**, 무반응이면 광고 없이 게임오버. | 타이머는 전환율을 올리면서 거절자에겐 마찰 0. 버튼은 명시적 동의라 정책 리스크를 없앤다. 0.4초 유예는 연타 중 사망 시 오탭을 막는다. |
-| **E** | 전면광고 = **재시도 5회 주기**, `localStorage` 누적 + 일간 리셋, 직전 판에 이어뛰기 광고를 봤으면 건너뛰고 카운터만 올림. | "5판 이후 매번"이면 하루 20판 유저가 15번을 본다. 광고 두 개 연속 노출의 이탈 손실이 전면광고 1회 수익보다 크다. |
-| **E-2** | 전면광고는 **`ads_interstitial_enabled` 기본값 `false`로 출시**. | iOS 40fps 상태에서 같이 내면 이탈 원인이 fps인지 광고인지 가릴 수 없다. 광고는 킬스위치로 끄지만 fps는 재배포가 필요하다. 켤 때 재배포·재검수 불필요. |
-| **F** | 웹 차단 = **빌드 플래그 + 런타임 이중 체크**. | 런타임 조건문만으론 한 줄 실수로 웹에 광고가 뜬다. |
-| **G** | 게이트는 **두 재시도 경로 모두** 통과 (`startRun("death")`, `startRun("pause")`). | 한쪽만 막으면 일시정지→다시하기로 전면광고를 영구 회피할 수 있고 주기 튜닝 데이터도 오염된다. |
-| **H** | 광고 preload는 **부트 완료 지점**에서. dismiss 직후 재-preload. | 판의 22%가 19초 내에 끝나는데 AdMob 로드는 5~20초. 판 시작 시 로드하면 짧은 판·첫 판에서 팝업이 안 뜬다. |
-| **I** | 계측은 **매 사망마다**, 서버 제출·로컬 저장은 **최종 사망에만**. | 유실 방지(`instant: true` sendBeacon)와 중복 행 방지를 동시에 달성하는 유일한 조합. |
-| **J** | 로그 상한 **8,000 이벤트**. 초과 시 **로컬 저장만 스킵, 원격 제출은 진행**. | 병목은 서버가 아니라 `localStorage`(5MB ÷ `GHOST_TOP_N` 8). 랭킹 기록은 유저의 가장 중요한 생산물이다. |
-| **K** | 거리 이상치 상한을 **`CEILING × (revive_count + 1)`** 로 확장. | 무제한 부활이면 기존 상한(19,800m)이 달성 가능해져 헤비유저 기록이 조용히 폐기된다. 치트 방지는 유지. |
-| **L** | 원격 주기 값은 **게이트에서 정규화** (`Math.max(1, Math.round(v))` + 상한 50). | `remoteConfig`는 타입만 검사한다. `0`이면 광고 영구 미노출, `0.5`면 재시도마다 노출. |
-| **M** | 광고 파사드에 **주입 가능한 `AdSdk` 인터페이스**. | 실패·미준비·중도이탈 분기는 실기기 QR로 재현하기 가장 어렵다. SDK 3.x는 롤백 불가라 방패가 필요하다. |
+
+| #       | 결정                                                                                | 근거                                                                                                                                           |
+| ------- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A**   | 부활 기록도 랭킹에 **그대로 인정**. 횟수 **무제한**.                                                | 광고는 누구에게나 열려 있어 공정성 문제로 보지 않는다. 랭킹에서 빼면 재화가 없는 이 게임에서 광고를 볼 유인이 0이 된다.                                                                       |
+| **A-2** | `revive` 이벤트를 로그에 남기고, `revive_count`**를 서버 컬럼으로도 올린다**.                          | 로그(JSONB) 안에만 있으면 순수 랭킹을 SQL로 만들 때 행마다 수천 개 배열을 스캔해야 해 사실상 불가능. 컬럼이면 `WHERE revive_count = 0` 한 줄.                                           |
+| **B**   | `SIM_VERSION`**을 올리지 않는다 (1.16.0 유지).**                                           | 올릴 기술적 이유가 없다 — `revive` 추가는 가법적·후방 안전이고 기존 로그의 재생 궤적이 1비트도 안 바뀐다. 올리면 이유 없는 리더보드 리셋이 `launch-log.md:58`의 "챌린지 창(8/1~26) 리셋 금지" 원칙 안에서 발생한다. |
+| **C**   | 부활 시: **HP 풀 / 무적 3초 / 속도 리셋 / 눈앞 장애물 유지 / 콤보·피버 0**.                             | 부활은 "피격의 큰 버전"이라 규칙이 갈리면 유저가 둘 외워야 하고 코드 분기도 둘로 늘어난다.                                                                                        |
+| **D**   | 이어뛰기 팝업 = **버튼 + 5초 카운트다운**, 등장 후 **0.4초 입력 무시**, 무반응이면 광고 없이 게임오버.               | 타이머는 전환율을 올리면서 거절자에겐 마찰 0. 버튼은 명시적 동의라 정책 리스크를 없앤다. 0.4초 유예는 연타 중 사망 시 오탭을 막는다.                                                              |
+| **E**   | 전면광고 = **재시도 5회 주기**, `localStorage` 누적 + 일간 리셋, 직전 판에 이어뛰기 광고를 봤으면 건너뛰고 카운터만 올림. | "5판 이후 매번"이면 하루 20판 유저가 15번을 본다. 광고 두 개 연속 노출의 이탈 손실이 전면광고 1회 수익보다 크다.                                                                       |
+| **E-2** | 전면광고는 `ads_interstitial_enabled` **기본값** `false`**로 출시**.                         | iOS 40fps 상태에서 같이 내면 이탈 원인이 fps인지 광고인지 가릴 수 없다. 광고는 킬스위치로 끄지만 fps는 재배포가 필요하다. 켤 때 재배포·재검수 불필요.                                               |
+| **F**   | 웹 차단 = **빌드 플래그 + 런타임 이중 체크**.                                                    | 런타임 조건문만으론 한 줄 실수로 웹에 광고가 뜬다.                                                                                                                |
+| **G**   | 게이트는 **두 재시도 경로 모두** 통과 (`startRun("death")`, `startRun("pause")`).               | 한쪽만 막으면 일시정지→다시하기로 전면광고를 영구 회피할 수 있고 주기 튜닝 데이터도 오염된다.                                                                                        |
+| **H**   | 광고 preload는 **부트 완료 지점**에서. dismiss 직후 재-preload.                                 | 판의 22%가 19초 내에 끝나는데 AdMob 로드는 5~20초. 판 시작 시 로드하면 짧은 판·첫 판에서 팝업이 안 뜬다.                                                                        |
+| **I**   | 계측은 **매 사망마다**, 서버 제출·로컬 저장은 **최종 사망에만**.                                         | 유실 방지(`instant: true` sendBeacon)와 중복 행 방지를 동시에 달성하는 유일한 조합.                                                                                 |
+| **J**   | 로그 상한 **8,000 이벤트**. 초과 시 **로컬 저장만 스킵, 원격 제출은 진행**.                               | 병목은 서버가 아니라 `localStorage`(5MB ÷ `GHOST_TOP_N` 8). 랭킹 기록은 유저의 가장 중요한 생산물이다.                                                                  |
+| **K**   | 거리 이상치 상한을 `CEILING × (revive_count + 1)` 로 확장.                                   | 무제한 부활이면 기존 상한(19,800m)이 달성 가능해져 헤비유저 기록이 조용히 폐기된다. 치트 방지는 유지.                                                                               |
+| **L**   | 원격 주기 값은 **게이트에서 정규화** (`Math.max(1, Math.round(v))` + 상한 50).                    | `remoteConfig`는 타입만 검사한다. `0`이면 광고 영구 미노출, `0.5`면 재시도마다 노출.                                                                                  |
+| **M**   | 광고 파사드에 **주입 가능한** `AdSdk` **인터페이스**.                                             | 실패·미준비·중도이탈 분기는 실기기 QR로 재현하기 가장 어렵다. SDK 3.x는 롤백 불가라 방패가 필요하다.                                                                               |
+
+
+
 
 ### 채택하지 않은 것 — 무반응 시 자동 재생
 
@@ -76,12 +84,16 @@ SPAWN_X 1070 - PLAYER_X 187 = 883유닛,  부활 시 speed = SPEED_BASE 340
 
 주의: 이 문제는 무적을 늘려도 해결되지 않는다. 무적이 보장하는 건 "3초 동안 안전"이고 문제는
 "3초가 끝나는 순간"이라, 무적 길이와 무관하게 종료 순간 겹침 확률은 같다. 속도 리셋도 완화하지
-않는다(느릴수록 겹침 통과 시간이 길어져 확률이 상쇄된다). **고치려면 `sim` 변경이 필요하고,
-그 시점엔 `SIM_VERSION`을 올려야 해서 리더보드 리셋이 따라온다** — 이게 지금 감수하는 대가다.
+않는다(느릴수록 겹침 통과 시간이 길어져 확률이 상쇄된다). **고치려면** `sim` **변경이 필요하고,
+그 시점엔** `SIM_VERSION`**을 올려야 해서 리더보드 리셋이 따라온다** — 이게 지금 감수하는 대가다.
 
 ---
 
+
+
 ## 3. 제약과 리스크
+
+
 
 ### R1. SDK 3.x는 롤백 불가 — 최대 리스크
 
@@ -105,22 +117,24 @@ SPAWN_X 1070 - PLAYER_X 187 = 883유닛,  부활 시 speed = SPEED_BASE 340
 빌드는 성공하는데 런타임에 백엔드만 사라지는 형태라 `vite.config.ts`의 env-guard로도 안 잡힌다.
 
 **추가 위험**: `remoteConfig`는 Supabase 읽기에 의존한다(`remoteConfig.ts:31-56`). R2가 터지면
-**킬스위치도 같이 죽고, 기본값이 `true`라 fail-open으로 광고가 켜진 상태로 남는다.**
+**킬스위치도 같이 죽고, 기본값이** `true`**라 fail-open으로 광고가 켜진 상태로 남는다.**
 → 대응: `ads_revive_enabled` 기본값을 `false`로 두고 원격에서 `true`로 켠다(fail-closed).
 Phase 3 출시 직후 원격 값 적용을 확인하는 절차를 D-0 체크리스트에 넣는다.
 
 ### R3. `webViewProps` → `webView` 축소로 게임 크롬이 회귀할 수 있다
 
-| 항목 | 2.x (현재) | 3.x |
-|---|---|---|
-| 설정 파일 | `granite.config.ts` | `apps-in-toss.config.ts` |
-| 출력 디렉터리 | `outdir` | `webBundleDir` |
-| 웹뷰 | `webViewProps: { type: 'game', orientationLock }` | `webView: {}` — **`type` 삭제** |
-| 브랜드 | `displayName`, `icon`, `primaryColor` | **`primaryColor`만** (나머지 콘솔 관리) |
-| 웹 커맨드 | config의 `web.commands` | `package.json` 스크립트 |
+
+| 항목      | 2.x (현재)                                          | 3.x                             |
+| ------- | ------------------------------------------------- | ------------------------------- |
+| 설정 파일   | `granite.config.ts`                               | `apps-in-toss.config.ts`        |
+| 출력 디렉터리 | `outdir`                                          | `webBundleDir`                  |
+| 웹뷰      | `webViewProps: { type: 'game', orientationLock }` | `webView: {}` — `type` **삭제**   |
+| 브랜드     | `displayName`, `icon`, `primaryColor`             | `primaryColor`**만** (나머지 콘솔 관리) |
+| 웹 커맨드   | config의 `web.commands`                            | `package.json` 스크립트             |
+
 
 가로 잠금은 런타임 `setDeviceOrientation`이 실질 보증한다(`src/aitHost.ts:21`).
-**게임 내비 크롬과 투명 내비바(`navigationBar`)는 QR 실기기로 직접 확인해야 한다.**
+**게임 내비 크롬과 투명 내비바(**`navigationBar`**)는 QR 실기기로 직접 확인해야 한다.**
 
 ### R4. GRAC 내용수정신고 · 개인정보처리방침 — 미해결 선행조건
 
@@ -165,6 +179,8 @@ Phase 1과 Phase 2~4가 각각 별도 심사 큐이므로 실제 리드타임은
 - 동일 화면 동일 포맷 광고 2개 이상 금지 → 해당 없음
 - 광고 UI 임의 변경·은닉 금지 → SDK가 전체 화면을 그림
 
+
+
 ### R7. 저사양 기기 OOM
 
 `c5bcbb9`가 iOS를 FX 저사양 티어에 편입한 상태다. 네이티브 광고 플레이어와 Phaser WebGL이
@@ -173,7 +189,11 @@ Phase 1과 Phase 2~4가 각각 별도 심사 큐이므로 실제 리드타임은
 
 ---
 
+
+
 ## 4. 아키텍처
+
+
 
 ### 4.1 모듈 경계
 
@@ -220,6 +240,8 @@ export type AdResult =
 - `isAdsAvailable()` = 빌드 플래그 && `isAppsInTossHost()` && `sdk.isSupported()`
 - 테스트는 가짜 `AdSdk`를 주입해 6분기를 node 환경에서 전부 커버
 
+
+
 ### 4.3 웹/토스 빌드 분기
 
 ```json
@@ -238,16 +260,17 @@ define: {
 }
 ```
 
-**`import.meta.env.VITE_ADS_ENABLED`를 직접 쓰지 않는다.** 미설정 시 define 치환 대상이 아니라
+`import.meta.env.VITE_ADS_ENABLED`**를 직접 쓰지 않는다.** 미설정 시 define 치환 대상이 아니라
 트리셰이킹이 보장되지 않는다. `define`으로 리터럴 `false`를 박아야 `if (__ADS_ENABLED__)` 블록이
 확실히 제거된다.
 
 **중요 — 웹 번들 검증 방법 정정**: `src/aitHost.ts:24`가 웹에서도 실행되는 부트 경로에서
 `await import('@apps-in-toss/web-framework')`를 하고 있다. 이 동적 import 문이 모듈 그래프에
-남아 **SDK 배럴 청크는 웹 `dist`에 이미 존재한다.** 3.x에서 그 배럴에는 `loadFullScreenAd`/
+남아 **SDK 배럴 청크는 웹** `dist`**에 이미 존재한다.** 3.x에서 그 배럴에는 `loadFullScreenAd`/
 `showFullScreenAd`가 포함되므로 **"웹 번들에 광고 문자열이 없는지 grep"은 반드시 실패한다.**
 
 → 검증은 이렇게 한다:
+
 1. **우리 모듈**(`src/ads/`)의 심볼이 웹 번들에 없는지 확인 (`grep 'interstitialGate\|isAdsAvailable'`)
 2. 웹에서 `isAdsAvailable()`이 상수 `false`로 접히는지 번들 코드로 확인
 3. 실제 웹 브라우저에서 사망 → 광고 관련 UI가 전혀 없는지 수동 확인
@@ -279,7 +302,11 @@ define: {
 
 ---
 
+
+
 ## 5. 시뮬레이션 변경
+
+
 
 ### 5.1 왜 로그에 남겨야 하는가
 
@@ -299,6 +326,8 @@ define: {
 > 사망 판정 프레임보다 1 크다. 기록·재생 모두 `state.frame`을 기준으로 하므로 일치한다.
 > 대기 시간은 시뮬에 전혀 반영되지 않아 벽시계 의존이 생기지 않는다.
 
+
+
 ### 5.3 스키마 변경 — `SIM_VERSION`은 올리지 않는다
 
 ```ts
@@ -315,10 +344,12 @@ export const SIM_VERSION = '1.16.0';   // 변경 없음 (결정 B)
 
 버전을 올리지 않아도 안전한 이유:
 
-| 방향 | 결과 |
-|---|---|
-| 신버전 클라 → 구 로그(`'tap'`만) | 그대로 유효. `revive()` 추가는 기존 step 경로를 안 건드리고 RNG를 소비하지 않는다 |
+
+| 방향                       | 결과                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------- |
+| 신버전 클라 → 구 로그(`'tap'`만)  | 그대로 유효. `revive()` 추가는 기존 step 경로를 안 건드리고 RNG를 소비하지 않는다                                     |
 | 구버전 클라 → 신 로그(revive 포함) | `inputLog.ts:141`에서 스키마 위반 throw → `remoteStore.ts:90` / `ghostStore.ts:102`가 **레코드 단위 스킵** |
+
 
 **감수하는 열화**: 구버전 클라를 쓰는 토스 유저는 심사 통과 전까지 부활 포함 기록을 일간 보드·
 고스트에서 못 본다. 주간 랭킹은 뷰가 `distance`만 읽으므로 정상 표시된다.
@@ -358,16 +389,18 @@ if (this.pendingRevive) {
 }
 ```
 
-**`revive()`에서 `s.events`를 직접 쓰면 안 된다.** `step()`이 진입부에서 `s.events = 0`으로
+`revive()`**에서** `s.events`**를 직접 쓰면 안 된다.** `step()`이 진입부에서 `s.events = 0`으로
 초기화하므로(`sim.ts:167`) 렌더가 읽기 전에 지워진다. 플래그를 두고 `step()` 안에서
 `|=` 로 누적하는 것이 이 파일의 기존 이벤트 관례다.
 
 - **장애물은 그대로 둔다.** 3초 무적이라 밀어낼 필요가 없다.
 - `speedResetFrame` 갱신은 피격 처리(`sim.ts:281`)와 같은 장치를 재사용한다. 속도가 리셋되면
-  스폰 간격도 같은 시계(`speedT`)로 함께 리셋되어 통과 불가 구간이 안 생긴다(1.11.0에서 확인된 성질).
+스폰 간격도 같은 시계(`speedT`)로 함께 리셋되어 통과 불가 구간이 안 생긴다(1.11.0에서 확인된 성질).
 - 무적 3초 동안 HP 자연 감소는 계속된다(`HP_DRAIN_PER_SEC = 4` → 3초에 12). 100 → 88.
 - **알려진 미세 불일치**: 사망 당시 겹쳐 있던 장애물은 `scored` 미처리라 통과 시 `combo++`가 된다
-  (`sim.ts:246-255`). 결정 C의 "콤보 0"과 어긋나지만 콤보는 표시 전용이라 영향은 무시 가능.
+(`sim.ts:246-255`). 결정 C의 "콤보 0"과 어긋나지만 콤보는 표시 전용이라 영향은 무시 가능.
+
+
 
 ### 5.5 고스트 재생 — 블로커 대응
 
@@ -384,7 +417,7 @@ step(): void {
 §5.1이 막겠다던 증상이 그대로 재현된다. 파급:
 
 - `GameScene.ts:3246-3251`이 고스트의 `finished` 전환을 "제침"으로 카운트한다 →
-  **하지도 않은 제침이 유저에게 주어진다** (`overtakes` → `rank` → 주간 지표 오염)
+**하지도 않은 제침이 유저에게 주어진다** (`overtakes` → `rank` → 주간 지표 오염)
 - `applyGhostField`는 DB의 `distance`(1,200)로 이름표를 그리는데 스프라이트는 400m에서 쓰러진다
 
 **수정**:
@@ -451,7 +484,11 @@ if (!liveWasOver) {          // 사망 스텝에도 고스트가 한 번 더 전
 
 ---
 
+
+
 ## 6. 게임플레이 흐름
+
+
 
 ### 6.1 이어뛰기
 
@@ -488,14 +525,18 @@ if (!liveWasOver) {          // 사망 스텝에도 고스트가 한 번 더 전
 `revive()`는 sim만 되돌린다. 렌더/씬 상태 복구는 지금까지 `startRun()`에만 있었으므로
 **부활 경로에서 같은 복구를 해야 한다.** 누락하면 부활 후 화면이 망가진다.
 
-| 항목 | 현재 위치 | 부활 시 필요한 것 |
-|---|---|---|
-| 플레이어 사망 페이드 | `GameScene.ts:4946-4962` alpha 0 → `setVisible(false)` | 복구 (`startRun` 2280-2292 참조) |
-| **고스트 전원 붕괴** | `4979` `shouldCollapse = g.finished \|\| s.gameOver` → `4993` `ghostTumbleState[i] = "tumbling"` | `"run"` 복귀 (`2456`가 유일한 복구 지점). **누락하면 부활 후 텅 빈 트랙을 혼자 달린다** — 경쟁이 이 게임의 코어다 |
-| 일시정지 버튼 | `3342` `setPauseButtonState(false, false)` | 다시 표시 |
-| 게임오버 BGM | `3341` `startGameoverBgm()` | 메인/피버 BGM 복귀 |
-| 결과 패널 타이머 | `3457` `delayedCall(900, …)` | 취소 (`startRun`의 취소 패턴 재사용) |
-| 타임스텝 | `3158` 선례 | `timestep.reset()` — 광고 30초 동안 누적된 delta 방지 |
+
+| 항목            | 현재 위치                                                                                          | 부활 시 필요한 것                                                                   |
+| ------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| 플레이어 사망 페이드   | `GameScene.ts:4946-4962` alpha 0 → `setVisible(false)`                                         | 복구 (`startRun` 2280-2292 참조)                                                 |
+| **고스트 전원 붕괴** | `4979` `shouldCollapse = g.finished || s.gameOver` → `4993` `ghostTumbleState[i] = "tumbling"` | `"run"` 복귀 (`2456`가 유일한 복구 지점). **누락하면 부활 후 텅 빈 트랙을 혼자 달린다** — 경쟁이 이 게임의 코어다 |
+| 일시정지 버튼       | `3342` `setPauseButtonState(false, false)`                                                     | 다시 표시                                                                        |
+| 게임오버 BGM      | `3341` `startGameoverBgm()`                                                                    | 메인/피버 BGM 복귀                                                                 |
+| 결과 패널 타이머     | `3457` `delayedCall(900, …)`                                                                   | 취소 (`startRun`의 취소 패턴 재사용)                                                   |
+| 타임스텝          | `3158` 선례                                                                                      | `timestep.reset()` — 광고 30초 동안 누적된 delta 방지                                  |
+
+
+
 
 ### 6.3 전면광고
 
@@ -518,20 +559,27 @@ if (!liveWasOver) {          // 사망 스텝에도 고스트가 한 번 더 전
 
 ---
 
+
+
 ## 7. 계측
+
+
 
 ### 7.1 새 이벤트
 
-| 이벤트 | 속성 | 목적 |
-|---|---|---|
-| `ad_prompt_shown` | `distance`, `near_record`, `revive_index`, `lifetime_run_index` | 팝업 노출. 조건부 노출 판단 기준 |
-| `ad_prompt_closed` | `reason: 'timeout' \| 'user' \| 'accepted'` | 5초 타이머 작동 확인, 거절 방식 분포 |
-| `ad_show_result` | `kind`, `result`, `reason`, `latency_ms` | 시청 완료율(단가 직결)과 로드 실패율 |
-| `revive_used` | `revive_index`, `distance_at_death`, `final_distance` | 부활 기여도 + 무적 종료 즉사 발생률(§2 리스크) |
-| `run_log_truncated` | `event_count` | 상한 8,000에 실제로 걸리는지 |
+
+| 이벤트                 | 속성                                                              | 목적                            |
+| ------------------- | --------------------------------------------------------------- | ----------------------------- |
+| `ad_prompt_shown`   | `distance`, `near_record`, `revive_index`, `lifetime_run_index` | 팝업 노출. 조건부 노출 판단 기준           |
+| `ad_prompt_closed`  | `reason: 'timeout' | 'user' | 'accepted'`                       | 5초 타이머 작동 확인, 거절 방식 분포        |
+| `ad_show_result`    | `kind`, `result`, `reason`, `latency_ms`                        | 시청 완료율(단가 직결)과 로드 실패율         |
+| `revive_used`       | `revive_index`, `distance_at_death`, `final_distance`           | 부활 기여도 + 무적 종료 즉사 발생률(§2 리스크) |
+| `run_log_truncated` | `event_count`                                                   | 상한 8,000에 실제로 걸리는지            |
+
 
 기존 이벤트 확장:
-- `game_over`에 **`revive_pending: boolean`** 과 `revive_count` 추가 → 중간 사망과 최종 사망 구분
+
+- `game_over`에 `revive_pending: boolean` 과 `revive_count` 추가 → 중간 사망과 최종 사망 구분
 - `game_start`에 `interstitial_shown` 추가
 
 `ad_show_result`는 광고 후 WebView 상태가 불안정할 수 있어 `{ instant: true }`(sendBeacon)로 보낸다.
@@ -542,11 +590,15 @@ if (!liveWasOver) {          // 사망 스텝에도 고스트가 한 번 더 전
 
 전체 화면 광고는 `visibilitychange`/`pagehide`를 유발한다. 이미 그 신호를 쓰는 코드가 셋 있다.
 
-| 지표 | 코드 | 광고가 하는 일 | 대응 |
-|---|---|---|---|
-| `retry_latency_ms` | `derive.ts:236-241` + `GameScene.ts:947-958` | `wentBackgroundSinceLastGameOver = true` → **광고를 본 재시도는 전부 `null`** | 광고 표시 구간에 억제 플래그를 걸어 백그라운드 전환을 계측용으로 무시 |
-| `abnormal_exit` | `heartbeat.ts:38-44` | `pagehide`에서 `HB_KEY` 삭제 → 광고 중 OOM 탐지 불가 / 안 쏘면 30초 정지로 오탐 | 광고 시작 시 하트비트를 명시적으로 일시 정지, 종료 시 재개 |
-| `death_cause` | `GameScene.ts:3345` | 사망마다 계산되지만 **판당 마지막만 살아남음** → `prev_run_death_cause`(`derive.ts:183`)의 의미가 "돈 내고 취소한 사망"으로 바뀜 | `game_over`에 `revive_pending`을 넣어 중간 사망을 구분 가능하게 (§7.1) |
+
+| 지표                 | 코드                                           | 광고가 하는 일                                                                                      | 대응                                                      |
+| ------------------ | -------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `retry_latency_ms` | `derive.ts:236-241` + `GameScene.ts:947-958` | `wentBackgroundSinceLastGameOver = true` → **광고를 본 재시도는 전부** `null`                           | 광고 표시 구간에 억제 플래그를 걸어 백그라운드 전환을 계측용으로 무시                 |
+| `abnormal_exit`    | `heartbeat.ts:38-44`                         | `pagehide`에서 `HB_KEY` 삭제 → 광고 중 OOM 탐지 불가 / 안 쏘면 30초 정지로 오탐                                   | 광고 시작 시 하트비트를 명시적으로 일시 정지, 종료 시 재개                      |
+| `death_cause`      | `GameScene.ts:3345`                          | 사망마다 계산되지만 **판당 마지막만 살아남음** → `prev_run_death_cause`(`derive.ts:183`)의 의미가 "돈 내고 취소한 사망"으로 바뀜 | `game_over`에 `revive_pending`을 넣어 중간 사망을 구분 가능하게 (§7.1) |
+
+
+
 
 ### 7.3 `near_record` 기준선이 광고로 오염된다
 
@@ -555,13 +607,24 @@ if (!liveWasOver) {          // 사망 스텝에도 고스트가 한 번 더 전
 **"광고 없이는 도달 불가한 기준선"** 이 된다.
 
 Phase 5의 "`near_record`별 전환율로 조건부 노출 판단"은 자기가 만든 편향을 측정하게 된다.
-→ **부활 없는 PB를 별도 키(`ga:best-dist-norevive`)로 병행 보관**하고, Phase 5 분석은 그 축으로 한다.
+→ **부활 없는 PB를 별도 키(**`ga:best-dist-norevive`**)로 병행 보관**하고, Phase 5 분석은 그 축으로 한다.
 
 ---
 
+
+
 ## 8. 실행 단계
 
+
+
 ### Phase 0 — 사전 준비 (코드 변경 없음, **Phase 1보다 먼저 완료**)
+
+> **운영자 클릭 필요 (코드는 테스트 ID·fail-closed로 진행 가능):**
+> - Supabase / PostHog 허용 오리진에 아래 두 URL **추가**(기존 Vercel 도메인 삭제 금지)
+>   - `https://ghost-runner.web.tossmini.com`
+>   - `https://ghost-runner.private-web.tossmini.com`
+> - 콘솔 **광고 그룹** 메뉴에서 운영 adGroupId 발급(「연동 키」= 토스페이, 광고 아님)
+> - GRAC·개인정보처리방침 확인 전에는 **3.x 라이브 배포 보류**
 
 - [ ] **GRAC 내용수정신고 대상 여부 확인** (R4) — 해당 시 재분류 소요 기간 파악
 - [ ] **개인정보처리방침 필요 여부 + URL 등록 위치 확인** (R4)
@@ -570,12 +633,18 @@ Phase 5의 "`near_record`별 전환율로 조건부 노출 판단"은 자기가 
 - [ ] 보상형 / 전면형 `adGroupId` 각각 발급
 - [ ] Supabase CORS에 `ghost-runner.web.tossmini.com`, `ghost-runner.private-web.tossmini.com` 등록
 - [ ] PostHog 허용 오리진에 동일 도메인 등록
-- [ ] 개발용 테스트 ID 확보: `ait-ad-test-interstitial-id`, `ait-ad-test-rewarded-id`
+- [x] 개발용 테스트 ID 확보: `ait-ad-test-interstitial-id`, `ait-ad-test-rewarded-id` (코드 상수)
 - [ ] 토스 앱 최소 버전 확인 (광고 2.0 5.227.0+, 통합 5.247.0+)
 - [ ] **L1 검증**: 보상형과 전면형을 **동시에** preload 유지할 수 있는지. SDK가 "load 1개 → show 1개"
-      싱글톤이면 전면광고 로드가 보상형 로드를 덮어써 사망 시점에 항상 미준비가 된다 — 결정 H의 전제
+  ```
+  싱글톤이면 전면광고 로드가 보상형 로드를 덮어써 사망 시점에 항상 미준비가 된다 — 결정 H의 전제
+  ```
 - [ ] **L2 검증**: 3.x의 `ait build`가 `package.json` 빌드 스크립트를 호출하는지.
-      호출한다면 `build:ait`(= `vite build && ait build`)가 재귀한다
+  ```
+  호출한다면 `build:ait`(= `vite build && ait build`)가 재귀한다
+  ```
+
+
 
 ### Phase 1 — SDK 3.x 마이그레이션 단독 릴리스 ★ 롤백 불가 지점
 
@@ -589,6 +658,8 @@ Phase 5의 "`near_record`별 전환율로 조건부 노출 판단"은 자기가 
 - [ ] 웹(Vercel) 빌드도 정상인지 동시 확인
 - [ ] 출시 및 관찰
 
+
+
 ### Phase 2 — 부활 (광고 없이)
 
 `SIM_VERSION`을 올리지 않으므로(결정 B) **리셋 없음, 배포 타이밍 제약 없음.**
@@ -596,14 +667,18 @@ Phase 5의 "`near_record`별 전환율로 조건부 노출 판단"은 자기가 
 - [ ] `constants.ts`: `REVIVE_INVINCIBLE_SEC`, `EV_REVIVE`
 - [ ] `sim.ts`: `revive()` + `pendingRevive` (§5.4)
 - [ ] `inputLog.ts`: `'revive'` 타입, `recordRevive`, `parseLog` 확장 (`SIM_VERSION` 불변)
-- [ ] **`ghost.ts`: `revivesLeft` + `finished` 재정의 + revive 소비 (§5.5) ← 블로커**
+- [ ] `ghost.ts`**:** `revivesLeft` **+** `finished` **재정의 + revive 소비 (§5.5) ← 블로커**
 - [ ] `replay()` 재생 경로에 `'revive'` 분기
-- [ ] **`GameScene.ts:3242` lockstep 가드를 step 전 스냅샷으로 (§5.6)**
+- [ ] `GameScene.ts:3242` **lockstep 가드를 step 전 스냅샷으로 (§5.6)**
 - [ ] **부활 시 씬 상태 복구 6항목 (§6.2)**
 - [ ] `devTools`에 부활 트리거 — **배선 경로부터 만들 것.** 현재 `devTools.ts`의 export는
-      `seedGhosts` 하나뿐이고 `main.ts:23`의 `import.meta.env.DEV` 블록에서만 로드되며,
-      실행 중인 `GameScene` 인스턴스가 `window`에 노출돼 있지 않다
+  ```
+  `seedGhosts` 하나뿐이고 `main.ts:23`의 `import.meta.env.DEV` 블록에서만 로드되며,
+  실행 중인 `GameScene` 인스턴스가 `window`에 노출돼 있지 않다
+  ```
 - [ ] 테스트: §9의 sim/ghost 항목 전부
+
+
 
 ### Phase 3 — 광고 파사드 + 이어뛰기 팝업
 
@@ -620,6 +695,8 @@ Phase 5의 "`near_record`별 전환율로 조건부 노출 판단"은 자기가 
 - [ ] 로그 상한 8,000 + 초과 시 로컬만 스킵 (결정 J)
 - [ ] **웹 번들 검증 (§4.3의 정정된 3단계)**
 
+
+
 ### Phase 4 — 전면광고 (코드 포함, 플래그 OFF)
 
 - [ ] `interstitialGate` (순수 함수 + localStorage, UTC 일간 리셋, period 정규화)
@@ -627,16 +704,20 @@ Phase 5의 "`near_record`별 전환율로 조건부 노출 판단"은 자기가 
 - [ ] 이어뛰기 시청 직후 건너뛰기 규칙
 - [ ] `ads_interstitial_enabled` 기본값 `false` 확인 — 결정 E-2
 
+
+
 ### Phase 5 — 관찰 및 튜닝
 
 **사전 고정 가드레일** (이 중 하나라도 걸리면 해당 킬스위치를 당긴다):
 
-| 지표 | 임계 | 액션 |
-|---|---|---|
+
+| 지표                 | 임계              | 액션                           |
+| ------------------ | --------------- | ---------------------------- |
 | `abnormal_exit` 비율 | 광고 도입 전 대비 +50% | `ads_revive_enabled = false` |
-| 세션당 판수 | 전 대비 -20% | 전면광고 먼저 off |
-| 재시도율 | 35% 미만으로 하락 | 전면광고 off, 주기 5→10 |
-| 광고 시청 완료율 | 40% 미만 | 노출 위치·문구 재검토 |
+| 세션당 판수             | 전 대비 -20%       | 전면광고 먼저 off                  |
+| 재시도율               | 35% 미만으로 하락     | 전면광고 off, 주기 5→10            |
+| 광고 시청 완료율          | 40% 미만          | 노출 위치·문구 재검토                 |
+
 
 - [ ] 전/후 코호트 분리 (`LAUNCH-PLAYBOOK.md:170-171` 요구사항)
 - [ ] `near_record`(부활 없는 축)별 전환율 → 조건부 노출 판단
@@ -645,7 +726,11 @@ Phase 5의 "`near_record`별 전환율로 조건부 노출 판단"은 자기가 
 
 ---
 
+
+
 ## 9. 테스트 전략
+
+
 
 ### 커버리지 목표
 
@@ -695,14 +780,18 @@ CODE PATHS                                          USER FLOWS
   └── 이상치 상한 × (revive_count+1) 경계값
 ```
 
+
+
 ### 필수 회귀 테스트 (REGRESSION RULE — 질문 없이 추가)
 
-1. **`ghost.test.ts:44` 갱신** — "finished 후 step()은 no-op"이라는 전제가 부활로 바뀐다.
-   `revivesLeft > 0`이면 `finished`가 `false`이고 step이 진행됨을 고정한다.
+1. `ghost.test.ts:44` **갱신** — "finished 후 step()은 no-op"이라는 전제가 부활로 바뀐다.
+  `revivesLeft > 0`이면 `finished`가 `false`이고 step이 진행됨을 고정한다.
 2. **부활 포함 골든 리플레이** — revive 이벤트가 든 로그의 lockstep 재생 결과가 `replay()` 일괄
-   재생과 일치하고, 최종 거리가 고정값과 같음을 고정한다.
+  재생과 일치하고, 최종 거리가 고정값과 같음을 고정한다.
 3. **제침 카운트 불변** — 부활 고스트가 첫 사망에서 `finished` 전환되지 않아 `overtakes`가
-   부풀지 않음을 고정한다.
+  부풀지 않음을 고정한다.
+
+
 
 ### 수동 검증 (QR 실기기)
 
@@ -715,34 +804,42 @@ CODE PATHS                                          USER FLOWS
 
 ---
 
+
+
 ## 10. 실패 모드
 
-| 코드패스 | 실패 시나리오 | 테스트 | 에러 처리 | 유저가 보는 것 |
-|---|---|---|---|---|
-| `ads.show('revive')` | 광고 서버 타임아웃 | ✅ 주입 SDK | ✅ `unavailable` | 안내 토스트 + 게임오버 |
-| `ads.show('revive')` | `dismissed`만 오고 `userEarnedReward` 없음 | ✅ | ✅ 보상 없음 | 게임오버 (정책 준수) |
-| `GhostDriver` | revive 이벤트 미소비 | ✅ CRITICAL 회귀 | — | **고스트 증발 + 허위 제침** (수정 전) |
-| `revive()` | 공중 사망 후 부활 | ✅ | ✅ `jumpsUsed=0` | 정상 조작 |
-| 판 종료 게이팅 | 팝업 중 앱 종료 | ⚠️ 수동 | ✅ `game_over` instant는 이미 전송 | 서버 행 없음(중간 사망), 계측은 남음 |
-| `interstitialGate` | `localStorage` 손상 | ✅ | ✅ 기본값 | 광고 정상 주기 |
-| `remoteConfig` | R2로 Supabase 접근 불가 | ✅ | ✅ fail-closed(`false`) | 광고 없음 (안전) |
-| 로그 상한 | 8,000 초과 | ✅ | ✅ 로컬만 스킵 | 랭킹 정상, 셀프 고스트만 없음 |
-| 이상치 상한 | 부활로 19,800m 초과 | ✅ 경계값 | ✅ × (revive_count+1) | 기록 정상 반영 |
-| 광고 중 OOM | 저사양 iOS | ⚠️ 수동 | ⚠️ 렌더러 sleep으로 완화 | 앱 재시작 → `abnormal_exit` 탐지 |
+
+| 코드패스                 | 실패 시나리오                               | 테스트           | 에러 처리                        | 유저가 보는 것                   |
+| -------------------- | ------------------------------------- | ------------- | ---------------------------- | -------------------------- |
+| `ads.show('revive')` | 광고 서버 타임아웃                            | ✅ 주입 SDK      | ✅ `unavailable`              | 안내 토스트 + 게임오버              |
+| `ads.show('revive')` | `dismissed`만 오고 `userEarnedReward` 없음 | ✅             | ✅ 보상 없음                      | 게임오버 (정책 준수)               |
+| `GhostDriver`        | revive 이벤트 미소비                        | ✅ CRITICAL 회귀 | —                            | **고스트 증발 + 허위 제침** (수정 전)  |
+| `revive()`           | 공중 사망 후 부활                            | ✅             | ✅ `jumpsUsed=0`              | 정상 조작                      |
+| 판 종료 게이팅             | 팝업 중 앱 종료                             | ⚠️ 수동         | ✅ `game_over` instant는 이미 전송 | 서버 행 없음(중간 사망), 계측은 남음     |
+| `interstitialGate`   | `localStorage` 손상                     | ✅             | ✅ 기본값                        | 광고 정상 주기                   |
+| `remoteConfig`       | R2로 Supabase 접근 불가                    | ✅             | ✅ fail-closed(`false`)       | 광고 없음 (안전)                 |
+| 로그 상한                | 8,000 초과                              | ✅             | ✅ 로컬만 스킵                     | 랭킹 정상, 셀프 고스트만 없음          |
+| 이상치 상한               | 부활로 19,800m 초과                        | ✅ 경계값         | ✅ × (revive_count+1)         | 기록 정상 반영                   |
+| 광고 중 OOM             | 저사양 iOS                               | ⚠️ 수동         | ⚠️ 렌더러 sleep으로 완화            | 앱 재시작 → `abnormal_exit` 탐지 |
+
 
 **critical gap 0** — 모든 실패 모드에 테스트 또는 에러 처리가 있고, 조용히 실패하는 경로는 없다.
 
 ---
 
+
+
 ## 11. 병렬화 전략
 
-| 레인 | 모듈 | 의존 |
-|---|---|---|
-| **A** SDK 3.x 마이그레이션 | 루트 설정 | — (선행, 별도 릴리스) |
-| **B** sim 부활 | `src/sim/` | A |
-| **C** 광고 파사드 | `src/ads/` | A |
-| **D** 서버 스키마 | `sql/`, `src/remoteStore.ts` | A |
-| **E** 팝업 + 통합 | `src/ui/`, `src/render/GameScene.ts` | B, C |
+
+| 레인                   | 모듈                                   | 의존             |
+| -------------------- | ------------------------------------ | -------------- |
+| **A** SDK 3.x 마이그레이션 | 루트 설정                                | — (선행, 별도 릴리스) |
+| **B** sim 부활         | `src/sim/`                           | A              |
+| **C** 광고 파사드         | `src/ads/`                           | A              |
+| **D** 서버 스키마         | `sql/`, `src/remoteStore.ts`         | A              |
+| **E** 팝업 + 통합        | `src/ui/`, `src/render/GameScene.ts` | B, C           |
+
 
 ```
 [릴리스 1]  Lane A ── QR 검증 ── 출시 ── 관찰
@@ -757,36 +854,46 @@ E만 `GameScene.ts`를 건드리고 B의 `constants.ts`·C의 파사드 타입�
 
 ---
 
+
+
 ## 12. 이미 존재해서 재사용하는 것
 
-| 기존 자산 | 위치 | 재사용 방식 |
-|---|---|---|
-| 호스트 감지 + 동적 import | `aitHost.ts:10,24` | 웹 차단 패턴 그대로 |
-| 피격 시 속도 리셋 | `sim.ts:281` `speedResetFrame` | `revive()`에서 동일 장치 |
-| 원격 킬스위치 인프라 | `remoteConfig.ts` | 키 3개 추가 |
-| `nearRecord` 판정 | `GameScene.ts:3353` | 조건부 노출 분석 축 |
-| **`sim_version` 서버 파티션** | `remoteStore.ts:62` | 이미 구현됨 — `TODOS.md:33`의 P1은 완료 상태 |
-| 레코드 단위 파싱 스킵 | `remoteStore.ts:90`, `ghostStore.ts:102` | 버전 유지의 안전 근거 |
-| `QuotaExceeded` 방어 | `ghostStore.ts:79` | 로그 상한의 2차 방어선 |
-| 이벤트 미러 | `eventMirror.ts` | 광고 이벤트도 태움 |
-| 결과 패널 타이머 취소 | `startRun`의 `resultPanelTimer` 패턴 | 부활 경로에서 재사용 |
+
+| 기존 자산                    | 위치                                       | 재사용 방식                            |
+| ------------------------ | ---------------------------------------- | --------------------------------- |
+| 호스트 감지 + 동적 import       | `aitHost.ts:10,24`                       | 웹 차단 패턴 그대로                       |
+| 피격 시 속도 리셋               | `sim.ts:281` `speedResetFrame`           | `revive()`에서 동일 장치                |
+| 원격 킬스위치 인프라              | `remoteConfig.ts`                        | 키 3개 추가                           |
+| `nearRecord` 판정          | `GameScene.ts:3353`                      | 조건부 노출 분석 축                       |
+| `sim_version` **서버 파티션** | `remoteStore.ts:62`                      | 이미 구현됨 — `TODOS.md:33`의 P1은 완료 상태 |
+| 레코드 단위 파싱 스킵             | `remoteStore.ts:90`, `ghostStore.ts:102` | 버전 유지의 안전 근거                      |
+| `QuotaExceeded` 방어       | `ghostStore.ts:79`                       | 로그 상한의 2차 방어선                     |
+| 이벤트 미러                   | `eventMirror.ts`                         | 광고 이벤트도 태움                        |
+| 결과 패널 타이머 취소             | `startRun`의 `resultPanelTimer` 패턴        | 부활 경로에서 재사용                       |
+
 
 ---
+
+
 
 ## 13. NOT in scope
 
-| 항목 | 제외 이유 |
-|---|---|
-| 배너 광고 | 가로 풀스크린 게임에 상시 배너는 화면을 잡아먹는다. 별도 검토. |
-| 주간 랭킹 뷰 수정 | `revive_count` 컬럼만 추가하고 뷰는 안 건드림 — `002` 주석의 "유저 자산 보호" 설계 의도 존중. |
-| `remoteConfig` 전체 범위 스키마 | 기존 키의 적정 범위 결정이 필요해 이 PR 밖 (TODO 후보). |
-| 부활 횟수 제한 | 무제한으로 결정 (A). |
-| 무적 종료 즉사 방어 | 그대로 감수 (§2). 고치려면 `SIM_VERSION` 업 → 리셋. |
-| 시즌제 리더보드 운영 | `TODOS.md:28`의 방향 결정 자체는 이 PR 밖 (TODO 후보). |
-| IAP로 이어뛰기 판매 | 광고 수익화만. |
-| `scored` 미처리 콤보 보정 | 표시 전용이라 영향 무시 가능 (§5.4). |
+
+| 항목                       | 제외 이유                                                             |
+| ------------------------ | ----------------------------------------------------------------- |
+| 배너 광고                    | 가로 풀스크린 게임에 상시 배너는 화면을 잡아먹는다. 별도 검토.                              |
+| 주간 랭킹 뷰 수정               | `revive_count` 컬럼만 추가하고 뷰는 안 건드림 — `002` 주석의 "유저 자산 보호" 설계 의도 존중. |
+| `remoteConfig` 전체 범위 스키마 | 기존 키의 적정 범위 결정이 필요해 이 PR 밖 (TODO 후보).                             |
+| 부활 횟수 제한                 | 무제한으로 결정 (A).                                                     |
+| 무적 종료 즉사 방어              | 그대로 감수 (§2). 고치려면 `SIM_VERSION` 업 → 리셋.                           |
+| 시즌제 리더보드 운영              | `TODOS.md:28`의 방향 결정 자체는 이 PR 밖 (TODO 후보).                        |
+| IAP로 이어뛰기 판매             | 광고 수익화만.                                                          |
+| `scored` 미처리 콤보 보정       | 표시 전용이라 영향 무시 가능 (§5.4).                                          |
+
 
 ---
+
+
 
 ## 참고
 
@@ -795,6 +902,8 @@ E만 `GameScene.ts`를 건드리고 B의 `constants.ts`·C의 파사드 타입�
 - [SDK 3.x 마이그레이션](https://developers-apps-in-toss.toss.im/documentation/integration/sdk-3.x.md)
 
 ---
+
+
 
 ## Implementation Tasks
 
@@ -855,15 +964,19 @@ E만 `GameScene.ts`를 건드리고 B의 `constants.ts`·C의 파사드 타입�
 
 ---
 
+
+
 ## GSTACK REVIEW REPORT
 
-| Review | Trigger | Why | Runs | Status | Findings |
-|--------|---------|-----|------|--------|----------|
-| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
-| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | codex not installed |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | clean | 8 issues + 13 external, 0 critical gaps |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
-| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+| Review        | Trigger               | Why                             | Runs | Status | Findings                                |
+| ------------- | --------------------- | ------------------------------- | ---- | ------ | --------------------------------------- |
+| CEO Review    | `/plan-ceo-review`    | Scope & strategy                | 0    | —      | —                                       |
+| Codex Review  | `/codex review`       | Independent 2nd opinion         | 0    | —      | codex not installed                     |
+| Eng Review    | `/plan-eng-review`    | Architecture & tests (required) | 1    | clean  | 8 issues + 13 external, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps                      | 0    | —      | —                                       |
+| DX Review     | `/plan-devex-review`  | Developer experience gaps       | 0    | —      | —                                       |
+
 
 **OUTSIDE VOICE (Claude subagent):** 블로커 2건(고스트 revive 미소비, 판 종료 파이프라인 중복),
 상 5건(리셋 금지 창·`SIM_VERSION` 불필요·코호트 분리·일정 통제 불가·웹 번들 전제 오류),

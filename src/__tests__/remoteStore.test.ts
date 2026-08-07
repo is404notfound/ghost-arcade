@@ -199,6 +199,20 @@ describe('submitRunRemote', () => {
     expect(chain.insert).not.toHaveBeenCalled();
   });
 
+  it('부활 횟수만큼 이상치 상한 확장 (결정 K)', async () => {
+    const getClient = await getGetSupabaseClient();
+    const { client, chain } = makeChain(undefined, { error: null });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getClient.mockReturnValue(client as any);
+    const { submitRunRemote } = await importRemote();
+
+    // 19,800 초과지만 revive_count=1 → 상한 39,600 이내
+    await submitRunRemote(seed, log, 25_000, false, undefined, undefined, 1);
+    expect(chain.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ distance: 25_000, revive_count: 1 }),
+    );
+  });
+
   it('음수 거리: insert 미호출', async () => {
     const getClient = await getGetSupabaseClient();
     const { client, chain } = makeChain(undefined, { error: null });
