@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
-    "build:ait": "tsc --noEmit && VITE_ADS_ENABLED=true vite build && ait build",
+    "build:ait": "tsc --noEmit && VITE_ADS_ENABLED=true VITE_AD_GROUP_REVIVE=ait.v2.live.eb0eddbc0d6a40df VITE_AD_GROUP_BANNER=ait.v2.live.2dceb89f19a24e7b VITE_AD_GROUP_INTERSTITIAL=ait.v2.live.c38e2dccaf0b4948 vite build && ait build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
