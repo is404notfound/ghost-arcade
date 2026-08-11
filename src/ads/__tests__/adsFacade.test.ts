@@ -15,17 +15,27 @@ async function loadFacade() {
 function makeFakeSdk(opts: {
   supported?: boolean;
   loadOk?: boolean;
+  /** load 성공 콜백 지연(ms). 기본 0 = microtask */
+  loadDelayMs?: number;
   showEvents?: ShowEvent[];
   showError?: Error;
 }): AdSdk {
   const supported = opts.supported ?? true;
+  const loadDelayMs = opts.loadDelayMs ?? 0;
   return {
     isSupported: () => supported,
     load(_id, onEvent, onError) {
-      if (opts.loadOk === false) {
-        queueMicrotask(() => onError(new Error('load fail')));
+      const fire = () => {
+        if (opts.loadOk === false) {
+          onError(new Error('load fail'));
+        } else {
+          onEvent('loaded');
+        }
+      };
+      if (loadDelayMs > 0) {
+        setTimeout(fire, loadDelayMs);
       } else {
-        queueMicrotask(() => onEvent('loaded'));
+        queueMicrotask(fire);
       }
       return () => {};
     },
@@ -110,5 +120,40 @@ describe('ads facade', () => {
     preload('revive');
     await new Promise((r) => setTimeout(r, 20));
     expect(isAdReady('revive')).toBe(false);
+  });
+
+  it('waitForAdReady: 이미 ready면 즉시 true', async () => {
+    const { isAppsInTossHost } = await import('../../aitHost');
+    vi.mocked(isAppsInTossHost).mockReturnValue(true);
+    const { preload, waitForAdReady, __setAdSdkForTest, isAdReady } =
+      await loadFacade();
+    __setAdSdkForTest(makeFakeSdk({}));
+    preload('revive');
+    await vi.waitFor(() => expect(isAdReady('revive')).toBe(true));
+    await expect(waitForAdReady('revive', 1000)).resolves.toBe(true);
+  });
+
+  it('waitForAdReady: 지연 load가 timeout 안이면 true', async () => {
+    const { isAppsInTossHost } = await import('../../aitHost');
+    vi.mocked(isAppsInTossHost).mockReturnValue(true);
+    const { waitForAdReady, __setAdSdkForTest, isAdReady } = await loadFacade();
+    __setAdSdkForTest(makeFakeSdk({ loadDelayMs: 120 }));
+    await expect(waitForAdReady('revive', 500)).resolves.toBe(true);
+    expect(isAdReady('revive')).toBe(true);
+  });
+
+  it('waitForAdReady: timeout 후 false + 이후 preload 재시도 가능', async () => {
+    const { isAppsInTossHost } = await import('../../aitHost');
+    vi.mocked(isAppsInTossHost).mockReturnValue(true);
+    const { waitForAdReady, preload, __setAdSdkForTest, isAdReady } =
+      await loadFacade();
+
+    __setAdSdkForTest(makeFakeSdk({ loadOk: false }));
+    await expect(waitForAdReady('revive', 80)).resolves.toBe(false);
+    expect(isAdReady('revive')).toBe(false);
+
+    __setAdSdkForTest(makeFakeSdk({ loadOk: true }));
+    preload('revive');
+    await vi.waitFor(() => expect(isAdReady('revive')).toBe(true));
   });
 });

@@ -69,7 +69,39 @@ export function reviveOfferSkipReason(reviveEnabled: boolean): string | null {
   return null;
 }
 
-/** 부트 완료 + remoteConfig 이후 호출. dismiss 직후 재-preload. */
+/** 사망 시 not_ready면 이 시간만큼 조용히 대기(재-preload 포함). */
+export const REVIVE_READY_WAIT_MS = 1000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/**
+ * preload를 한 번 더 걸고 timeoutMs 안에 ready가 되면 true.
+ * 실패·타임아웃 후 loading 플래그를 풀어 다음 startRun/사망에서 재시도 가능하게 한다.
+ */
+export async function waitForAdReady(
+  kind: AdKind,
+  timeoutMs: number = REVIVE_READY_WAIT_MS,
+): Promise<boolean> {
+  if (ready.has(kind)) return true;
+  preload(kind);
+  if (ready.has(kind)) return true;
+
+  const deadline = Date.now() + Math.max(0, timeoutMs);
+  while (Date.now() < deadline) {
+    await sleep(50);
+    if (ready.has(kind)) return true;
+  }
+
+  // SDK가 콜백을 안 주는 경우 loading에 영구 고정되면 이후 preload가 전부 no-op.
+  if (!ready.has(kind)) loading.delete(kind);
+  return false;
+}
+
+/** 부트 완료 + remoteConfig 이후 호출. dismiss 직후·판 시작·사망 대기에서도 재시도. */
 export function preload(kind: AdKind): void {
   if (!__ADS_ENABLED__) return;
   if (!isAppsInTossHost()) return;
@@ -94,7 +126,7 @@ export function preload(kind: AdKind): void {
 
   if (sdk.ensure) {
     void sdk.ensure().then(start).catch(() => {
-      /* 미지원/네트워크 — 조용히 */
+      /* 미지원/네트워크 — 조용히. loading 미진입이라 다음 preload로 재시도 가능 */
     });
   } else {
     start();

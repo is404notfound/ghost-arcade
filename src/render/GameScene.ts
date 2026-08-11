@@ -29,6 +29,9 @@ import {
   writeInterstitialState,
   normalizeInterstitialPeriod,
   setBannerVisible,
+  preload as preloadAd,
+  waitForAdReady,
+  REVIVE_READY_WAIT_MS,
   type AdResult,
 } from "../ads";
 import { RevivePrompt } from "../ui/RevivePrompt";
@@ -2328,6 +2331,10 @@ export class GameScene extends Phaser.Scene {
   /** 새 판 시작 — 데일리 시드(오늘의 코스) + 저장된 최고 기록 유령 로드.
    *  isRetry=true면 게임오버 후 자발적 재시작(첫 진입과 구분). */
   private startRun(restartReason: RestartReason = "first") {
+    // 부트 preload 실패·소진 후에도 판마다 보충 — 세션 내내 not_ready 고착 완화
+    if (remoteConfig("ads_revive_enabled")) {
+      preloadAd("revive");
+    }
     // 이전 판의 결과 패널 딜레이 타이머가 남아있으면 즉시 취소.
     // 게임오버 후 900ms 이내에 재시작하면 새 판에서 패널이 튀어나오는 버그 방지.
     if (this.resultPanelTimer) {
@@ -3417,6 +3424,17 @@ export class GameScene extends Phaser.Scene {
 
   /** 매 사망: 계측은 즉시, 서버/로컬/결과패널은 이어뛰기 거절·실패 시에만 (결정 I) */
   private onGameOverEvent(ev: number): void {
+    // 이어뛰기 팝업/조용한 대기 중 중복 EV_GAME_OVER → 이중 finalize 방지
+    if (this.deathFinalizePending) return;
+    this.deathFinalizePending = true;
+    void this.handleGameOverOffer(ev);
+  }
+
+  /**
+   * not_ready면 preload 재시도 후 최대 ~1초 조용히 대기.
+   * 대기 중 startRun되면 sim.gameOver가 false가 되어 이후 작업을 버린다.
+   */
+  private async handleGameOverOffer(ev: number): Promise<void> {
     this.playSfx("sfx-death", { volume: SFX_VOL_DEATH });
     this.startGameoverBgm();
     setPauseButtonState(false, false);
@@ -3435,10 +3453,15 @@ export class GameScene extends Phaser.Scene {
         : Math.floor(myDist) >= this.bestDistNoReviveAtRunStart * 0.9;
 
     const reviveEnabled = remoteConfig("ads_revive_enabled");
-    const reviveSkip =
-      this.deathFinalizePending
-        ? "finalize_pending"
-        : reviveOfferSkipReason(reviveEnabled);
+    let reviveSkip = reviveOfferSkipReason(reviveEnabled);
+
+    // 인벤/네트워크 지연: 팝업 UI 없이 preload + 폴링. 다른 skip 이유는 기다리지 않음.
+    if (reviveSkip === "not_ready" && this.revivePrompt) {
+      await waitForAdReady("revive", REVIVE_READY_WAIT_MS);
+      if (!this.sim.state.gameOver || !this.deathFinalizePending) return;
+      reviveSkip = reviveOfferSkipReason(reviveEnabled);
+    }
+
     const canOfferRevive = reviveSkip === null;
 
     setPerson({
@@ -3476,7 +3499,6 @@ export class GameScene extends Phaser.Scene {
     this.spectating = false;
 
     if (canOfferRevive && this.revivePrompt) {
-      this.deathFinalizePending = true;
       this.pendingDeathCmp = cmp;
       this.pendingDeathDist = myDist;
       this.pendingDeathCause = death_cause;
