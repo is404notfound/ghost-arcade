@@ -62,6 +62,8 @@ export const MAX_POTIONS = 8;
 // step() 이벤트 비트마스크 — 렌더/사운드 트리거용 (할당 없는 신호 전달)
 export const EV_JUMP = 1;
 export const EV_HIT = 2;
+/** 초심자 보호로 HP·콤보가 유지된 피격 (EV_HIT와 함께 발화) */
+export const EV_HIT_FORGIVEN = 4;
 export const EV_POTION = 8;
 export const EV_GAME_OVER = 16;
 export const EV_COMBO_BREAK = 32; // combo > 0 인 상태에서 피격 시 발화

@@ -68,8 +68,16 @@ describe('GameSim — 장애물 통과 combo', () => {
     }
   });
 
-  test('피격(EV_HIT) 시 combo가 0으로 리셋된다', () => {
+  test('첫 피버 이후 피격(EV_HIT) 시 combo가 0으로 리셋된다', () => {
     const sim = new GameSim(1);
+    // 초심자 보호 종료 후 데미지·콤보 끊김 경로
+    sim.state.combo = 1;
+    sim.state.feverTimerFrames = Math.round(C.FEVER_INTERVAL_SEC * C.SIM_FPS);
+    sim.state.invincibleFrames = 999;
+    sim.step();
+    expect(sim.state.events & C.EV_FEVER_START).toBeTruthy();
+    sim.state.feverFramesLeft = 0;
+    sim.state.feverGraceFramesLeft = 0;
     sim.state.combo = 5;
     arrangeHit(sim);
     sim.step();
@@ -77,8 +85,15 @@ describe('GameSim — 장애물 통과 combo', () => {
     expect(sim.state.combo).toBe(0);
   });
 
-  test('콤보가 있을 때 피격되면 EV_COMBO_BREAK가 발화한다', () => {
+  test('첫 피버 이후 콤보가 있을 때 피격되면 EV_COMBO_BREAK가 발화한다', () => {
     const sim = new GameSim(1);
+    sim.state.combo = 1;
+    sim.state.feverTimerFrames = Math.round(C.FEVER_INTERVAL_SEC * C.SIM_FPS);
+    sim.state.invincibleFrames = 999;
+    sim.step();
+    expect(sim.state.events & C.EV_FEVER_START).toBeTruthy();
+    sim.state.feverFramesLeft = 0;
+    sim.state.feverGraceFramesLeft = 0;
     sim.state.combo = 3;
     arrangeHit(sim);
     sim.step();

@@ -122,8 +122,8 @@ export class GameSim {
   private speedResetFrame = 0;
   /** revive()에서 세우고 step() 진입 직후 EV_REVIVE로 소비 — events를 직접 쓰면 step이 지움 */
   private pendingRevive = false;
-  /** 온보딩 구간에서 첫 충돌 HP 용서를 이미 썼는지 (판당 1회) */
-  private onboardFirstHitForgiven = false;
+  /** 이번 판에서 피버를 한 번이라도 켰는지 — 켜기 전엔 초심자 보호(히트 HP 용서) */
+  private feverStartedOnce = false;
 
   constructor(seed: number) {
     this.rng = new Rng(seed);
@@ -291,6 +291,7 @@ export class GameSim {
         s.feverFramesLeft = Math.round(C.FEVER_SEC * C.SIM_FPS);
         s.feverTimerFrames = 0;
         s.events |= C.EV_FEVER_START;
+        this.feverStartedOnce = true;
       }
     }
 
@@ -301,22 +302,19 @@ export class GameSim {
         const o = s.obstacles[i]!;
         if (!o.active) continue;
         if (collidesPlayer(C.PLAYER_X, s.player.y, o)) {
-          // 온보딩 첫 히트 용서(1.17.0): EV_HIT·무적·콤보 리셋은 유지, HP만 안 깎음.
-          // 이유: 초반 "두 번 맞고 즉시 사망"을 줄이되 피격 피드백/분석(hits_taken)은 살린다.
-          const t = s.frame * C.DT;
-          const forgiveFirstHit =
-            !this.onboardFirstHitForgiven && t < C.ONBOARD_SEC;
-          if (forgiveFirstHit) {
-            this.onboardFirstHitForgiven = true;
-          } else {
-            s.hp -= C.HIT_DAMAGE;
-          }
+          // 초심자 보호(1.18.0): 첫 피버 전엔 HP·콤보·피버타이머 유지.
+          // 이유: 피버 1회까지 길을 열어 주고, 무적·EV_HIT로 피격감/계측만 남긴다.
           s.invincibleFrames = Math.round((C.INVINCIBLE_MS / 1000) * C.SIM_FPS);
           s.events |= C.EV_HIT;
-          if (s.combo > 0) s.events |= C.EV_COMBO_BREAK; // 콤보가 있었을 때만
-          s.combo = 0;
-          s.feverTimerFrames = 0;
-          this.speedResetFrame = s.frame; // 속도를 SPEED_BASE로 되돌리고 다시 램프업
+          if (!this.feverStartedOnce) {
+            s.events |= C.EV_HIT_FORGIVEN;
+          } else {
+            s.hp -= C.HIT_DAMAGE;
+            if (s.combo > 0) s.events |= C.EV_COMBO_BREAK;
+            s.combo = 0;
+            s.feverTimerFrames = 0;
+            this.speedResetFrame = s.frame; // 속도를 SPEED_BASE로 되돌리고 다시 램프업
+          }
           break; // 한 스텝에 한 번만
         }
       }

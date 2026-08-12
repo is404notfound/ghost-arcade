@@ -38,7 +38,7 @@
 // 1.17.0: 온보딩 구간(ONBOARD_SEC) 첫 충돌만 HIT_DAMAGE 미적용(피격 이벤트·콤보 리셋·무적은 유지).
 //         HP 궤적 변경 → 옛 로그 재생 불가. 킬스위치는 원격이 아니라 버전 롤백
 //         (remoteConfig로 sim을 바꾸면 클라마다 궤적이 갈라짐).
-export const SIM_VERSION = '1.17.0';
+export const SIM_VERSION = '1.18.0';
 
 export interface InputEvent {
   frame: number;

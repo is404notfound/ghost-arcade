@@ -3459,6 +3459,10 @@ export class GameScene extends Phaser.Scene {
       // 피격 진동 — 점프보다 길고 강하게(타격감).
       navigator.vibrate?.(60);
       this.playSfx("sfx-hit", { volume: SFX_VOL_HIT });
+      // EV_HIT_FORGIVEN: 첫 피버 전 보호 — BREAK와 겹치지 않게 전용 토스트
+      if (ev & C.EV_HIT_FORGIVEN) {
+        this.showBeginnerProtectPopup();
+      }
     }
     if (ev & C.EV_COMBO_BREAK) {
       // 콤보가 끊긴 순간 — 화면 흔들림 + 빨간 팝업
@@ -5984,6 +5988,33 @@ export class GameScene extends Phaser.Scene {
       y: y - 34,
       alpha: 0,
       duration: 520,
+      ease: "Cubic.out",
+      onComplete: () => t.destroy(),
+    });
+  }
+
+  /** 초심자 보호 — 캐릭터 위 노란 토스트 (depth·스트로크로 피격 플래시 위에서도 읽히게) */
+  private showBeginnerProtectPopup(): void {
+    const x = toScreenX(C.PLAYER_X);
+    const y = boxCenterScreenY(this.sim.state.player.y, C.PLAYER_H) - 56;
+    const t = this.add
+      .text(x, y, "초심자 보호 발동!", {
+        fontSize: "22px",
+        fontFamily: FONT_KR_IMPACT,
+        color: NEON_YELLOW_HEX,
+        resolution: Math.max(TXT_RES, 3),
+        padding: { x: 8, y: 4 },
+      })
+      .setOrigin(0.5)
+      .setStroke("#0a0018", 6)
+      .setDepth(60)
+      .setAlpha(1);
+    this.tweens.add({
+      targets: t,
+      y: y - 40,
+      alpha: 0,
+      delay: 700,
+      duration: 380,
       ease: "Cubic.out",
       onComplete: () => t.destroy(),
     });
