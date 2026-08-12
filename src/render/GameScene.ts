@@ -3647,7 +3647,7 @@ export class GameScene extends Phaser.Scene {
       this.sawReviveAdThisRun = true;
       // 부활 적용 전에만 연출 — applyRevive/고스트 finished 배관을 건드리지 않음
       if (remoteConfig("revive_fx_enabled")) {
-        await this.playReviveComic();
+        await this.playReviveComic(distanceAtDeath);
       }
       // 연출 중 재시작되면 death 파이프가 무효 — 부활 적용 금지
       if (!this.sim.state.gameOver || !this.deathFinalizePending) return;
@@ -3683,24 +3683,30 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 광고 보상 직후 풀스크린 1컷(~2초, 탭 스킵).
-   * 에셋 full-bleed + 닉네임 말풍선(코드 오버레이).
+   * 광고 보상 직후 풀스크린 1컷(~15초).
+   * 에셋 full-bleed + 인트로형 스토리 카피 + CTA/자동시작 (탭 전역 스킵 없음).
    */
-  private playReviveComic(): Promise<void> {
-    const HOLD_MS = 2000;
+  private playReviveComic(distanceAtDeath: number): Promise<void> {
+    const HOLD_SEC = 15;
+    const HOLD_MS = HOLD_SEC * 1000;
     return new Promise((resolve) => {
       let settled = false;
+      let countdownTimer: Phaser.Time.TimerEvent | null = null;
+      let autoFinishTimer: Phaser.Time.TimerEvent | null = null;
+      let ctaBtn: Phaser.GameObjects.Text | null = null;
+
       const finish = () => {
         if (settled) return;
         settled = true;
-        this.input.off("pointerdown", onTap);
+        countdownTimer?.remove(false);
+        autoFinishTimer?.remove(false);
+        if (ctaBtn) this.tweens.killTweensOf(ctaBtn);
         this.tweens.killTweensOf(root);
         root.destroy(true);
         resolve();
       };
-      const onTap = () => finish();
 
-      // 히트 영역 — 이미지 위 투명 클릭 캡처
+      // 뒤 탭이 점프로 새지 않게 흡수 — CTA만 시작
       const hit = this.add
         .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.001)
         .setInteractive();
@@ -3712,56 +3718,150 @@ export class GameScene extends Phaser.Scene {
       const cover = Math.max(DESIGN_W / art.width, DESIGN_H / art.height);
       art.setScale(cover);
 
-      const nick = this.clipNickChars(getNickname(window.localStorage), 10);
-      const bubbleMsg = `${nick}: I can do this ALL DAY`;
-      const label = this.add
-        .text(0, 0, bubbleMsg, {
-          fontSize: "18px",
-          fontFamily: FONT_KR_IMPACT,
-          color: "#ffffff",
-          align: "center",
-          resolution: TXT_RES,
-          wordWrap: { width: Math.round(DESIGN_W * 0.42) },
+      const veil = this.add
+        .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.22);
+
+      const currentM = Math.max(0, Math.floor(distanceAtDeath));
+      const firstPlace =
+        this.ghostDistances.length > 0
+          ? Math.max(...this.ghostDistances)
+          : 0;
+      const gapM = Math.max(0, Math.floor(firstPlace) - currentM);
+      const pastFirst = currentM >= Math.floor(firstPlace);
+      const nick = getNickname(window.localStorage);
+
+      const copyStyle = {
+        fontSize: "21px",
+        fontFamily: FONT_KR,
+        color: "#e8e0ff",
+        align: "center" as const,
+        lineSpacing: 8,
+        resolution: TXT_RES,
+      };
+
+      // 1행: "${현재}m를 쉼없이 달려온 ${닉}(당신)," — 닉만 노란 강조
+      const line1Prefix = this.add
+        .text(0, 0, `${currentM}m를 쉼없이 달려온 `, copyStyle)
+        .setOrigin(0, 0.5)
+        .setStroke("#0a0018", 5);
+      const line1Nick = this.add
+        .text(0, 0, nick, {
+          ...copyStyle,
+          color: NEON_YELLOW_HEX,
+          fontStyle: "bold",
         })
-        .setOrigin(0.5);
-      const padX = 14;
-      const padY = 10;
-      const bw = label.width + padX * 2;
-      const bh = label.height + padY * 2;
-      const box = this.add.graphics();
-      box.fillStyle(0x0a0018, 0.88);
-      box.fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 8);
-      box.lineStyle(2, 0x36f9f6, 0.75);
-      box.strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 8);
-      // 꼬리 → 좌하단 라이더 쪽
-      box.fillStyle(0x0a0018, 0.88);
-      box.fillTriangle(-10, bh / 2 - 1, 10, bh / 2 - 1, -4, bh / 2 + 12);
-      box.lineStyle(2, 0x36f9f6, 0.75);
-      box.lineBetween(-10, bh / 2 - 1, -4, bh / 2 + 12);
-      box.lineBetween(10, bh / 2 - 1, -4, bh / 2 + 12);
-      // 라이더가 좌하단에 있으므로 말풍선은 그 위·살짝 오른쪽
-      const bubble = this.add.container(DESIGN_W * 0.34, DESIGN_H * 0.28, [
-        box,
-        label,
+        .setOrigin(0, 0.5)
+        .setStroke("#0a0018", 5);
+      const line1Suffix = this.add
+        .text(0, 0, "(당신),", copyStyle)
+        .setOrigin(0, 0.5)
+        .setStroke("#0a0018", 5);
+      const line1W =
+        line1Prefix.width + line1Nick.width + line1Suffix.width;
+      line1Prefix.setX(-line1W / 2);
+      line1Nick.setX(line1Prefix.x + line1Prefix.width);
+      line1Suffix.setX(line1Nick.x + line1Nick.width);
+      const line1 = this.add.container(0, 0, [
+        line1Prefix,
+        line1Nick,
+        line1Suffix,
       ]);
 
-      const hint = this.add
-        .text(DESIGN_W - 28, DESIGN_H - 18, "탭하여 계속", {
+      const line2 = this.add
+        .text(0, 28, "감사하게도 고난에 굴복하지 않고 이어 달리는데 .. !", {
+          ...copyStyle,
+          wordWrap: { width: DESIGN_W - 80 },
+        })
+        .setOrigin(0.5, 0)
+        .setStroke("#0a0018", 5);
+
+      const line3Msg = pastFirst
+        ? "조금만 더 달리면 빛이 보일 것만 같다."
+        : `${gapM}m만 더 달리면 빛이 보일 것만 같다.`;
+      const line3 = this.add
+        .text(0, line2.y + line2.height + 10, line3Msg, {
+          ...copyStyle,
+          wordWrap: { width: DESIGN_W - 80 },
+        })
+        .setOrigin(0.5, 0)
+        .setStroke("#0a0018", 5);
+
+      const copy = this.add.container(DESIGN_W / 2, DESIGN_H * 0.34, [
+        line1,
+        line2,
+        line3,
+      ]);
+
+      // 우측 하단 CTA — 인트로 Start와 동일 점멸. 아래 자동시작 문구 공간 확보
+      ctaBtn = this.add
+        .text(DESIGN_W - 28, DESIGN_H - 48, "다시 달리자!", {
+          fontSize: "36px",
+          fontFamily: FONT_IMPACT,
+          fontStyle: "bold",
+          color: "#5efce8",
+          resolution: TXT_RES,
+        })
+        .setOrigin(1, 1)
+        .setStroke("#0a0018", 7)
+        .setPadding(28, 16, 28, 16)
+        .setInteractive({ useHandCursor: true });
+      ctaBtn.on(
+        "pointerdown",
+        (
+          pointer: Phaser.Input.Pointer,
+          _lx: number,
+          _ly: number,
+          event: Phaser.Types.Input.EventData,
+        ) => {
+          event.stopPropagation();
+          pointer.event?.stopPropagation?.();
+          this.unlockAudio();
+          this.playSfx("sfx-tick", { volume: SFX_VOL_TICK });
+          finish();
+        },
+      );
+      ctaBtn.on("pointerover", () => ctaBtn?.setScale(1.06));
+      ctaBtn.on("pointerout", () => ctaBtn?.setScale(1));
+      this.tweens.add({
+        targets: ctaBtn,
+        alpha: 0.35,
+        duration: 650,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.easeInOut",
+      });
+
+      let secondsLeft = HOLD_SEC;
+      const autoText = this.add
+        .text(DESIGN_W - 28, DESIGN_H - 16, `${secondsLeft}초 이후 자동시작`, {
           fontSize: "14px",
           fontFamily: FONT_KR,
           color: "#b39ddb",
           resolution: TXT_RES,
         })
         .setOrigin(1, 1)
-        .setStroke("#0a0018", 4);
+        .setStroke("#0a0018", 4)
+        .setAlpha(1);
 
       const root = this.add
-        .container(0, 0, [art, bubble, hint, hit])
+        .container(0, 0, [art, veil, copy, ctaBtn, autoText, hit])
         .setDepth(200)
         .setAlpha(0);
+      // CTA가 hit 위에 오도록 — interactive 순서상 마지막이 가려지면 탭 실패
+      root.bringToTop(ctaBtn);
+
       this.tweens.add({ targets: root, alpha: 1, duration: 120 });
-      this.input.on("pointerdown", onTap);
-      this.time.delayedCall(HOLD_MS, finish);
+
+      countdownTimer = this.time.addEvent({
+        delay: 1000,
+        repeat: HOLD_SEC - 1,
+        callback: () => {
+          if (settled) return;
+          secondsLeft -= 1;
+          autoText.setText(`${secondsLeft}초 이후 자동시작`);
+        },
+      });
+      autoFinishTimer = this.time.delayedCall(HOLD_MS, finish);
     });
   }
 
