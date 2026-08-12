@@ -37,6 +37,8 @@ describe('GameSim — 피버 종료 후 충돌 유예 (0.8.0)', () => {
 
   test('유예 종료(feverGraceFramesLeft = 0) 후 충돌 데미지가 정상 복귀한다 (회귀)', () => {
     const sim = new GameSim(1);
+    // 온보딩 첫 히트 용서(1.17.0) 구간을 지나 데미지 경로만 검증
+    sim.state.frame = Math.ceil(C.ONBOARD_SEC * C.SIM_FPS);
     sim.state.feverFramesLeft = 0;
     sim.state.feverGraceFramesLeft = 0;
     sim.state.invincibleFrames = 0;

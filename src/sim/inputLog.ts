@@ -35,7 +35,10 @@
 //         온보딩 중 SINGLE 랜덤 높이를 90으로 클램프(ONBOARD_OBS_H_MAX).
 //         근거: 300m 미만 사망 22%·그중 collision 60%, 300m 전 사망은 100% 피버 미경험.
 //         장애물 높이·패턴 분포가 달라져 궤적 변경 → 옛 로그 재생 불가.
-export const SIM_VERSION = '1.16.0';
+// 1.17.0: 온보딩 구간(ONBOARD_SEC) 첫 충돌만 HIT_DAMAGE 미적용(피격 이벤트·콤보 리셋·무적은 유지).
+//         HP 궤적 변경 → 옛 로그 재생 불가. 킬스위치는 원격이 아니라 버전 롤백
+//         (remoteConfig로 sim을 바꾸면 클라마다 궤적이 갈라짐).
+export const SIM_VERSION = '1.17.0';
 
 export interface InputEvent {
   frame: number;

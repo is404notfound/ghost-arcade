@@ -122,6 +122,8 @@ export class GameSim {
   private speedResetFrame = 0;
   /** revive()에서 세우고 step() 진입 직후 EV_REVIVE로 소비 — events를 직접 쓰면 step이 지움 */
   private pendingRevive = false;
+  /** 온보딩 구간에서 첫 충돌 HP 용서를 이미 썼는지 (판당 1회) */
+  private onboardFirstHitForgiven = false;
 
   constructor(seed: number) {
     this.rng = new Rng(seed);
@@ -299,7 +301,16 @@ export class GameSim {
         const o = s.obstacles[i]!;
         if (!o.active) continue;
         if (collidesPlayer(C.PLAYER_X, s.player.y, o)) {
-          s.hp -= C.HIT_DAMAGE;
+          // 온보딩 첫 히트 용서(1.17.0): EV_HIT·무적·콤보 리셋은 유지, HP만 안 깎음.
+          // 이유: 초반 "두 번 맞고 즉시 사망"을 줄이되 피격 피드백/분석(hits_taken)은 살린다.
+          const t = s.frame * C.DT;
+          const forgiveFirstHit =
+            !this.onboardFirstHitForgiven && t < C.ONBOARD_SEC;
+          if (forgiveFirstHit) {
+            this.onboardFirstHitForgiven = true;
+          } else {
+            s.hp -= C.HIT_DAMAGE;
+          }
           s.invincibleFrames = Math.round((C.INVINCIBLE_MS / 1000) * C.SIM_FPS);
           s.events |= C.EV_HIT;
           if (s.combo > 0) s.events |= C.EV_COMBO_BREAK; // 콤보가 있었을 때만

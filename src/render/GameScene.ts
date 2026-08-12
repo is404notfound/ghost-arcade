@@ -139,6 +139,7 @@ import iconWarningUrl from "../../assets/game/icon-warning.png";
 import iconFeverUrl from "../../assets/game/icon-fever.png";
 import btnReplayUrl from "../../assets/game/btn-replay.png";
 import introSlideUrl from "../../assets/game/intro-slide.png";
+import reviveComicUrl from "../../assets/game/revive-comic.png";
 import bgmMainUrl from "../../assets/audio/bgm-main.mp3";
 import bgmIntroUrl from "../../assets/audio/bgm-intro.mp3";
 import bgmFeverUrl from "../../assets/audio/bgm-fever.mp3";
@@ -727,6 +728,12 @@ export class GameScene extends Phaser.Scene {
   private introImage!: Phaser.GameObjects.Image;
   private introActive = false;
   private introNextBtn!: Phaser.GameObjects.Text;
+  /** 재시도 인트로 상단 PB 도전 문구 */
+  private introPbText!: Phaser.GameObjects.Text;
+  /** 인트로 본문(스토리 카피) — PB 문구 아래에 배치 */
+  private introStoryCopy!: Phaser.GameObjects.Container;
+  /** startRun이 재시도면 true — beginIntro에서 PB 라인 노출 */
+  private introShowPbChallenge = false;
   private startBestRankText!: Phaser.GameObjects.Text; // 최고 등수 (이력 있으면 표시)
   private startSubText!: Phaser.GameObjects.Text; // 고스트 경쟁 안내 / 첫판 조작 힌트
   private feverTutorial: Phaser.GameObjects.Container | null = null; // 첫 피버 일시정지 안내
@@ -778,6 +785,10 @@ export class GameScene extends Phaser.Scene {
   private obstacleWasActive: boolean[] = []; // 활성 전이(스폰) 감지용
   private lastObstacleTypes: string[] = []; // 최근 2개 배정 타입 히스토리 — 인접 중복 방지
   private fuelSprites: Phaser.GameObjects.Image[] = []; // 연료통(회복=주유)
+  /** 포션 위 'HP+' 라벨 (런당 앞 5개 스폰만) */
+  private fuelHpLabels: Phaser.GameObjects.Text[] = [];
+  private fuelHpLabelArmed: boolean[] = [];
+  private potionHpLabelsGranted = 0;
 
   // 배경 패럴랙스 레이어 (렌더 전용 — sim 무관, world.distance만 읽어 스크롤)
   private bgSkylineFar!: Phaser.GameObjects.Container;
@@ -961,6 +972,7 @@ export class GameScene extends Phaser.Scene {
     this.load.image("icon-fever", iconFeverUrl);
     this.load.image("btn-replay", btnReplayUrl);
     this.load.image("intro-slide", introSlideUrl);
+    this.load.image("revive-comic", reviveComicUrl);
     this.load.audio("bgm-main", bgmMainUrl);
     this.load.audio("bgm-intro", bgmIntroUrl);
     this.load.audio("bgm-fever", bgmFeverUrl);
@@ -1252,11 +1264,24 @@ export class GameScene extends Phaser.Scene {
       this.obstacleType.push("obs-car");
       this.obstacleWasActive.push(false);
     }
-    // 연료통 풀
+    // 연료통 풀 + 온보딩용 'HP+' 라벨 (런당 앞 5개)
     for (let i = 0; i < C.MAX_POTIONS; i++) {
       const c = this.add.image(0, 0, "fuel-can").setVisible(false);
       c.setDisplaySize(FUEL_ART_SIZE, FUEL_ART_SIZE);
       this.fuelSprites.push(c);
+      const lbl = this.add
+        .text(0, 0, "HP+", {
+          fontSize: "20px",
+          fontFamily: FONT_KR_IMPACT,
+          color: "#9fd4ff",
+          resolution: TXT_RES,
+        })
+        .setOrigin(0.5, 1)
+        .setStroke("#0a0018", 5)
+        .setDepth(c.depth + 1)
+        .setVisible(false);
+      this.fuelHpLabels.push(lbl);
+      this.fuelHpLabelArmed.push(false);
     }
 
     // 피버 오버레이 — 피버 중 화면 전체에 황금빛 tint (HUD보다 먼저 생성 → 그 아래 렌더)
@@ -1844,7 +1869,7 @@ export class GameScene extends Phaser.Scene {
       const veil = this.add
         .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.22);
       // 카피 위치는 기존(≈38%) 유지 — Start는 우측 하단 고정(카피와 분리)
-      const copyY = DESIGN_H * 0.38;
+      const copyY = DESIGN_H * 0.34;
       const introNick = getNickname(window.localStorage);
       const copyStyle = {
         fontSize: "21px",
@@ -1854,6 +1879,21 @@ export class GameScene extends Phaser.Scene {
         lineSpacing: 8,
         resolution: TXT_RES,
       };
+      // 재시도 시 상단 PB 도전 — 스토리 카피와 색을 분리해 먼저 읽히게
+      // resolution↑ + padding: 임팩트 폰트+스트로크 계단 현상(깨짐) 완화
+      this.introPbText = this.add
+        .text(0, 0, "", {
+          fontSize: "30px",
+          fontFamily: FONT_KR_IMPACT,
+          color: NEON_YELLOW_HEX,
+          align: "center",
+          resolution: Math.max(TXT_RES, 3),
+          wordWrap: { width: DESIGN_W - 64 },
+          padding: { x: 10, y: 6 },
+        })
+        .setOrigin(0.5, 0)
+        .setStroke("#0a0018", 5)
+        .setVisible(false);
       const copyTop = this.add
         .text(
           0,
@@ -1897,10 +1937,14 @@ export class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5, 0)
         .setStroke("#0a0018", 5);
-      const copy = this.add.container(DESIGN_W / 2, copyY, [
+      this.introStoryCopy = this.add.container(0, 0, [
         copyTop,
         nickRow,
         copyBot,
+      ]);
+      const copy = this.add.container(DESIGN_W / 2, copyY, [
+        this.introPbText,
+        this.introStoryCopy,
       ]);
       // Start → 우측 하단 — 카피와 겹치지 않게 CTA를 코너에 고정
       this.introNextBtn = this.add
@@ -2385,6 +2429,11 @@ export class GameScene extends Phaser.Scene {
     this.jumpsCount = 0;
     this.doubleJumpsCount = 0;
     this.potionsCollected = 0;
+    this.potionHpLabelsGranted = 0;
+    for (let i = 0; i < this.fuelHpLabelArmed.length; i++) {
+      this.fuelHpLabelArmed[i] = false;
+      this.fuelHpLabels[i]?.setVisible(false);
+    }
     this.maxComboThisRun = 0;
     this.nearMissTracker = createNearMissTracker();
     try {
@@ -2402,6 +2451,8 @@ export class GameScene extends Phaser.Scene {
     );
 
     const isRetry = restartReason !== "first";
+    // 재시도 인트로에 PB 도전 문구 — 플레이 중 토스트 대신 인트로 카피 상단
+    this.introShowPbChallenge = isRetry;
     const now = Date.now();
     const prevRun = readAndConsumePrevRunSnapshot(window.localStorage, now);
     const retryLatencyMs = computeRetryLatencyMs(
@@ -3040,6 +3091,7 @@ export class GameScene extends Phaser.Scene {
     // 재시도 판: 메인/피버/결과 → 인트로 크로스페이드
     this.startIntroBgm();
     if (this.startOverlay) this.startOverlay.setVisible(false);
+    this.refreshIntroPbChallenge();
     const startY = (this.introOverlay.getData("startY") as number) ?? DESIGN_H;
     const endY = (this.introOverlay.getData("endY") as number) ?? DESIGN_H;
     this.introImage.y = startY;
@@ -3067,12 +3119,49 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * 재시도 인트로: PB 도전 문구를 스토리 카피 위에 다른 색으로 먼저 배치.
+   * 플레이 화면 토스트는 쓰지 않음 — 인트로에서만 읽히게.
+   */
+  private refreshIntroPbChallenge(): void {
+    if (!this.introPbText || !this.introStoryCopy) return;
+    this.tweens.killTweensOf(this.introPbText);
+    const show =
+      this.introShowPbChallenge && remoteConfig("run2_pb_toast_enabled");
+    if (!show) {
+      this.introPbText.setVisible(false).setText("").setAlpha(1);
+      this.introStoryCopy.y = 0;
+      return;
+    }
+    const pb = this.bestDistAtRunStart;
+    const msg =
+      pb > 0
+        ? `"${pb}m보다 더 멀리 가보자고!"`
+        : `"더 멀리 가보자고!"`;
+    this.introPbText.setText(msg).setVisible(true).setAlpha(1);
+    // Start CTA와 같은 리듬의 알파 점멸 — 도전 문구를 먼저 읽히게
+    this.tweens.add({
+      targets: this.introPbText,
+      alpha: 0.35,
+      duration: 550,
+      yoyo: true,
+      repeat: -1,
+      ease: "Sine.easeInOut",
+    });
+    // PB 라인 아래 여백을 두고 기존 스토리 카피
+    this.introStoryCopy.y = this.introPbText.height + 18;
+  }
+
   /** 인트로 종료(Start) → 조작 튜토리얼(오늘 숨김 아니면) → 플레이. */
   private endIntro(): void {
     if (!this.introActive && !this.introOverlay?.visible) return;
     this.introActive = false;
     this.tweens.killTweensOf(this.introImage);
     if (this.introNextBtn) this.tweens.killTweensOf(this.introNextBtn);
+    if (this.introPbText) {
+      this.tweens.killTweensOf(this.introPbText);
+      this.introPbText.setAlpha(1);
+    }
     this.introOverlay.setVisible(false);
     if (this.startOverlay) this.startOverlay.setVisible(false);
     // 옵션 A: 인트로 Start → 조작 안내 → 플레이. 「오늘 다시 안보기」면 바로 플레이.
@@ -3556,6 +3645,12 @@ export class GameScene extends Phaser.Scene {
 
     if (result.type === "rewarded") {
       this.sawReviveAdThisRun = true;
+      // 부활 적용 전에만 연출 — applyRevive/고스트 finished 배관을 건드리지 않음
+      if (remoteConfig("revive_fx_enabled")) {
+        await this.playReviveComic();
+      }
+      // 연출 중 재시작되면 death 파이프가 무효 — 부활 적용 금지
+      if (!this.sim.state.gameOver || !this.deathFinalizePending) return;
       this.applyReviveAfterAd(distanceAtDeath);
       return;
     }
@@ -3584,6 +3679,89 @@ export class GameScene extends Phaser.Scene {
     mirrorEvent("revive_used", getUserId(window.localStorage), {
       revive_index: this.reviveCountThisRun,
       distance_at_death: Math.floor(distanceAtDeath),
+    });
+  }
+
+  /**
+   * 광고 보상 직후 풀스크린 1컷(~2초, 탭 스킵).
+   * 에셋 full-bleed + 닉네임 말풍선(코드 오버레이).
+   */
+  private playReviveComic(): Promise<void> {
+    const HOLD_MS = 2000;
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        this.input.off("pointerdown", onTap);
+        this.tweens.killTweensOf(root);
+        root.destroy(true);
+        resolve();
+      };
+      const onTap = () => finish();
+
+      // 히트 영역 — 이미지 위 투명 클릭 캡처
+      const hit = this.add
+        .rectangle(DESIGN_W / 2, DESIGN_H / 2, DESIGN_W, DESIGN_H, 0x000000, 0.001)
+        .setInteractive();
+
+      const art = this.add
+        .image(DESIGN_W / 2, DESIGN_H / 2, "revive-comic")
+        .setOrigin(0.5);
+      // cover: 가로 뷰포트를 빈틈없이 채움 (intro와 동일 세계감)
+      const cover = Math.max(DESIGN_W / art.width, DESIGN_H / art.height);
+      art.setScale(cover);
+
+      const nick = this.clipNickChars(getNickname(window.localStorage), 10);
+      const bubbleMsg = `${nick}: I can do this ALL DAY`;
+      const label = this.add
+        .text(0, 0, bubbleMsg, {
+          fontSize: "18px",
+          fontFamily: FONT_KR_IMPACT,
+          color: "#ffffff",
+          align: "center",
+          resolution: TXT_RES,
+          wordWrap: { width: Math.round(DESIGN_W * 0.42) },
+        })
+        .setOrigin(0.5);
+      const padX = 14;
+      const padY = 10;
+      const bw = label.width + padX * 2;
+      const bh = label.height + padY * 2;
+      const box = this.add.graphics();
+      box.fillStyle(0x0a0018, 0.88);
+      box.fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 8);
+      box.lineStyle(2, 0x36f9f6, 0.75);
+      box.strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 8);
+      // 꼬리 → 좌하단 라이더 쪽
+      box.fillStyle(0x0a0018, 0.88);
+      box.fillTriangle(-10, bh / 2 - 1, 10, bh / 2 - 1, -4, bh / 2 + 12);
+      box.lineStyle(2, 0x36f9f6, 0.75);
+      box.lineBetween(-10, bh / 2 - 1, -4, bh / 2 + 12);
+      box.lineBetween(10, bh / 2 - 1, -4, bh / 2 + 12);
+      // 라이더가 좌하단에 있으므로 말풍선은 그 위·살짝 오른쪽
+      const bubble = this.add.container(DESIGN_W * 0.34, DESIGN_H * 0.28, [
+        box,
+        label,
+      ]);
+
+      const hint = this.add
+        .text(DESIGN_W - 28, DESIGN_H - 18, "탭하여 계속", {
+          fontSize: "14px",
+          fontFamily: FONT_KR,
+          color: "#b39ddb",
+          resolution: TXT_RES,
+        })
+        .setOrigin(1, 1)
+        .setStroke("#0a0018", 4);
+
+      const root = this.add
+        .container(0, 0, [art, bubble, hint, hit])
+        .setDepth(200)
+        .setAlpha(0);
+      this.tweens.add({ targets: root, alpha: 1, duration: 120 });
+      this.input.on("pointerdown", onTap);
+      this.time.delayedCall(HOLD_MS, finish);
     });
   }
 
@@ -5465,11 +5643,33 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < C.MAX_POTIONS; i++) {
       const p = world.potions[i]!;
       const c = this.fuelSprites[i]!;
+      const hpLbl = this.fuelHpLabels[i]!;
       c.setVisible(p.active);
       if (p.active) {
         const t = this.time.now / 1000;           // 벽시계(시뮬 RNG 아님)
         const bob = Math.sin(t * 2.2 + i * 1.3) * 4; // 진폭 4px, 아이템마다 위상차
-        c.setPosition(toScreenX(p.x), toScreenY(p.y) + bob);
+        const sx = toScreenX(p.x);
+        const sy = toScreenY(p.y) + bob;
+        c.setPosition(sx, sy);
+        // 런당 앞 5개 스폰만 에셋 위에 'HP+' — 빠른 스크롤에서도 한눈에 읽히게
+        if (!this.fuelHpLabelArmed[i] && this.potionHpLabelsGranted < 5) {
+          this.fuelHpLabelArmed[i] = true;
+          this.potionHpLabelsGranted += 1;
+        }
+        if (this.fuelHpLabelArmed[i]) {
+          // 포션보다 빠른 상하 바운스 + 알파 점멸 — 스크롤 중에도 시선 잡기
+          const labelBob = Math.sin(t * 4.8 + i * 1.3) * 6;
+          const blink = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(t * 7.2 + i * 0.9));
+          hpLbl
+            .setVisible(true)
+            .setAlpha(blink)
+            .setPosition(sx, sy - FUEL_ART_SIZE * 0.55 + labelBob);
+        } else {
+          hpLbl.setVisible(false).setAlpha(1);
+        }
+      } else {
+        this.fuelHpLabelArmed[i] = false;
+        hpLbl.setVisible(false).setAlpha(1);
       }
     }
 

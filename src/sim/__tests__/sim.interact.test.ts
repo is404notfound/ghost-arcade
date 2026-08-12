@@ -13,12 +13,13 @@ function stepUntilEvent(sim: GameSim, ev: number, maxSteps: number): number {
 }
 
 describe('GameSim — 충돌과 무적', () => {
-  test('장애물과 충돌하면 HIT_DAMAGE만큼 깎이고 EV_HIT가 발생한다', () => {
+  test('장애물과 충돌하면 EV_HIT가 발생한다 (온보딩 첫 히트는 HP 용서)', () => {
     const sim = new GameSim(1);
     const hitFrame = stepUntilEvent(sim, C.EV_HIT, 600); // 입력 없으면 첫 장애물에 반드시 맞음
     expect(hitFrame).toBeGreaterThan(0);
     const drained = C.HP_DRAIN_PER_SEC * hitFrame * C.DT;
-    expect(sim.state.hp).toBeCloseTo(C.HP_MAX - drained - C.HIT_DAMAGE, 3);
+    // 1.17.0: 온보딩 첫 충돌은 HIT_DAMAGE 없음 — 데미지 경로는 onboardHitForgive 테스트
+    expect(sim.state.hp).toBeCloseTo(C.HP_MAX - drained, 3);
   });
 
   test('무적 시간 내에는 연속 피격되지 않는다', () => {

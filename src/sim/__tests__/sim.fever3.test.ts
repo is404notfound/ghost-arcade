@@ -80,6 +80,8 @@ describe('GameSim — 피버 충돌 면역 (0.6.0)', () => {
 
   test('피버 밖에서는 충돌 데미지가 정상 적용된다 (회귀)', () => {
     const sim = new GameSim(1);
+    // 온보딩 첫 히트 용서(1.17.0) 구간을 지나 데미지 경로만 검증
+    sim.state.frame = Math.ceil(C.ONBOARD_SEC * C.SIM_FPS);
     sim.state.feverFramesLeft = 0;
     sim.state.invincibleFrames = 0;
     sim.state.player.y = 0;

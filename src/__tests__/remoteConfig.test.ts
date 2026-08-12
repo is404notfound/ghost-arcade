@@ -43,6 +43,9 @@ describe('remoteConfig', () => {
     expect(remoteConfig('ads_interstitial_min_lifetime_run')).toBe(5);
     expect(remoteConfig('ads_banner_enabled')).toBe(false);
     expect(remoteConfig('ads_banner_min_viewport_h')).toBe(500);
+    // 연출 킬스위치 — 기본 ON (원격으로만 끔)
+    expect(remoteConfig('revive_fx_enabled')).toBe(true);
+    expect(remoteConfig('run2_pb_toast_enabled')).toBe(true);
   });
 
   it('원격 값이 있으면 override (타입 일치 시)', async () => {

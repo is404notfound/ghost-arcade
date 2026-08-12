@@ -36,6 +36,10 @@ const DEFAULTS = {
    * 폰 가로(~375–430)는 미부착, 태블릿급만 부착. 원격 튜닝용.
    */
   ads_banner_min_viewport_h: 500,
+  /** 이어뛰기 광고 보상 직후 만화 1컷 연출. 연출만 — sim 불변 */
+  revive_fx_enabled: true,
+  /** 세션 2번째 판 시작 시 PB(m) 도전 토스트. 연출만 — sim 불변 */
+  run2_pb_toast_enabled: true,
 } as const;
 
 export type RemoteConfigKey = keyof typeof DEFAULTS;
