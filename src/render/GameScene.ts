@@ -3683,11 +3683,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 광고 보상 직후 풀스크린 1컷(~15초).
+   * 광고 보상 직후 풀스크린 1컷(~10초).
    * 에셋 full-bleed + 인트로형 스토리 카피 + CTA/자동시작 (탭 전역 스킵 없음).
    */
   private playReviveComic(distanceAtDeath: number): Promise<void> {
-    const HOLD_SEC = 15;
+    const HOLD_SEC = 10;
     const HOLD_MS = HOLD_SEC * 1000;
     return new Promise((resolve) => {
       let settled = false;
@@ -3738,34 +3738,37 @@ export class GameScene extends Phaser.Scene {
         lineSpacing: 8,
         resolution: TXT_RES,
       };
+      const hlStyle = {
+        ...copyStyle,
+        color: NEON_YELLOW_HEX,
+        fontStyle: "bold" as const,
+      };
 
-      // 1행: "${현재}m를 쉼없이 달려온 ${닉}(당신)," — 닉만 노란 강조
-      const line1Prefix = this.add
-        .text(0, 0, `${currentM}m를 쉼없이 달려온 `, copyStyle)
+      // 1행: 현재거리·닉 노란 강조
+      const line1Dist = this.add
+        .text(0, 0, `${currentM}m`, hlStyle)
+        .setOrigin(0, 0.5)
+        .setStroke("#0a0018", 5);
+      const line1Mid = this.add
+        .text(0, 0, "를 쉼없이 달려온 ", copyStyle)
         .setOrigin(0, 0.5)
         .setStroke("#0a0018", 5);
       const line1Nick = this.add
-        .text(0, 0, nick, {
-          ...copyStyle,
-          color: NEON_YELLOW_HEX,
-          fontStyle: "bold",
-        })
+        .text(0, 0, nick, hlStyle)
         .setOrigin(0, 0.5)
         .setStroke("#0a0018", 5);
       const line1Suffix = this.add
         .text(0, 0, "(당신),", copyStyle)
         .setOrigin(0, 0.5)
         .setStroke("#0a0018", 5);
-      const line1W =
-        line1Prefix.width + line1Nick.width + line1Suffix.width;
-      line1Prefix.setX(-line1W / 2);
-      line1Nick.setX(line1Prefix.x + line1Prefix.width);
-      line1Suffix.setX(line1Nick.x + line1Nick.width);
-      const line1 = this.add.container(0, 0, [
-        line1Prefix,
-        line1Nick,
-        line1Suffix,
-      ]);
+      const line1Parts = [line1Dist, line1Mid, line1Nick, line1Suffix];
+      const line1W = line1Parts.reduce((w, t) => w + t.width, 0);
+      let line1X = -line1W / 2;
+      for (const t of line1Parts) {
+        t.setX(line1X);
+        line1X += t.width;
+      }
+      const line1 = this.add.container(0, 0, line1Parts);
 
       const line2 = this.add
         .text(0, 28, "감사하게도 고난에 굴복하지 않고 이어 달리는데 .. !", {
@@ -3775,16 +3778,31 @@ export class GameScene extends Phaser.Scene {
         .setOrigin(0.5, 0)
         .setStroke("#0a0018", 5);
 
-      const line3Msg = pastFirst
-        ? "조금만 더 달리면 빛이 보일 것만 같다."
-        : `${gapM}m만 더 달리면 빛이 보일 것만 같다.`;
-      const line3 = this.add
-        .text(0, line2.y + line2.height + 10, line3Msg, {
-          ...copyStyle,
-          wordWrap: { width: DESIGN_W - 80 },
-        })
-        .setOrigin(0.5, 0)
-        .setStroke("#0a0018", 5);
+      // 3행: 남은거리 노란 강조 (1등 돌파 시 숫자 없음)
+      const line3Y = line2.y + line2.height + 10;
+      let line3: Phaser.GameObjects.Container | Phaser.GameObjects.Text;
+      if (pastFirst) {
+        line3 = this.add
+          .text(0, line3Y, "조금만 더 달리면 빛이 보일 것만 같다.", {
+            ...copyStyle,
+            wordWrap: { width: DESIGN_W - 80 },
+          })
+          .setOrigin(0.5, 0)
+          .setStroke("#0a0018", 5);
+      } else {
+        const line3Dist = this.add
+          .text(0, 0, `${gapM}m`, hlStyle)
+          .setOrigin(0, 0)
+          .setStroke("#0a0018", 5);
+        const line3Rest = this.add
+          .text(0, 0, "만 더 달리면 빛이 보일 것만 같다.", copyStyle)
+          .setOrigin(0, 0)
+          .setStroke("#0a0018", 5);
+        const line3W = line3Dist.width + line3Rest.width;
+        line3Dist.setX(-line3W / 2);
+        line3Rest.setX(line3Dist.x + line3Dist.width);
+        line3 = this.add.container(0, line3Y, [line3Dist, line3Rest]);
+      }
 
       const copy = this.add.container(DESIGN_W / 2, DESIGN_H * 0.34, [
         line1,
@@ -3792,19 +3810,36 @@ export class GameScene extends Phaser.Scene {
         line3,
       ]);
 
-      // 우측 하단 CTA — 인트로 Start와 동일 점멸. 아래 자동시작 문구 공간 확보
+      // 우측 하단 CTA 묶음 — 버튼·자동시작을 같은 중심축으로 쌓아 우측 치우침 방지
+      let secondsLeft = HOLD_SEC;
+      const autoText = this.add
+        .text(0, 0, `${secondsLeft}초 이후 자동시작`, {
+          fontSize: "14px",
+          fontFamily: FONT_KR,
+          color: "#b39ddb",
+          resolution: TXT_RES,
+        })
+        .setOrigin(0.5, 1)
+        .setStroke("#0a0018", 4)
+        .setAlpha(1);
       ctaBtn = this.add
-        .text(DESIGN_W - 28, DESIGN_H - 48, "다시 달리자!", {
+        .text(0, -(autoText.height + 4), "이어서 도전", {
           fontSize: "36px",
           fontFamily: FONT_IMPACT,
           fontStyle: "bold",
           color: "#5efce8",
           resolution: TXT_RES,
         })
-        .setOrigin(1, 1)
+        .setOrigin(0.5, 1)
         .setStroke("#0a0018", 7)
         .setPadding(28, 16, 28, 16)
         .setInteractive({ useHandCursor: true });
+      // 컬럼 하단=자동시작, 그 바로 위=CTA. 우여백 28 유지.
+      const ctaCol = this.add.container(
+        DESIGN_W - 28 - ctaBtn.width / 2,
+        DESIGN_H - 16,
+        [ctaBtn, autoText],
+      );
       ctaBtn.on(
         "pointerdown",
         (
@@ -3831,24 +3866,12 @@ export class GameScene extends Phaser.Scene {
         ease: "Sine.easeInOut",
       });
 
-      let secondsLeft = HOLD_SEC;
-      const autoText = this.add
-        .text(DESIGN_W - 28, DESIGN_H - 16, `${secondsLeft}초 이후 자동시작`, {
-          fontSize: "14px",
-          fontFamily: FONT_KR,
-          color: "#b39ddb",
-          resolution: TXT_RES,
-        })
-        .setOrigin(1, 1)
-        .setStroke("#0a0018", 4)
-        .setAlpha(1);
-
       const root = this.add
-        .container(0, 0, [art, veil, copy, ctaBtn, autoText, hit])
+        .container(0, 0, [art, veil, copy, ctaCol, hit])
         .setDepth(200)
         .setAlpha(0);
       // CTA가 hit 위에 오도록 — interactive 순서상 마지막이 가려지면 탭 실패
-      root.bringToTop(ctaBtn);
+      root.bringToTop(ctaCol);
 
       this.tweens.add({ targets: root, alpha: 1, duration: 120 });
 
