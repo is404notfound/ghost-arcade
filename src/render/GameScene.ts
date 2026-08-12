@@ -728,12 +728,14 @@ export class GameScene extends Phaser.Scene {
   private introImage!: Phaser.GameObjects.Image;
   private introActive = false;
   private introNextBtn!: Phaser.GameObjects.Text;
-  /** 재시도 인트로 상단 PB 도전 문구 */
+  /** 재시도 인트로 상단 직전 기록 도전 문구 */
   private introPbText!: Phaser.GameObjects.Text;
-  /** 인트로 본문(스토리 카피) — PB 문구 아래에 배치 */
+  /** 인트로 본문(스토리 카피) — 도전 문구 아래에 배치 */
   private introStoryCopy!: Phaser.GameObjects.Container;
-  /** startRun이 재시도면 true — beginIntro에서 PB 라인 노출 */
+  /** startRun이 재시도면 true — beginIntro에서 직전 기록 라인 노출 */
   private introShowPbChallenge = false;
+  /** 직전 완료 판 거리(m) — 재시도 인트로 "N m보다 더 멀리"용 (ga:last-dist) */
+  private lastCompletedDist = 0;
   private startBestRankText!: Phaser.GameObjects.Text; // 최고 등수 (이력 있으면 표시)
   private startSubText!: Phaser.GameObjects.Text; // 고스트 경쟁 안내 / 첫판 조작 힌트
   private feverTutorial: Phaser.GameObjects.Container | null = null; // 첫 피버 일시정지 안내
@@ -2451,8 +2453,14 @@ export class GameScene extends Phaser.Scene {
     );
 
     const isRetry = restartReason !== "first";
-    // 재시도 인트로에 PB 도전 문구 — 플레이 중 토스트 대신 인트로 카피 상단
+    // 재시도 인트로에 직전 기록 도전 문구 — 플레이 중 토스트 대신 인트로 카피 상단
     this.introShowPbChallenge = isRetry;
+    try {
+      this.lastCompletedDist =
+        parseInt(window.localStorage.getItem("ga:last-dist") ?? "0", 10) || 0;
+    } catch {
+      /* localStorage 차단 — 인메모리 값 유지 */
+    }
     const now = Date.now();
     const prevRun = readAndConsumePrevRunSnapshot(window.localStorage, now);
     const retryLatencyMs = computeRetryLatencyMs(
@@ -3120,7 +3128,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * 재시도 인트로: PB 도전 문구를 스토리 카피 위에 다른 색으로 먼저 배치.
+   * 재시도 인트로: 직전 기록 도전 문구를 스토리 카피 위에 다른 색으로 먼저 배치.
+   * PB(생애 최고)가 아니라 바로 전 판 거리 — "방금보다 더"가 읽히게.
    * 플레이 화면 토스트는 쓰지 않음 — 인트로에서만 읽히게.
    */
   private refreshIntroPbChallenge(): void {
@@ -3133,10 +3142,10 @@ export class GameScene extends Phaser.Scene {
       this.introStoryCopy.y = 0;
       return;
     }
-    const pb = this.bestDistAtRunStart;
+    const last = this.lastCompletedDist;
     const msg =
-      pb > 0
-        ? `"${pb}m보다 더 멀리 가보자고!"`
+      last > 0
+        ? `"${last}m보다 더 멀리 가보자고!"`
         : `"더 멀리 가보자고!"`;
     this.introPbText.setText(msg).setVisible(true).setAlpha(1);
     // Start CTA와 같은 리듬의 알파 점멸 — 도전 문구를 먼저 읽히게
@@ -3148,7 +3157,7 @@ export class GameScene extends Phaser.Scene {
       repeat: -1,
       ease: "Sine.easeInOut",
     });
-    // PB 라인 아래 여백을 두고 기존 스토리 카피
+    // 도전 라인 아래 여백을 두고 기존 스토리 카피
     this.introStoryCopy.y = this.introPbText.height + 18;
   }
 
@@ -3770,16 +3779,22 @@ export class GameScene extends Phaser.Scene {
       }
       const line1 = this.add.container(0, 0, line1Parts);
 
-      const line2 = this.add
-        .text(0, 28, "감사하게도 고난에 굴복하지 않고 이어 달리는데 .. !", {
-          ...copyStyle,
-          wordWrap: { width: DESIGN_W - 80 },
-        })
-        .setOrigin(0.5, 0)
+      // 2행: '감사하게도'만 노란 강조
+      const line2Thanks = this.add
+        .text(0, 0, "감사하게도", hlStyle)
+        .setOrigin(0, 0)
         .setStroke("#0a0018", 5);
+      const line2Rest = this.add
+        .text(0, 0, " 고난에 굴복하지 않고 이어 달리는데 .. !", copyStyle)
+        .setOrigin(0, 0)
+        .setStroke("#0a0018", 5);
+      const line2W = line2Thanks.width + line2Rest.width;
+      line2Thanks.setX(-line2W / 2);
+      line2Rest.setX(line2Thanks.x + line2Thanks.width);
+      const line2 = this.add.container(0, 28, [line2Thanks, line2Rest]);
 
       // 3행: 남은거리 노란 강조 (1등 돌파 시 숫자 없음)
-      const line3Y = line2.y + line2.height + 10;
+      const line3Y = 28 + Math.max(line2Thanks.height, line2Rest.height) + 10;
       let line3: Phaser.GameObjects.Container | Phaser.GameObjects.Text;
       if (pastFirst) {
         line3 = this.add
@@ -3966,6 +3981,16 @@ export class GameScene extends Phaser.Scene {
       nearRecord,
       death_cause,
     );
+    // 재시도 인트로 "직전 기록" 기준 — PB와 분리해 방금 끝난 판 거리를 남김
+    this.lastCompletedDist = Math.floor(myDist);
+    try {
+      window.localStorage.setItem(
+        "ga:last-dist",
+        String(this.lastCompletedDist),
+      );
+    } catch {
+      /* localStorage 차단 — 인메모리만으로 세션 내 재시도는 동작 */
+    }
     this.wentBackgroundSinceLastGameOver = false;
 
     this.log.meta = {
