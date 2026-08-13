@@ -393,6 +393,14 @@ const PLAYER_ART_H = 96;
 const JUMP_HIT_ART_H = 152;
 const PLAYER_ART_ORIGIN_X = 0.62; // 아트 내 히트박스 정렬점(왼쪽 트레일 보정 → 우측 치우침)
 const PLAYER_ART_ORIGIN_Y = 0.96; // 바퀴 접지점이 바닥선에 닿도록
+// 초심자 보호 버블 — 코드 굽기 텍스처. 캐릭터보다 한 둘레 크게, 옆뷰라 타원.
+const BEGINNER_SHIELD_TEX = "beginner-shield";
+const BEGINNER_SHIELD_TEX_SIZE = 256;
+const BEGINNER_SHIELD_BURST_ALPHA = 0.9;
+const BEGINNER_SHIELD_W_MUL = 1.65;
+const BEGINNER_SHIELD_H_MUL = 1.38;
+const BEGINNER_SHIELD_HOLD_MS = 640;
+const BEGINNER_SHIELD_FADE_MS = 360;
 // 고스트 러너 표시 높이. 90→104: 배경이 화려해 반투명·소형 고스트가 안 보임 →
 // 주인공(96)보다 살짝 크게 + 알파 1.0으로 실루엣 가시성 확보 (히트박스는 sim 그대로).
 const INTRO_MS = 8500; // 세로 슬라이드 — 천천히 감상 (Next로만 종료)
@@ -781,6 +789,12 @@ export class GameScene extends Phaser.Scene {
    * postFX 글로우는 Android에서 끄므로, 외곽은 이 레이어가 담당(렌더 전용).
    */
   private playerStroke!: Phaser.GameObjects.Sprite;
+  /** 초심자 보호 노란 구 버블 — 피격 순간에만. 렌더 전용, 에셋 없음. */
+  private beginnerShield?: Phaser.GameObjects.Image;
+  /** 이번 판에서 아직 첫 피버 전인가 (sim.feverStartedOnce와 동기, 렌더 미러) */
+  private beginnerShieldOn = true;
+  /** 피격 버블 크기·알파 보간용 — 트윈 타깃. */
+  private readonly beginnerShieldBurst = { k: 1, a: 0 };
   // sim의 고정 크기 풀과 1:1 매핑 — 생성은 create()에서 단 한 번 (D6)
   private obstacleRects: Phaser.GameObjects.Image[] = []; // 아포칼립스 장애물(가변 높이)
   private obstacleType: string[] = []; // 슬롯별 배정된 아트 타입 키
@@ -1249,6 +1263,16 @@ export class GameScene extends Phaser.Scene {
       } catch {
         /* postFX 비지원 환경 — 무시 */
       }
+    }
+
+    // 초심자 보호 버블 — 플레이어(25) 바로 뒤. 캐릭터는 앞에, 막은 둘레로만 읽히게.
+    this.ensureBeginnerShieldTexture();
+    if (this.textures.exists(BEGINNER_SHIELD_TEX)) {
+      this.beginnerShield = this.add
+        .image(toScreenX(C.PLAYER_X), GROUND_Y_PX, BEGINNER_SHIELD_TEX)
+        .setDepth(24.6)
+        .setAlpha(0)
+        .setVisible(false);
     }
 
     // 장애물 연기 레이어 — 장애물 풀보다 먼저 add → 장애물 스프라이트 뒤에서 피어오름.
@@ -2404,6 +2428,13 @@ export class GameScene extends Phaser.Scene {
         .setAngle(0)
         .setTintFill(COLOR_PLAYER_STROKE);
     }
+    // 새 판 = 초심자 보호 다시 켜짐 (sim.feverStartedOnce도 새 GameSim에서 false).
+    this.beginnerShieldOn = true;
+    this.tweens.killTweensOf(this.beginnerShieldBurst);
+    if (this.beginnerShield) {
+      this.tweens.killTweensOf(this.beginnerShield);
+      this.beginnerShield.setVisible(false).setAlpha(0);
+    }
     this.seed = dailySeed(); // 같은 날 = 같은 코스 (TODOS 시드 공유 → 데일리 시드로 결정)
     this.sim = new GameSim(this.seed);
     this.log = createInputLog(this.seed);
@@ -3459,9 +3490,10 @@ export class GameScene extends Phaser.Scene {
       // 피격 진동 — 점프보다 길고 강하게(타격감).
       navigator.vibrate?.(60);
       this.playSfx("sfx-hit", { volume: SFX_VOL_HIT });
-      // EV_HIT_FORGIVEN: 첫 피버 전 보호 — BREAK와 겹치지 않게 전용 토스트
+      // EV_HIT_FORGIVEN: 첫 피버 전 보호 — BREAK와 겹치지 않게 전용 토스트 + 버블 펄스
       if (ev & C.EV_HIT_FORGIVEN) {
         this.showBeginnerProtectPopup();
+        this.pulseBeginnerShield();
       }
     }
     if (ev & C.EV_COMBO_BREAK) {
@@ -3483,6 +3515,7 @@ export class GameScene extends Phaser.Scene {
     if (ev & C.EV_FEVER_START) {
       this.feverCount++;
       this.feverTapMs = 80; // 곧바로 tap! 스폰 시작
+      if (this.feverCount === 1) this.dismissBeginnerShield();
       this.cameras.main.flash(200, 255, 215, 0); // 황금빛 노란 플래시 (피격 빨강과 구분)
       this.punchZoom(1.12, 170); // 주인공 쪽으로 펀치 줌인 — 가속감 강조
       this.feverOverlay.setVisible(true);
@@ -5607,6 +5640,8 @@ export class GameScene extends Phaser.Scene {
       );
     }
 
+    this.syncBeginnerShield(s);
+
     // 사망 컷 페이드아웃 — 고스트와 동일 방식(트윈 1회). 결과 패널(900ms) 전에 소멸.
     // 200ms 띄운 후 580ms에 걸쳐 투명화 → ~780ms 완료, 패널과 겹치지 않음.
     // 스트로크도 같이 페이드 — 실루엣만 남는 잔상 방지.
@@ -5991,6 +6026,137 @@ export class GameScene extends Phaser.Scene {
       ease: "Cubic.out",
       onComplete: () => t.destroy(),
     });
+  }
+
+  /**
+   * 초심자 보호 구 텍스처 — Canvas 방사형 그라데이션으로 한 번만 굽는다.
+   * 이유: 매 프레임 Graphics fillCircle은 모바일 필레이트를 먹고,
+   * Graphics.fillGradientStyle→generateTexture 는 투명 텍스처가 되는 환경이 있다.
+   */
+  private ensureBeginnerShieldTexture(): void {
+    if (this.textures.exists(BEGINNER_SHIELD_TEX)) return;
+    const size = BEGINNER_SHIELD_TEX_SIZE;
+    const ct = this.textures.createCanvas(BEGINNER_SHIELD_TEX, size, size);
+    if (!ct) return;
+    const ctx = ct.getContext();
+    const cx = size / 2;
+    const cy = size / 2;
+    const r = size / 2 - 1;
+
+    // 껍질: 중심은 비우고 가장자리만 노랗게 — 사진의 반투명 구.
+    const shell = ctx.createRadialGradient(cx, cy, r * 0.42, cx, cy, r);
+    shell.addColorStop(0, "rgba(240,248,56,0)");
+    shell.addColorStop(0.58, "rgba(240,248,56,0.04)");
+    shell.addColorStop(0.78, "rgba(255,230,80,0.38)");
+    shell.addColorStop(0.9, "rgba(255,248,160,0.62)");
+    shell.addColorStop(0.97, "rgba(240,248,56,0.22)");
+    shell.addColorStop(1, "rgba(240,248,56,0)");
+    ctx.fillStyle = shell;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 안쪽 옅은 채움 — 링만 있으면 납작해 보여서 부피감을 조금 넣는다.
+    const inner = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.7);
+    inner.addColorStop(0, "rgba(255,250,160,0.10)");
+    inner.addColorStop(0.7, "rgba(240,248,56,0.05)");
+    inner.addColorStop(1, "rgba(240,248,56,0)");
+    ctx.fillStyle = inner;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 좌상단 초승달 하이라이트 — 구의 앞면처럼 읽히게.
+    const hx = cx - r * 0.22;
+    const hy = cy - r * 0.2;
+    const spec = ctx.createRadialGradient(hx, hy, r * 0.02, hx, hy, r * 0.52);
+    spec.addColorStop(0, "rgba(255,255,230,0.55)");
+    spec.addColorStop(0.35, "rgba(255,236,90,0.28)");
+    spec.addColorStop(1, "rgba(240,248,56,0)");
+    ctx.fillStyle = spec;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ct.refresh();
+  }
+
+  /** 피격 시에만 버블이 팝인 → 유지 → 페이드. 토스트와 같은 순간에. */
+  private pulseBeginnerShield(): void {
+    if (!this.beginnerShieldOn) return;
+    const shield = this.beginnerShield;
+    if (!shield) return;
+    this.tweens.killTweensOf(this.beginnerShieldBurst);
+    this.tweens.killTweensOf(shield);
+    const w = PLAYER_ART_H * BEGINNER_SHIELD_W_MUL;
+    const h = PLAYER_ART_H * BEGINNER_SHIELD_H_MUL;
+    // scale 트윈은 정사각 텍스처를 원으로 만들어 타원을 깨므로, 배율만 별도 보간.
+    const burst = this.beginnerShieldBurst;
+    burst.k = 0.78;
+    burst.a = 0;
+    const apply = () => {
+      shield.setAlpha(burst.a).setDisplaySize(w * burst.k, h * burst.k);
+    };
+    shield
+      .setVisible(true)
+      .setPosition(
+        toScreenX(C.PLAYER_X),
+        toScreenY(this.sim.state.player.y) - PLAYER_ART_H * 0.48,
+      );
+    apply();
+    this.tweens.add({
+      targets: burst,
+      k: 1.08,
+      a: BEGINNER_SHIELD_BURST_ALPHA,
+      duration: 140,
+      ease: "Back.out",
+      onUpdate: apply,
+    });
+    this.tweens.add({
+      targets: burst,
+      k: 1.18,
+      a: 0,
+      delay: BEGINNER_SHIELD_HOLD_MS,
+      duration: BEGINNER_SHIELD_FADE_MS,
+      ease: "Cubic.out",
+      onUpdate: apply,
+      onComplete: () => shield.setVisible(false),
+    });
+  }
+
+  /** 첫 피버 — 피격 버블이 남아 있으면 바로 끈다. */
+  private dismissBeginnerShield(): void {
+    this.beginnerShieldOn = false;
+    const shield = this.beginnerShield;
+    if (!shield?.visible) return;
+    this.tweens.killTweensOf(this.beginnerShieldBurst);
+    this.tweens.killTweensOf(shield);
+    this.tweens.add({
+      targets: shield,
+      alpha: 0,
+      duration: 180,
+      ease: "Cubic.out",
+      onComplete: () => shield.setVisible(false),
+    });
+  }
+
+  /** 피격 버블이 떠 있는 동안만 캐릭터 중심에 붙인다. */
+  private syncBeginnerShield(s: {
+    gameOver: boolean;
+    player: { y: number };
+  }): void {
+    const shield = this.beginnerShield;
+    if (!shield?.visible) return;
+    if (s.gameOver || this.spectating) {
+      this.tweens.killTweensOf(this.beginnerShieldBurst);
+      this.tweens.killTweensOf(shield);
+      shield.setVisible(false);
+      return;
+    }
+    shield.setPosition(
+      toScreenX(C.PLAYER_X),
+      toScreenY(s.player.y) - PLAYER_ART_H * 0.48,
+    );
   }
 
   /** 초심자 보호 — 캐릭터 위 노란 토스트 (depth·스트로크로 피격 플래시 위에서도 읽히게) */
