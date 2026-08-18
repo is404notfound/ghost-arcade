@@ -215,6 +215,14 @@ type SfxKey =
   | "sfx-death"
   | "sfx-siren";
 
+/** 게임오버 양쪽 가장자리에서 다음 일간 순위를 안내하는 세로 전광판. */
+interface DailyRankChaseSign {
+  root: Phaser.GameObjects.Container;
+  label: Phaser.GameObjects.Text;
+  glow: Phaser.GameObjects.Text;
+  direction: -1 | 1;
+}
+
 /** Phaser BaseSound에는 volume이 타입에 없음 — Web/HTML5 사운드만 가짐 */
 type BgmSound = Phaser.Sound.BaseSound & { volume: number };
 
@@ -906,6 +914,8 @@ export class GameScene extends Phaser.Scene {
   private weeklyMyDist!: Phaser.GameObjects.Text; // 5번째 칸 거리(우측정렬)
   private weeklyRanks: WeeklyRank[] | null = null; // 게임오버 시 fetch 결과 (null = 아직/실패)
   private lastResultMyDist = 0; // showResultPanel 시점 거리 — 일간 패널 갱신용
+  /** 결과 화면 양끝의 "다음 일간 순위" 세로 전광판. */
+  private dailyRankChaseSigns: DailyRankChaseSign[] = [];
   /** Replay 탭 → startRun 직후 같은 pointerdown이 window onTap으로 점프 먹는 것 방지 */
   private ignoreNextWindowTap = false;
   /** 결과 패널 닉 표시 최대 폭(px) — 거리 열과 겹치지 않게 create에서 설정 */
@@ -1773,9 +1783,60 @@ export class GameScene extends Phaser.Scene {
         replayHit,
       ]);
 
+      // 양끝 세로 전광판 — 결과를 축하 문구로 끝내지 않고, 바로 다음에 넘을
+      // 일간 순위를 계속 보여 준다. 좌측은 위로, 우측은 아래로 움직인다.
+      const makeDailyRankChaseSign = (
+        x: number,
+        angle: number,
+        direction: -1 | 1,
+      ): DailyRankChaseSign => {
+        // 전광판 카피는 결과 패널의 보조 문구가 아니라 다음 판의 목표다.
+        // 기존 대비 2배 크기로 올리고, 세로 회전 뒤에도 화면에 머물 폭으로 맞춘다.
+        const width = 440;
+        const height = 52;
+        const bg = this.add
+          .rectangle(0, 0, width, height, 0x00131c, 0.78)
+          .setStrokeStyle(1.4, 0x36f9f6, 0.72);
+        const inner = this.add
+          .rectangle(0, 0, width - 8, height - 8, 0x07111d, 0.86)
+          .setStrokeStyle(1, 0xffd35c, 0.4);
+        const glow = this.add
+          .text(0, 0, "", {
+            fontSize: "30px",
+            fontFamily: FONT_HUD,
+            fontStyle: "bold",
+            color: "#8ffcff",
+            resolution: TXT_RES,
+          })
+          .setOrigin(0.5)
+          .setStroke("#00e5ff", 12)
+          .setAlpha(0.2);
+        const label = this.add
+          .text(0, 0, "", {
+            fontSize: "30px",
+            fontFamily: FONT_HUD,
+            fontStyle: "bold",
+            color: "#f4ffff",
+            resolution: TXT_RES,
+          })
+          .setOrigin(0.5)
+          .setStroke("#06111d", 6);
+        const root = this.add
+          // 결과 루트가 화면 중앙보다 아래에 있어, 큰 세로 문구는 살짝 위로 보정한다.
+          .container(x, -28, [bg, inner, glow, label])
+          .setAngle(angle)
+          .setVisible(false);
+        return { root, label, glow, direction };
+      };
+      this.dailyRankChaseSigns = [
+        makeDailyRankChaseSign(-DESIGN_W / 2 + 28, -90, -1),
+        makeDailyRankChaseSign(DESIGN_W / 2 - 28, 90, 1),
+      ];
+
       this.gameOverRoot = this.add
         // 상단 거리 칩이 뷰포트에 잘리지 않게 중앙보다 살짝 아래 (하단 여백 활용)
         .container(DESIGN_W / 2, DESIGN_H / 2 + 28, [
+          ...this.dailyRankChaseSigns.map((sign) => sign.root),
           this.dailyPanel,
           this.weeklyPanel,
           this.replayBtn,
@@ -2573,6 +2634,7 @@ export class GameScene extends Phaser.Scene {
       this.tweens.killTweensOf(this.replayBg);
       this.replayBg.setAlpha(1);
     }
+    this.hideDailyRankChaseSigns();
     if (this.playerNickLabel) {
       this.playerNickLabel
         .setText(this.clipNickChars(getNickname(window.localStorage), 10))
@@ -4200,11 +4262,6 @@ export class GameScene extends Phaser.Scene {
       );
     }
 
-    // 개인 신기록 팝업 — 화면 중앙에서 위로 올라가며 사라짐
-    if (isPersonalBest) {
-      this.showPersonalBestPopup(prevBestM, Math.floor(myDist));
-    }
-
     // ── 최고 등수 저장 (고스트 있을 때만 의미있는 등수) ─────────────────────
     if (cmp.hasGhosts) {
       const finalRankForSave = cmp.total - cmp.overtaken + 1;
@@ -4331,6 +4388,26 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.dailyMyText.setText("");
       this.dailyMyDist.setText("");
+    }
+
+    // 동점은 이미 같은 거리이므로 건너뛰고, 실제로 앞선 가장 가까운 순위만 노린다.
+    // 결과 화면 양끝 전광판은 이 안내를 유지해 "신기록 축하 → 종료"가 아니라
+    // "다음 순위까지 N m"이라는 다음 판의 이유를 남긴다.
+    let nextAheadIndex = -1;
+    for (let i = myIdx - 1; i >= 0; i--) {
+      if (rows[i]!.distance > myDist + 0.5) {
+        nextAheadIndex = i;
+        break;
+      }
+    }
+    if (nextAheadIndex >= 0) {
+      const next = rows[nextAheadIndex]!;
+      this.showDailyRankChaseSigns(
+        nextAheadIndex + 1,
+        Math.max(1, Math.ceil(next.distance - myDist)),
+      );
+    } else {
+      this.hideDailyRankChaseSigns();
     }
   }
 
@@ -4716,42 +4793,43 @@ export class GameScene extends Phaser.Scene {
     this.milestoneToast = undefined;
   }
 
-  /** 개인 신기록 달성 팝업 — 화면 중앙에서 위로 올라가며 사라짐 */
-  private showPersonalBestPopup(prevBestM: number, nowM: number): void {
-    const cx = DESIGN_W / 2;
-    const cy = DESIGN_H * 0.28;
-    const diff = nowM - prevBestM;
-    const label =
-      prevBestM > 0 ? `✨ PERSONAL BEST  +${diff}M` : "✨ PERSONAL BEST";
+  /** 결과 화면 양끝의 다음 일간 순위 전광판을 켠다. */
+  private showDailyRankChaseSigns(nextRank: number, remainingMeters: number): void {
+    const copy = `일간 ${nextRank}위까지 ${remainingMeters.toLocaleString()}m`;
+    for (const sign of this.dailyRankChaseSigns) {
+      this.tweens.killTweensOf(sign.root);
+      this.tweens.killTweensOf(sign.glow);
+      sign.label.setText(copy).setAlpha(1);
+      sign.glow.setText(copy).setAlpha(0.16);
+      sign.root.setY(-28).setAlpha(0.76).setVisible(true);
+      this.tweens.add({
+        targets: sign.root,
+        y: -28 + sign.direction * 20,
+        alpha: { from: 0.76, to: 1 },
+        duration: 1450,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.inOut",
+      });
+      this.tweens.add({
+        targets: sign.glow,
+        alpha: { from: 0.1, to: 0.82 },
+        // 전광판 이동(1.45초)과 어울리는 느린 네온 호흡 — 빠른 깜빡임은 피로감을 준다.
+        duration: 1700,
+        yoyo: true,
+        repeat: -1,
+        ease: "Sine.inOut",
+      });
+    }
+  }
 
-    const txt = this.add
-      .text(cx, cy, label, {
-        fontSize: "22px",
-        fontFamily: FONT_IMPACT,
-        fontStyle: "bold",
-        color: NEON_YELLOW_HEX,
-        resolution: TXT_RES,
-      })
-      .setOrigin(0.5)
-      .setStroke("#1a0010", 5)
-      .setDepth(60)
-      .setAlpha(0);
-
-    this.tweens.add({
-      targets: txt,
-      alpha: 1,
-      duration: 180,
-      ease: "Cubic.out",
-    });
-    this.tweens.add({
-      targets: txt,
-      y: cy - 55,
-      alpha: 0,
-      delay: 900,
-      duration: 700,
-      ease: "Cubic.in",
-      onComplete: () => txt.destroy(),
-    });
+  /** 새 판·1위 갱신 때 전광판 트윈까지 정리해 숨은 상태에서 계속 돌지 않게 한다. */
+  private hideDailyRankChaseSigns(): void {
+    for (const sign of this.dailyRankChaseSigns) {
+      this.tweens.killTweensOf(sign.root);
+      this.tweens.killTweensOf(sign.glow);
+      sign.root.setY(-28).setAlpha(1).setVisible(false);
+    }
   }
 
   /**

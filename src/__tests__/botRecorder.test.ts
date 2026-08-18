@@ -137,6 +137,17 @@ describe('recordAllBotRuns — 커버리지 & 천장', () => {
     expect(distances.some((d) => d < 500)).toBe(true);
   });
 
+  it.each([2, 5, 26, 39])(
+    '시드 %i: 결과 화면에 보이는 정수 m 기록은 봇마다 겹치지 않는다',
+    async (s) => {
+      const { recordAllBotRuns } = await getBotRecorder();
+      const displayedMeters = recordAllBotRuns(s).map((r) => Math.floor(r.distance));
+
+      // 반응형 AI가 같은 난구간에서 죽더라도 일간 보드의 "N m" 표시는 유일해야 한다.
+      expect(new Set(displayedMeters).size).toBe(displayedMeters.length);
+    },
+  );
+
   it('recordAllBotRunsAsync는 동기 버전과 동일한 결과 (결정론)', async () => {
     const { recordAllBotRuns, recordAllBotRunsAsync } = await getBotRecorder();
     const sync = recordAllBotRuns(seed);

@@ -278,6 +278,23 @@ const BOT_TARGETS_M = [180, 420, 800, 1300, 1900, 2600, 3300, 4000] as const;
 // 실수"를 만들고, 인위적 미스는 콤보 단절(피버 지연)로 장거리 생존을 무너뜨린다.
 const BOT_MISS_PCT = [0.45, 0.3, 0.18, 0.1, 0.04, 0.015, 0.008, 0] as const;
 
+// 결과 UI는 소수점을 버린 m 단위만 보여 준다. 반응형 봇은 목표 전의 같은
+// 난구간에서 자연사할 수 있어, 로그는 달라도 이 표시값이 겹칠 수 있다.
+// 중복 시에는 구세대 케이던스 주행을 결정론적 대체 후보로 사용해 일간 보드가
+// "616m"처럼 같은 줄로 도배되지 않게 한다. 주력 반응형 주행의 거리 분포는 그대로
+// 유지하고, 실제로 겹친 티어만 대체한다.
+const DISTINCT_FALLBACK_PROFILES: readonly BotProfile[] = [
+  'early',
+  'casual',
+  'medium',
+  'skilled',
+  'good',
+  'pro',
+  'elite',
+  'ultra',
+];
+const DISTINCT_FALLBACK_VARIANTS = 4;
+
 /**
  * 8개 봇을 "초반 사망 ~ 상위권(~4천m, 실유저 p90)"까지 스펙트럼으로 생성한다 (GHOST_TOP_N=8).
  * 반응형 봇 + 목표 거리 밴딩 — 어느 시드에서든 장거리 경쟁자가 보장된다.
@@ -286,8 +303,14 @@ const BOT_MISS_PCT = [0.45, 0.3, 0.18, 0.1, 0.04, 0.015, 0.008, 0] as const;
  * 거리 내림차순 정렬 후 반환 — 리더보드에 바로 사용 가능. (전 과정 결정론)
  */
 export function recordAllBotRuns(seed: number): BotRunResult[] {
-  const results = botRunSpecs(seed).map(
-    ({ target, missPct, rngSeeds }) => recordTierBest(seed, target, missPct, rngSeeds),
+  const usedDisplayMeters = new Set<number>();
+  const results = botRunSpecs(seed).map(({ target, missPct, rngSeeds }, tier) =>
+    chooseDistinctBotRun(
+      seed,
+      tier,
+      recordTierBest(seed, target, missPct, rngSeeds),
+      usedDisplayMeters,
+    ),
   );
   return results.sort((a, b) => b.distance - a.distance);
 }
@@ -298,14 +321,15 @@ export function recordAllBotRuns(seed: number): BotRunResult[] {
  */
 export async function recordAllBotRunsAsync(seed: number): Promise<BotRunResult[]> {
   const results: BotRunResult[] = [];
-  for (const { target, missPct, rngSeeds } of botRunSpecs(seed)) {
+  const usedDisplayMeters = new Set<number>();
+  for (const [tier, { target, missPct, rngSeeds }] of botRunSpecs(seed).entries()) {
     let best: BotRunResult | null = null;
     for (const rngSeed of rngSeeds) {
       const run = recordReactiveBotRun(seed, target, { missPct, rngSeed });
       if (!best || run.distance > best.distance) best = run;
       await new Promise((r) => setTimeout(r, 0)); // 런 사이 양보
     }
-    results.push(best!);
+    results.push(chooseDistinctBotRun(seed, tier, best!, usedDisplayMeters));
   }
   return results.sort((a, b) => b.distance - a.distance);
 }
@@ -341,4 +365,50 @@ function recordTierBest(
     if (!best || run.distance > best.distance) best = run;
   }
   return best!;
+}
+
+/** 결과 패널과 동일한 정수 m 기준. 로그가 달라도 이 값이 같으면 유저에게는 동점이다. */
+function displayMeters(distance: number): number {
+  return Math.floor(distance);
+}
+
+/**
+ * 같은 시드의 봇 간 표시 거리 중복을 없앤다.
+ *
+ * 반응형 런이 겹치지 않으면 그대로 보존한다. 겹친 경우에만 티어별로 고정된
+ * 케이던스/난수 후보를 순서대로 시도한다. 따라서 동기·비동기 생성도 완전히 같은
+ * 로그와 결과를 만들며, 저장된 로그를 재생해도 실제 거리와 항상 일치한다.
+ */
+function chooseDistinctBotRun(
+  seed: number,
+  tier: number,
+  primary: BotRunResult,
+  usedDisplayMeters: Set<number>,
+): BotRunResult {
+  const primaryMeters = displayMeters(primary.distance);
+  if (!usedDisplayMeters.has(primaryMeters)) {
+    usedDisplayMeters.add(primaryMeters);
+    return primary;
+  }
+
+  for (let profileIndex = 0; profileIndex < DISTINCT_FALLBACK_PROFILES.length; profileIndex++) {
+    const profile = DISTINCT_FALLBACK_PROFILES[profileIndex]!;
+    for (let variant = 0; variant < DISTINCT_FALLBACK_VARIANTS; variant++) {
+      // 티어·프로필·변형을 모두 섞어 어떤 브라우저에서도 같은 대체 로그를 고른다.
+      const rngSeed =
+        (seed ^ Math.imul(tier + 1, 0x9e3779b9) ^ Math.imul(profileIndex + 1, 0x85ebca6b)) +
+        Math.imul(variant, 0xc2b2ae35);
+      const fallback = recordBotRun(seed, profile, rngSeed);
+      const fallbackMeters = displayMeters(fallback.distance);
+      if (!usedDisplayMeters.has(fallbackMeters)) {
+        usedDisplayMeters.add(fallbackMeters);
+        return fallback;
+      }
+    }
+  }
+
+  // 현실적인 시드에서는 위 후보로 항상 갈라진다. 그래도 모두 겹치면 실제 로그와
+  // 거리를 바꾸지 않고 주력 런을 보존한다. 이 경로는 회귀 테스트가 잡는다.
+  usedDisplayMeters.add(primaryMeters);
+  return primary;
 }
